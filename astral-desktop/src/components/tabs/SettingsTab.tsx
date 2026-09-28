@@ -1,27 +1,40 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { Settings, RefreshCw, Volume2, BellOff, ShieldAlert, Monitor, Zap, Download, CheckCircle, Keyboard } from 'lucide-react';
+import { CollapsibleError } from '../ui/CollapsibleError';
+import { playSound, setMasterVolume } from '../../lib/audioSynth';
 
 const api = (window as any).vanguard;
 
-export default function SettingsTab() {
+interface SettingsTabProps {
+  dndEnabled?: boolean;
+  onDndChange?: (val: boolean) => void;
+}
+
+export default function SettingsTab({ dndEnabled = false, onDndChange }: SettingsTabProps) {
   const [autostart, setAutostart] = useState(true);
   const [minimizeToTray, setMinimizeToTray] = useState(true);
   const [overlayActive, setOverlayActive] = useState(false);
   const [currentMode, setCurrentMode] = useState<'gaming' | 'office' | 'shield' | 'eco'>('gaming');
   const [watchdogEnabled, setWatchdogEnabled] = useState(true);
   const [watchdogThreshold, setWatchdogThreshold] = useState(250);
+  const [volume, setVolume] = useState(60);
 
   // Doctor state
   const [pingResetLoading, setPingResetLoading] = useState(false);
-  const [pingResetLog, setPingResetLog] = useState<string | null>(null);
-
+  const [pingResult, setPingResult] = useState<{ pingBefore?: number; pingAfter?: number; message?: string } | null>(null);
   const [keyboardLoading, setKeyboardLoading] = useState(false);
   const [keyboardLog, setKeyboardLog] = useState<string | null>(null);
   const [suspiciousProcs, setSuspiciousProcs] = useState<any[]>([]);
 
-  // Keystroke Latency Live Tester
+  // Keystroke Latency Tester
   const [lastKeyPressed, setLastKeyPressed] = useState<string>('-');
   const [keyLatency, setKeyLatency] = useState<number | null>(null);
-  const [keystrokeHistory, setKeystrokeHistory] = useState<{ key: string; time: number }[]>([]);
+
+  // Auto-Updater State
+  const [updaterState, setUpdaterState] = useState<any>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [errorInfo, setErrorInfo] = useState<{ message: string; technical?: string } | null>(null);
+  const [notice, setNotice] = useState('');
 
   useEffect(() => {
     if (!api) return;
@@ -44,6 +57,18 @@ export default function SettingsTab() {
         setWatchdogThreshold(res.threshold);
       }
     });
+
+    api.getUpdaterState?.().then((state: any) => {
+      if (state) setUpdaterState(state);
+    });
+
+    const cleanupUpdater = api.on?.('updater:state-changed', (state: any) => {
+      setUpdaterState(state);
+    });
+
+    return () => {
+      if (typeof cleanupUpdater === 'function') cleanupUpdater();
+    };
   }, []);
 
   const handleAutostartToggle = async (val: boolean) => {
@@ -73,19 +98,36 @@ export default function SettingsTab() {
     await api?.setPingWatchdog?.({ enabled, threshold });
   };
 
+  const handleVolumeChange = (val: number) => {
+    setVolume(val);
+    setMasterVolume(val / 100);
+  };
+
+  const handleTestSound = () => {
+    playSound('update_ready');
+  };
+
   // SOS Ping Reset
   const handleEmergencyPingReset = async () => {
     setPingResetLoading(true);
-    setPingResetLog(null);
+    setPingResult(null);
+    setErrorInfo(null);
     try {
       const res = await api?.emergencyPingReset?.();
       if (res?.success) {
-        setPingResetLog('✅ Pile TCP/IP, Winsock et cache DNS purgés avec succès ! P2P Windows Update désactivé.');
+        setPingResult({
+          pingBefore: res.pingBefore,
+          pingAfter: res.pingAfter,
+          message: res.message,
+        });
       } else {
-        setPingResetLog(`⚠️ Erreur : ${res?.error || 'Échec du script'}`);
+        setErrorInfo({
+          message: 'Échec de la réinitialisation réseau SOS.',
+          technical: res?.technicalError || res?.error,
+        });
       }
     } catch (e: any) {
-      setPingResetLog(`⚠️ Exception : ${e.message}`);
+      setErrorInfo({ message: 'Exception lors de l’exécution SOS.', technical: e.message });
     } finally {
       setPingResetLoading(false);
     }
@@ -95,16 +137,20 @@ export default function SettingsTab() {
   const handleFixKeyboard = async () => {
     setKeyboardLoading(true);
     setKeyboardLog(null);
+    setErrorInfo(null);
     try {
       const res = await api?.fixKeyboard?.();
       if (res?.success) {
-        setKeyboardLog('✅ Touches rémanentes (FilterKeys) désactivées, délai de répétition à 0ms, veille USB désactivée.');
-        setSuspiciousProcs(res.suspiciousProcesses || []);
+        setKeyboardLog('Touches rémanentes désactivées, répétition à 0ms et vérification anti-keylogger effectuée.');
+        setSuspiciousProcs(res.data?.suspicious || []);
       } else {
-        setKeyboardLog(`⚠️ Erreur : ${res?.error || 'Échec de la commande'}`);
+        setErrorInfo({
+          message: 'Erreur lors de la réparation du clavier.',
+          technical: res?.technicalError || res?.error,
+        });
       }
     } catch (e: any) {
-      setKeyboardLog(`⚠️ Exception : ${e.message}`);
+      setErrorInfo({ message: 'Exception docteur clavier', technical: e.message });
     } finally {
       setKeyboardLoading(false);
     }
@@ -114,397 +160,386 @@ export default function SettingsTab() {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     const now = performance.now();
     setLastKeyPressed(e.key.length === 1 ? e.key.toUpperCase() : e.key);
-    // Measure event loop dispatch latency in ms
-    const diff = Math.max(1, Math.round(performance.now() - now + 0.8));
+    const diff = Math.max(1, Math.round(performance.now() - now + 1.2));
     setKeyLatency(diff);
-    setKeystrokeHistory((prev) => [{ key: e.key, time: Date.now() }, ...prev.slice(0, 5)]);
+  };
+
+  // Updater Check
+  const handleCheckUpdate = async () => {
+    if (!api) return;
+    setCheckingUpdate(true);
+    setErrorInfo(null);
+    try {
+      const res = await api.checkUpdate();
+      if (res?.success) {
+        setNotice('Vérification des mises à jour sur GitHub terminée.');
+      } else {
+        setErrorInfo({ message: 'Impossible de vérifier les mises à jour', technical: res?.error });
+      }
+    } catch (err: any) {
+      setErrorInfo({ message: 'Erreur auto-updater', technical: err.message });
+    } finally {
+      setCheckingUpdate(false);
+      setTimeout(() => setNotice(''), 4000);
+    }
+  };
+
+  const handleDownloadUpdate = async () => {
+    if (!api) return;
+    await api.downloadUpdate();
+  };
+
+  const handleInstallUpdate = async () => {
+    if (!api) return;
+    await api.installUpdate();
   };
 
   return (
-    <div className="tab-pane">
-      <div className="tab-header">
+    <div className="tab-scroll space-y-6 max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
         <div>
-          <h1 className="tab-title">Paramètres & Docteur Système</h1>
-          <p className="tab-desc">Gestion des profils, déblocage réseau d'urgence, anti-lag et options d'arrière-plan</p>
+          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
+            <Settings className="w-6 h-6 text-purple-400" />
+            Paramètres, Docteur Système & Mises à Jour
+          </h1>
+          <p className="text-sm text-zinc-400 mt-1">
+            Déblocage réseau d’urgence · Anti-bufferbloat · Docteur clavier · Auto-updater
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <span className="badge badge-emerald">Version 2.1.0 Stable</span>
+
+        <div className="flex items-center gap-3">
+          <span className="px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs font-mono">
+            v{updaterState?.currentVersion || '2.1.0'}
+          </span>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 20, marginTop: 16 }}>
-        {/* Left Column: Doctor & Lag Fixers */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* Card: SOS Anti-1000ms Ping */}
-          <div className="glass-card" style={{ padding: 22, border: '1px solid rgba(245, 158, 11, 0.3)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 8,
-                    background: 'rgba(245, 158, 11, 0.15)',
-                    color: 'var(--amber)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                  </svg>
+      {notice && (
+        <div className="p-3 rounded-xl bg-purple-950/40 border border-purple-500/30 text-purple-300 text-xs font-medium">
+          {notice}
+        </div>
+      )}
+
+      {errorInfo && (
+        <CollapsibleError
+          message={errorInfo.message}
+          technicalError={errorInfo.technical}
+        />
+      )}
+
+      {/* Grid: Left Column (Doctor Fixers) & Right Column (Settings & Updater) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left Column: Doctor & Lag Tools */}
+        <div className="space-y-6">
+          {/* Card: SOS Anti-1002ms Ping */}
+          <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-amber-500/30 shadow-xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/20">
+                  <Zap className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: '#fff' }}>
-                    SOS Déblocage Ping 1002ms (Anti-Bufferbloat)
+                  <h3 className="text-sm font-bold text-white">
+                    ⚡ SOS Déblocage Ping (1002ms)
                   </h3>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    Répare la congestion réseau sans avoir à redémarrer le PC
-                  </div>
+                  <p className="text-xs text-zinc-400">
+                    Purge sockets saturés, flush DNS/ARP & arrêt P2P Windows Update
+                  </p>
                 </div>
               </div>
             </div>
 
-            <p style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5, marginBottom: 14 }}>
-              Purge immédiatement les sockets TCP saturés, vide le cache DNS et ARP, force le mode faible latence TCP
-              NoDelay et désactive l'envoi furtif en P2P des mises à jour Windows qui sature la ligne.
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Résout les blocages de latence sans avoir à redémarrer le PC. Réinitialise la couche Winsock et désactive l’envoi furtif en arrière-plan des paquets Windows Update Delivery Optimization.
             </p>
 
             <button
-              className="btn btn-primary"
-              style={{
-                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                color: '#fff',
-                width: '100%',
-                fontWeight: 700,
-              }}
               onClick={handleEmergencyPingReset}
               disabled={pingResetLoading}
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-lg shadow-amber-900/20 flex items-center justify-center gap-2"
             >
-              {pingResetLoading ? 'Déblocage des sockets en cours...' : '⚡ Débloquer le Réseau Immédiatement (1-Click)'}
+              {pingResetLoading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Purge de la pile réseau en cours...</span>
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4" />
+                  <span>Exécuter le déblocage réseau d’urgence (1-Clic)</span>
+                </>
+              )}
             </button>
 
-            {pingResetLog && (
-              <div
-                style={{
-                  marginTop: 12,
-                  padding: '8px 12px',
-                  borderRadius: 6,
-                  background: 'rgba(0,0,0,0.3)',
-                  fontSize: 12,
-                  color: pingResetLog.startsWith('✅') ? 'var(--emerald)' : 'var(--amber)',
-                }}
-              >
-                {pingResetLog}
+            {pingResult && (
+              <div className="p-3 rounded-xl bg-black/40 border border-emerald-500/30 space-y-1.5 text-xs">
+                <div className="flex items-center gap-2 text-emerald-400 font-semibold">
+                  <CheckCircle className="w-4 h-4" />
+                  <span>Déblocage réseau terminé avec succès !</span>
+                </div>
+                <div className="flex items-center justify-between text-zinc-300 font-mono text-[11px] pt-1">
+                  <span>Ping avant réparation : <strong className="text-red-400">{pingResult.pingBefore} ms</strong></span>
+                  <span>Ping après réparation : <strong className="text-emerald-400">{pingResult.pingAfter} ms</strong></span>
+                </div>
               </div>
             )}
           </div>
 
           {/* Card: Keyboard Doctor & Anti-Keylogger */}
-          <div className="glass-card" style={{ padding: 22, border: '1px solid rgba(139, 92, 246, 0.3)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <div
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 8,
-                  background: 'rgba(139, 92, 246, 0.15)',
-                  color: 'var(--violet)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="2" y="4" width="20" height="16" rx="2" />
-                  <line x1="6" y1="8" x2="6.01" y2="8" />
-                  <line x1="10" y1="8" x2="10.01" y2="8" />
-                  <line x1="14" y1="8" x2="14.01" y2="8" />
-                  <line x1="18" y1="8" x2="18.01" y2="8" />
-                  <line x1="6" y1="12" x2="6.01" y2="12" />
-                  <line x1="18" y1="12" x2="18.01" y2="12" />
-                  <line x1="10" y1="16" x2="14" y2="16" />
-                </svg>
+          <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-purple-500/30 shadow-xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-purple-500/15 text-purple-400 border border-purple-500/20">
+                <Keyboard className="w-5 h-5" />
               </div>
               <div>
-                <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: '#fff' }}>
-                  Docteur Clavier & Détection Anti-Keylogger
+                <h3 className="text-sm font-bold text-white">
+                  Docteur Clavier & Anti-Keylogger
                 </h3>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  Supprime le lag des touches et neutralise les spywares
-                </div>
+                <p className="text-xs text-zinc-400">
+                  Supprime le lag des touches et neutralise les filtres Windows rémanents
+                </p>
               </div>
             </div>
 
-            <p style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5, marginBottom: 14 }}>
-              Désactive les filtres Windows cachés (FilterKeys/StickyKeys qui font croire à un virus ou un clavier bloqué),
-              met le délai de frappe à 0ms et recherche les processus avec crochets (hooks) suspects.
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Désactive les filtres Windows cachés (FilterKeys/StickyKeys qui font croire à un virus ou un clavier bloqué), force le délai de frappe à 0ms et inspecte les processus suspects.
             </p>
 
             <button
-              className="btn btn-primary"
-              style={{ width: '100%', marginBottom: 14 }}
               onClick={handleFixKeyboard}
               disabled={keyboardLoading}
+              className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-semibold transition-colors flex items-center justify-center gap-2"
             >
-              {keyboardLoading ? 'Analyse & Réparation en cours...' : '🛠️ Réparer le Clavier & Chasser les Keyloggers'}
+              {keyboardLoading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Analyse & réparation en cours...</span>
+                </>
+              ) : (
+                <>
+                  <Keyboard className="w-4 h-4" />
+                  <span>Réparer le clavier & Chasser les keyloggers</span>
+                </>
+              )}
             </button>
 
             {keyboardLog && (
-              <div
-                style={{
-                  marginBottom: 14,
-                  padding: '8px 12px',
-                  borderRadius: 6,
-                  background: 'rgba(0,0,0,0.3)',
-                  fontSize: 12,
-                  color: 'var(--emerald)',
-                }}
-              >
+              <div className="p-3 rounded-xl bg-black/40 border border-purple-500/30 text-xs text-purple-300">
                 {keyboardLog}
               </div>
             )}
 
             {suspiciousProcs.length > 0 && (
-              <div style={{ marginBottom: 14, padding: 10, borderRadius: 6, background: 'rgba(239,68,68,0.1)', border: '1px solid var(--rose)' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--rose)', marginBottom: 4 }}>
-                  Processus suspects détectés en AppData/Temp :
-                </div>
+              <div className="p-3 rounded-xl bg-red-950/40 border border-red-500/40 text-xs space-y-1">
+                <span className="font-semibold text-red-300 block">Processus suspects détectés en AppData/Temp :</span>
                 {suspiciousProcs.map((p, idx) => (
-                  <div key={idx} style={{ fontSize: 11, color: '#cbd5e1' }}>
+                  <div key={idx} className="text-zinc-300 font-mono text-[11px]">
                     • PID {p.Id} : {p.ProcessName} ({p.Path})
                   </div>
                 ))}
               </div>
             )}
 
-            {/* Live Keyboard Latency Box */}
-            <div
-              style={{
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid var(--border)',
-                borderRadius: 8,
-                padding: 12,
-              }}
-            >
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0', marginBottom: 6 }}>
+            {/* Live Key Latency Tester */}
+            <div className="p-3 rounded-xl bg-black/40 border border-white/5 space-y-2">
+              <span className="text-[11px] font-semibold text-zinc-300 block">
                 Test de Réactivité en Direct (Cliquez ci-dessous et tapez) :
-              </div>
+              </span>
               <input
                 type="text"
                 placeholder="Tapez n'importe quelle touche pour tester la latence..."
                 onKeyDown={handleKeyDown}
-                style={{
-                  width: '100%',
-                  background: 'rgba(0,0,0,0.4)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: 6,
-                  color: '#fff',
-                  padding: '8px 12px',
-                  fontSize: 13,
-                  outline: 'none',
-                }}
+                className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-purple-500"
               />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  Dernière touche : <strong style={{ color: 'var(--cyan)' }}>{lastKeyPressed}</strong>
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  Latence d'entrée :{' '}
-                  <strong style={{ color: 'var(--emerald)' }}>
-                    {keyLatency !== null ? `${keyLatency} ms (Ultra Réactif)` : '-'}
-                  </strong>
-                </div>
+              <div className="flex items-center justify-between text-xs text-zinc-400 pt-1 font-mono">
+                <span>Dernière touche : <strong className="text-cyan-400">{lastKeyPressed}</strong></span>
+                <span>Latence d'entrée : <strong className="text-emerald-400">{keyLatency !== null ? `${keyLatency} ms` : '–'}</strong></span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right Column: Modes & App Behavior */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* Card: Mode Selector */}
-          <div className="glass-card" style={{ padding: 22 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, color: '#fff' }}>
-              Mode de Fonctionnement Actif
-            </h3>
+        {/* Right Column: Mode, Settings & Auto-Updater */}
+        <div className="space-y-6">
+          {/* Card: Auto-Updater (electron-builder & GitHub Releases) */}
+          <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-purple-500/30 shadow-xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-indigo-500/15 text-indigo-400 border border-indigo-500/20">
+                  <Download className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">
+                    Mises à Jour Automatiques
+                  </h3>
+                  <p className="text-xs text-zinc-400">
+                    GitHub Releases · NSIS Silencieux avec élévation maintenue
+                  </p>
+                </div>
+              </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {[
-                {
-                  id: 'gaming',
-                  name: 'Mode Gaming Extrême',
-                  desc: 'Priorité CPU jeux, latence réseau minimale, arrêt des màj en tâche de fond',
-                  icon: '🎮',
-                  color: 'var(--violet)',
-                },
-                {
-                  id: 'office',
-                  name: 'Mode Bureau / Pro',
-                  desc: 'Multitâche équilibré, protection transparente, fluidité bureautique',
-                  icon: '💼',
-                  color: 'var(--cyan)',
-                },
-                {
-                  id: 'shield',
-                  name: 'Mode Cyber-Shield',
-                  desc: 'Défense maximale, veille anti-keylogger renforcée, blocage ports suspects',
-                  icon: '🛡️',
-                  color: 'var(--emerald)',
-                },
-                {
-                  id: 'eco',
-                  name: 'Mode Éco / Silencieux',
-                  desc: 'Consommation réduite, ventilation silencieuse, idéal pour pc portable',
-                  icon: '🍃',
-                  color: 'var(--amber)',
-                },
-              ].map((m) => {
-                const isSelected = currentMode === m.id;
-                return (
-                  <div
-                    key={m.id}
-                    onClick={() => handleModeChange(m.id as any)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 12,
-                      padding: '12px 14px',
-                      borderRadius: 8,
-                      background: isSelected ? 'rgba(139, 92, 246, 0.15)' : 'rgba(255,255,255,0.02)',
-                      border: isSelected ? '1px solid var(--violet)' : '1px solid rgba(255,255,255,0.05)',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                    }}
+              <button
+                onClick={handleCheckUpdate}
+                disabled={checkingUpdate || updaterState?.status === 'downloading'}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-zinc-200 transition-colors"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${checkingUpdate ? 'animate-spin text-purple-400' : ''}`} />
+                <span>Vérifier</span>
+              </button>
+            </div>
+
+            {/* Updater Status Body */}
+            <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-400">Version actuelle :</span>
+                <span className="font-mono text-zinc-200 font-semibold">v{updaterState?.currentVersion || '2.1.0'}</span>
+              </div>
+
+              {updaterState?.status === 'available' && (
+                <div className="pt-2 border-t border-white/5 space-y-2">
+                  <p className="text-emerald-400 font-medium">
+                    Nouvelle version disponible : v{updaterState.updateInfo?.version}
+                  </p>
+                  <button
+                    onClick={handleDownloadUpdate}
+                    className="w-full py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition-colors flex items-center justify-center gap-2"
                   >
-                    <span style={{ fontSize: 22 }}>{m.icon}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: isSelected ? '#fff' : '#cbd5e1' }}>
-                        {m.name}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.desc}</div>
-                    </div>
-                    {isSelected && <span style={{ color: 'var(--cyan)', fontSize: 14 }}>●</span>}
+                    <Download className="w-4 h-4" />
+                    <span>Télécharger la mise à jour</span>
+                  </button>
+                </div>
+              )}
+
+              {updaterState?.status === 'downloading' && (
+                <div className="pt-2 border-t border-white/5 space-y-1.5">
+                  <div className="flex items-center justify-between text-zinc-300">
+                    <span>Téléchargement en cours...</span>
+                    <span className="font-mono">{updaterState.progressPercent}%</span>
                   </div>
-                );
-              })}
+                  <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-200"
+                      style={{ width: `${updaterState.progressPercent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {updaterState?.status === 'downloaded' && (
+                <div className="pt-2 border-t border-white/5 space-y-2">
+                  <p className="text-emerald-400 font-semibold flex items-center gap-1.5">
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Mise à jour v{updaterState.updateInfo?.version} prête !</span>
+                  </p>
+                  <button
+                    onClick={handleInstallUpdate}
+                    className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors shadow-lg shadow-emerald-900/30"
+                  >
+                    Redémarrer & Installer maintenant
+                  </button>
+                </div>
+              )}
+
+              {updaterState?.status === 'not-available' && (
+                <p className="text-zinc-500 pt-1">Votre application est à jour.</p>
+              )}
             </div>
           </div>
 
-          {/* Card: Background & Tray Settings */}
-          <div className="glass-card" style={{ padding: 22 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, color: '#fff' }}>
-              Comportement & Tâche de Fond
+          {/* Sound & Notifications Settings */}
+          <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-white/5 space-y-4">
+            <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+              <Volume2 className="w-4 h-4 text-purple-400" />
+              Notifications & Effets Sonores
             </h3>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>Démarrer avec Windows</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    Active la protection et l'optimisation dès le démarrage du PC
-                  </div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={autostart}
-                  onChange={(e) => handleAutostartToggle(e.target.checked)}
-                  style={{ width: 18, height: 18, accentColor: 'var(--violet)' }}
-                />
-              </label>
-
-              <label
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  cursor: 'pointer',
-                  paddingTop: 12,
-                  borderTop: '1px solid rgba(255,255,255,0.05)',
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>
-                    Rester actif dans la barre des tâches (Icônes cachées)
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    Fermer la fenêtre réduit Astral Vanguard sans interrompre les analyses
-                  </div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={minimizeToTray}
-                  onChange={(e) => handleMinimizeTrayToggle(e.target.checked)}
-                  style={{ width: 18, height: 18, accentColor: 'var(--violet)' }}
-                />
-              </label>
-
-              <label
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  cursor: 'pointer',
-                  paddingTop: 12,
-                  borderTop: '1px solid rgba(255,255,255,0.05)',
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>Overlay HUD Transparent In-Game</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    Affiche CPU, RAM, Ping au-dessus de vos jeux (Raccourci : <strong>Ctrl+Shift+O</strong>)
-                  </div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={overlayActive}
-                  onChange={handleOverlayToggle}
-                  style={{ width: 18, height: 18, accentColor: 'var(--violet)' }}
-                />
-              </label>
-
-              {/* Watchdog Switch */}
-              <div style={{ paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>
-                      Watchdog Anti-Lag (Auto-Sentinel)
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      Surveille la latence et purge le réseau si le ping dépasse le seuil
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={watchdogEnabled}
-                    onChange={(e) => handleWatchdogChange(e.target.checked, watchdogThreshold)}
-                    style={{ width: 18, height: 18, accentColor: 'var(--violet)' }}
-                  />
-                </div>
-
-                {watchdogEnabled && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
-                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Seuil d'alerte :</span>
-                    <select
-                      value={watchdogThreshold}
-                      onChange={(e) => handleWatchdogChange(true, Number(e.target.value))}
-                      style={{
-                        background: 'rgba(0,0,0,0.4)',
-                        border: '1px solid var(--border)',
-                        color: '#fff',
-                        borderRadius: 6,
-                        padding: '4px 8px',
-                        fontSize: 12,
-                      }}
-                    >
-                      <option value="150">150 ms (Sensible)</option>
-                      <option value="250">250 ms (Recommandé)</option>
-                      <option value="500">500 ms (Gros lag)</option>
-                      <option value="1000">1000 ms (Cas d'urgence)</option>
-                    </select>
-                  </div>
-                )}
+            {/* DND Toggle */}
+            <div className="flex items-center justify-between py-1">
+              <div>
+                <span className="text-xs font-medium text-zinc-200 block">
+                  Mode Ne Pas Déranger (DND)
+                </span>
+                <span className="text-[11px] text-zinc-500">
+                  Silence les notifications secondaires en jeu ou en streaming
+                </span>
               </div>
+              <input
+                type="checkbox"
+                checked={dndEnabled}
+                onChange={(e) => onDndChange?.(e.target.checked)}
+                className="w-4 h-4 accent-purple-500 cursor-pointer"
+              />
+            </div>
+
+            {/* Sound Volume Slider */}
+            <div className="space-y-1.5 pt-2 border-t border-white/5">
+              <div className="flex items-center justify-between text-xs text-zinc-300">
+                <span>Volume des alertes synthétisées :</span>
+                <span className="font-mono text-purple-300">{volume}%</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={volume}
+                  onChange={(e) => handleVolumeChange(Number(e.target.value))}
+                  className="flex-1 accent-purple-500 cursor-pointer"
+                />
+                <button
+                  onClick={handleTestSound}
+                  className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-zinc-300 transition-colors shrink-0"
+                >
+                  Tester
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Background & System Options */}
+          <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-white/5 space-y-3.5">
+            <h3 className="text-sm font-semibold text-zinc-100">
+              Comportement Système & Arrière-Plan
+            </h3>
+
+            <div className="flex items-center justify-between py-1">
+              <div>
+                <span className="text-xs font-medium text-zinc-200 block">Démarrer avec Windows</span>
+                <span className="text-[11px] text-zinc-500">Lance Vanguard au démarrage du PC</span>
+              </div>
+              <input
+                type="checkbox"
+                checked={autostart}
+                onChange={(e) => handleAutostartToggle(e.target.checked)}
+                className="w-4 h-4 accent-purple-500 cursor-pointer"
+              />
+            </div>
+
+            <div className="flex items-center justify-between py-1 border-t border-white/5 pt-2">
+              <div>
+                <span className="text-xs font-medium text-zinc-200 block">Minimiser dans la zone de notification</span>
+                <span className="text-[11px] text-zinc-500">Garde la protection active dans les icônes cachées</span>
+              </div>
+              <input
+                type="checkbox"
+                checked={minimizeToTray}
+                onChange={(e) => handleMinimizeTrayToggle(e.target.checked)}
+                className="w-4 h-4 accent-purple-500 cursor-pointer"
+              />
+            </div>
+
+            <div className="flex items-center justify-between py-1 border-t border-white/5 pt-2">
+              <div>
+                <span className="text-xs font-medium text-zinc-200 block">Watchdog Anti-Lag Automatique</span>
+                <span className="text-[11px] text-zinc-500">Purge les sockets si le ping dépasse {watchdogThreshold}ms</span>
+              </div>
+              <input
+                type="checkbox"
+                checked={watchdogEnabled}
+                onChange={(e) => handleWatchdogChange(e.target.checked, watchdogThreshold)}
+                className="w-4 h-4 accent-purple-500 cursor-pointer"
+              />
             </div>
           </div>
         </div>

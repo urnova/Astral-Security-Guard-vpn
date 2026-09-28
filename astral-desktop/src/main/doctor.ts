@@ -1,8 +1,6 @@
 import { BrowserWindow, ipcMain } from 'electron';
-import { exec } from 'child_process';
-import util from 'util';
-
-const execPromise = util.promisify(exec);
+import { runPowerShell } from './psHelper';
+import { logger } from './logger';
 
 export type SystemMode = 'gaming' | 'office' | 'shield' | 'eco';
 
@@ -11,120 +9,173 @@ let watchdogTimer: NodeJS.Timeout | null = null;
 let watchdogEnabled = true;
 let watchdogThresholdMs = 250;
 
-export function setupDoctorIPC(win: BrowserWindow) {
-  // ── SOS Ping 1002ms: Emergency Network & Socket Flush ───────────────────────
-  ipcMain.handle('doctor:emergency-ping-reset', async () => {
-    try {
-      // 1. Flush DNS cache
-      // 2. Netsh winsock reset catalog
-      // 3. Netsh int ip reset
-      // 4. Arp -d *
-      // 5. Disable Windows Delivery Optimization P2P upload (WUDO) which saturates upstream and causes 1000+ ms ping in games
-      // 6. Optimize TCP Ack Frequency for low latency
-      const script = `
-        Write-Output "Purge du cache DNS...";
-        Clear-DnsClientCache;
-        ipconfig /flushdns;
+/**
+ * Executes full network stack purge and latency optimization.
+ * Can be called from IPC or System Tray.
+ */
+export async function executeSosPing(): Promise<{
+  success: boolean;
+  pingBefore?: number;
+  pingAfter?: number;
+  message?: string;
+  error?: string;
+  technicalError?: string;
+}> {
+  logger.info('Exécution de la procédure d\'urgence SOS Déblocage Ping (1002ms)...');
 
-        Write-Output "Nettoyage de la table ARP...";
-        arp -d * 2>$null;
+  // 1. Measure Ping Before
+  let pingBefore = 0;
+  try {
+    const pingTestBefore = await runPowerShell(
+      `(Test-Connection -ComputerName 1.1.1.1 -Count 1 -TimeoutSeconds 2 -ErrorAction SilentlyContinue).ResponseTime`,
+      { timeout: 5000 }
+    );
+    pingBefore = parseInt(pingTestBefore.stdout || '0', 10) || 0;
+  } catch {}
 
-        Write-Output "Désactivation du partage P2P Windows Update (cause #1 de 1000ms ping)...";
-        if (!(Test-Path "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\DeliveryOptimization\\Config")) {
-          New-Item -Path "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\DeliveryOptimization\\Config" -Force | Out-Null
-        }
-        Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\DeliveryOptimization\\Config" -Name "DODownloadMode" -Value 0 -ErrorAction SilentlyContinue;
+  // 2. Execute network stack repair script via Base64 UTF-16LE
+  const repairScript = `
+    # 1. Vider le cache DNS
+    Clear-DnsClientCache
+    ipconfig /flushdns | Out-Null
 
-        Write-Output "Optimisation TCP NoDelay (Gaming)...";
-        Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | ForEach-Object {
-          $guid = $_.InterfaceGuid;
-          $regPath = "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\$guid";
-          if (Test-Path $regPath) {
-            Set-ItemProperty -Path $regPath -Name "TcpAckFrequency" -Value 1 -ErrorAction SilentlyContinue;
-            Set-ItemProperty -Path $regPath -Name "TCPNoDelay" -Value 1 -ErrorAction SilentlyContinue;
-          }
-        };
+    # 2. Vider la table ARP
+    arp -d * 2>$null
 
-        Write-Output "Réinitialisation des sockets réseau TCP/Winsock...";
-        netsh int ip reset 2>$null;
-        netsh winsock reset 2>$null;
-
-        Write-Output "Succès : Pile réseau débloquée.";
-      `;
-
-      const { stdout } = await execPromise(`powershell -NoProfile -ExecutionPolicy Bypass -Command "${script.replace(/\r?\n/g, ' ')}"`);
-      return { success: true, log: stdout };
-    } catch (error) {
-      return { success: false, error: String(error) };
+    # 3. Désactiver le partage P2P de Windows Update (cause majeure du pic 1000ms)
+    $wudoPath = "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\DeliveryOptimization\\Config"
+    if (-not (Test-Path $wudoPath)) {
+      New-Item -Path $wudoPath -Force | Out-Null
     }
+    Set-ItemProperty -Path $wudoPath -Name "DODownloadMode" -Value 0 -ErrorAction SilentlyContinue
+
+    # 4. Optimisation TCP Gaming (Désactivation de l'algorithme de Nagle)
+    $adapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' }
+    foreach ($adapter in $adapters) {
+      $guid = $adapter.InterfaceGuid
+      $regPath = "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\$guid"
+      if (Test-Path $regPath) {
+        Set-ItemProperty -Path $regPath -Name "TcpAckFrequency" -Value 1 -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $regPath -Name "TCPNoDelay" -Value 1 -ErrorAction SilentlyContinue
+      }
+    }
+
+    # 5. Réinitialisation des sockets réseau
+    netsh int ip reset 2>$null | Out-Null
+    netsh winsock reset 2>$null | Out-Null
+
+    [PSCustomObject]@{
+      repaired = $true
+    } | ConvertTo-Json -Compress
+  `;
+
+  const result = await runPowerShell(repairScript, { asJson: true, timeout: 20000 });
+
+  if (!result.success) {
+    logger.error('Échec du déblocage réseau d\'urgence', { error: result.technicalError });
+    return {
+      success: false,
+      error: result.error || 'Impossible de réinitialiser la pile réseau.',
+      technicalError: result.technicalError,
+    };
+  }
+
+  // 3. Measure Ping After
+  let pingAfter = 0;
+  try {
+    const pingTestAfter = await runPowerShell(
+      `(Test-Connection -ComputerName 1.1.1.1 -Count 1 -TimeoutSeconds 2 -ErrorAction SilentlyContinue).ResponseTime`,
+      { timeout: 5000 }
+    );
+    pingAfter = parseInt(pingTestAfter.stdout || '0', 10) || 0;
+  } catch {}
+
+  logger.info(`SOS Ping complété avec succès ! Ping avant : ${pingBefore}ms, après : ${pingAfter}ms`);
+
+  return {
+    success: true,
+    pingBefore,
+    pingAfter,
+    message: 'Pile réseau, sockets Winsock et cache DNS purgés avec succès ! P2P Windows Update désactivé.',
+  };
+}
+
+export function setupDoctorIPC(win: BrowserWindow) {
+  // ── SOS Ping 1002ms ─────────────────────────────────────────────────────────
+  ipcMain.handle('doctor:emergency-ping-reset', async () => {
+    return await executeSosPing();
   });
 
   // ── Keyboard Bug & Keylogger Doctor ─────────────────────────────────────────
   ipcMain.handle('doctor:fix-keyboard', async () => {
-    try {
-      const script = `
-        Write-Output "1. Réinitialisation des touches rémanentes et filtres Windows (FilterKeys/StickyKeys)...";
-        # Désactiver FilterKeys qui avalent les frappes de clavier ou créent un lag artificiel
-        Set-ItemProperty -Path "HKCU:\\Control Panel\\Accessibility\\Keyboard Response" -Name "Flags" -Value "90" -ErrorAction SilentlyContinue;
-        Set-ItemProperty -Path "HKCU:\\Control Panel\\Accessibility\\StickyKeys" -Name "Flags" -Value "506" -ErrorAction SilentlyContinue;
-        Set-ItemProperty -Path "HKCU:\\Control Panel\\Accessibility\\ToggleKeys" -Name "Flags" -Value "58" -ErrorAction SilentlyContinue;
+    logger.info('Exécution du diagnostic et réparation clavier...');
 
-        Write-Output "2. Optimisation de la réactivité des frappes (Vitesse maximale, zéro latence d'amorce)...";
-        Set-ItemProperty -Path "HKCU:\\Control Panel\\Keyboard" -Name "KeyboardDelay" -Value "0" -ErrorAction SilentlyContinue;
-        Set-ItemProperty -Path "HKCU:\\Control Panel\\Keyboard" -Name "KeyboardSpeed" -Value "31" -ErrorAction SilentlyContinue;
+    const keyboardScript = `
+      # 1. Désactiver FilterKeys et StickyKeys (touches rémanentes qui avalent les frappes)
+      Set-ItemProperty -Path "HKCU:\\Control Panel\\Accessibility\\Keyboard Response" -Name "Flags" -Value "0" -ErrorAction SilentlyContinue
+      Set-ItemProperty -Path "HKCU:\\Control Panel\\Accessibility\\StickyKeys" -Name "Flags" -Value "506" -ErrorAction SilentlyContinue
+      Set-ItemProperty -Path "HKCU:\\Control Panel\\Accessibility\\ToggleKeys" -Name "Flags" -Value "58" -ErrorAction SilentlyContinue
 
-        Write-Output "3. Empêcher l'extinction USB du clavier pour économie d'énergie...";
-        Get-CimInstance Win32_PnPEntity | Where-Object { $_.PNPClass -eq "Keyboard" -or $_.Caption -like "*Clavier*" -or $_.Caption -like "*Keyboard*" } | ForEach-Object {
-          Write-Output "Périphérique clavier validé : $($_.Caption)";
-        };
+      # 2. Vitesse de répétition maximale et zéro délai d'amorce
+      Set-ItemProperty -Path "HKCU:\\Control Panel\\Keyboard" -Name "KeyboardDelay" -Value "0" -ErrorAction SilentlyContinue
+      Set-ItemProperty -Path "HKCU:\\Control Panel\\Keyboard" -Name "KeyboardSpeed" -Value "31" -ErrorAction SilentlyContinue
 
-        Write-Output "4. Analyse des processus suspects avec hooks clavier potentiels...";
-        $suspicious = Get-Process | Where-Object { 
-          $_.Path -and ($_.Path -like "*AppData*" -or $_.Path -like "*Temp*") -and ($_.ProcessName -notlike "*electron*" -and $_.ProcessName -notlike "*code*")
-        } | Select-Object -Property Id, ProcessName, Path;
+      # 3. Analyser les processus suspects actifs dans AppData/Temp
+      $suspicious = Get-Process -ErrorAction SilentlyContinue | Where-Object {
+        $_.Path -and ($_.Path -like "*AppData*" -or $_.Path -like "*Temp*") -and
+        ($_.ProcessName -notlike "*electron*" -and $_.ProcessName -notlike "*code*" -and $_.ProcessName -notlike "*Astral*")
+      } | Select-Object -Property Id, ProcessName, Path
 
-        [PSCustomObject]@{
-          FixedSettings = $true;
-          SuspiciousProcesses = $suspicious;
-        } | ConvertTo-Json -Depth 3;
-      `;
+      [PSCustomObject]@{
+        fixed = $true
+        suspiciousCount = @($suspicious).Count
+        suspicious = $suspicious
+      } | ConvertTo-Json -Compress
+    `;
 
-      const { stdout } = await execPromise(`powershell -NoProfile -ExecutionPolicy Bypass -Command "${script.replace(/\r?\n/g, ' ')}"`);
-      let parsed: any = null;
-      try {
-        const jsonMatch = stdout.match(/\{[\s\S]*\}/);
-        if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
-      } catch {}
+    const result = await runPowerShell(keyboardScript, { asJson: true, timeout: 15000 });
 
+    if (!result.success) {
       return {
-        success: true,
-        log: stdout,
-        suspiciousProcesses: parsed?.SuspiciousProcesses || [],
+        success: false,
+        error: result.error || 'Erreur lors de la réparation du clavier.',
+        technicalError: result.technicalError,
       };
-    } catch (error) {
-      return { success: false, error: String(error) };
     }
+
+    return {
+      success: true,
+      data: result.data,
+      message: 'Filtres de frappe (FilterKeys) désactivés, réactivité mise à 0ms et vérification anti-keylogger effectuée.',
+    };
   });
 
-  // ── Set System Mode (Gaming, Pro, Shield, Eco) ──────────────────────────────
+  // ── System Modes Controller ────────────────────────────────────────────────
   ipcMain.handle('doctor:set-mode', async (_, mode: SystemMode) => {
     currentMode = mode;
+    logger.info(`Basculement du mode système vers : ${mode}`);
 
     try {
       if (mode === 'gaming') {
-        // Gaming profile: low ping, no background update, high priority
-        await execPromise(`powershell -Command "
-          Stop-Service -Name 'wuauserv' -ErrorAction SilentlyContinue;
-          Stop-Service -Name 'DiagTrack' -ErrorAction SilentlyContinue;
-        "`).catch(() => {});
+        // Stop background telemetry & updates temporarily for minimum latency
+        await runPowerShell(`
+          Stop-Service -Name 'wuauserv' -ErrorAction SilentlyContinue
+          Stop-Service -Name 'DiagTrack' -ErrorAction SilentlyContinue
+        `);
       } else if (mode === 'shield') {
-        // Cyber-Shield: verify real-time protection is up
-        await execPromise(`powershell -Command "Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction SilentlyContinue"`).catch(() => {});
+        // Enforce Defender real-time monitoring
+        await runPowerShell(`
+          Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction SilentlyContinue
+        `);
       } else if (mode === 'office') {
-        // Office mode: restore standard background services
-        await execPromise(`powershell -Command "Start-Service -Name 'wuauserv' -ErrorAction SilentlyContinue"`).catch(() => {});
+        // Restore standard background services
+        await runPowerShell(`
+          Start-Service -Name 'wuauserv' -ErrorAction SilentlyContinue
+        `);
       }
-    } catch {}
+    } catch (e) {
+      logger.warn('Avertissement lors de l\'application du mode système', e);
+    }
 
     win.webContents.send('mode-changed', { mode });
     return { success: true, mode };
@@ -132,7 +183,7 @@ export function setupDoctorIPC(win: BrowserWindow) {
 
   ipcMain.handle('doctor:get-mode', () => currentMode);
 
-  // ── Configure Ping Watchdog ────────────────────────────────────────────────
+  // ── Background Ping Watchdog ────────────────────────────────────────────────
   ipcMain.handle('doctor:set-watchdog', (_, { enabled, threshold }: { enabled: boolean; threshold: number }) => {
     watchdogEnabled = enabled;
     if (threshold) watchdogThresholdMs = threshold;
@@ -145,7 +196,6 @@ export function setupDoctorIPC(win: BrowserWindow) {
     threshold: watchdogThresholdMs,
   }));
 
-  // Initial watchdog startup
   setupWatchdog(win);
 }
 
@@ -160,23 +210,26 @@ function setupWatchdog(win: BrowserWindow) {
   // Background ping monitor every 20 seconds
   watchdogTimer = setInterval(async () => {
     try {
-      const pingScript = `(Test-Connection -ComputerName 1.1.1.1 -Count 1 -TimeoutSeconds 2 -ErrorAction SilentlyContinue).ResponseTime`;
-      const { stdout } = await execPromise(`powershell -Command "${pingScript}"`);
-      const latency = parseInt(stdout.trim(), 10);
+      const res = await runPowerShell(
+        `(Test-Connection -ComputerName 1.1.1.1 -Count 1 -TimeoutSeconds 2 -ErrorAction SilentlyContinue).ResponseTime`,
+        { timeout: 4000 }
+      );
+      const latency = parseInt(res.stdout || '0', 10);
 
-      if (!isNaN(latency)) {
+      if (!isNaN(latency) && latency > 0) {
         win.webContents.send('doctor:ping-update', { ping: latency });
 
         if (latency >= watchdogThresholdMs) {
-          // Detected lag spike or 1002ms issue!
-          win.webContents.send('doctor:lag-alert', {
-            ping: latency,
-            threshold: watchdogThresholdMs,
-            message: `Pic de latence anormal détecté (${latency}ms). Déblocage automatique en cours...`,
+          logger.warn(`Pic de latence anormal détecté par le Watchdog : ${latency}ms (Seuil: ${watchdogThresholdMs}ms)`);
+          win.webContents.send('notification:trigger', {
+            type: 'lag',
+            title: 'Pic de latence élevé détecté',
+            message: `Latence anormale de ${latency}ms détectée. Purge automatique des sockets...`,
+            latency,
           });
 
-          // Auto-flush DNS and clear socket blockage immediately
-          await execPromise(`powershell -Command "Clear-DnsClientCache; ipconfig /flushdns"`).catch(() => {});
+          // Perform lightweight safe flush
+          await runPowerShell(`Clear-DnsClientCache; ipconfig /flushdns | Out-Null`, { timeout: 6000 });
         }
       }
     } catch {}

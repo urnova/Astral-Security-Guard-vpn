@@ -1,6 +1,15 @@
 import { useState, useEffect } from 'react';
+import { Gamepad2, Zap, RefreshCw, Sliders, Shield, Monitor, Layers } from 'lucide-react';
+import { CollapsibleError } from '../ui/CollapsibleError';
 
 const api = (window as any).vanguard;
+
+interface InstalledGame {
+  name: string;
+  executable: string;
+  platform: 'steam' | 'epic' | 'gog' | 'riot' | 'generic';
+  path: string;
+}
 
 interface Props {
   gamingActive: boolean;
@@ -10,13 +19,37 @@ interface Props {
 
 export default function GamingTab({ gamingActive, currentGame, onGamingToggle }: Props) {
   const [overlayEnabled, setOverlayEnabled] = useState(false);
+  const [installedGames, setInstalledGames] = useState<InstalledGame[]>([]);
+  const [scanningGames, setScanningGames] = useState(false);
   const [profiles, setProfiles] = useState<Record<string, any>>({});
+  const [selectedGameForProfile, setSelectedGameForProfile] = useState<string | null>(null);
+  const [errorInfo, setErrorInfo] = useState<{ message: string; technical?: string } | null>(null);
   const [notice, setNotice] = useState('');
 
   useEffect(() => {
     if (!api) return;
-    api.getProfiles().then((r: any) => setProfiles(r.profiles || {}));
+    api.getProfiles?.().then((r: any) => setProfiles(r?.profiles || {}));
+    api.getOverlayStatus?.().then((active: boolean) => setOverlayEnabled(Boolean(active)));
+
+    // Initial scan
+    scanGames();
   }, []);
+
+  const scanGames = async () => {
+    if (!api) return;
+    setScanningGames(true);
+    setErrorInfo(null);
+    try {
+      const res = await api.scanInstalledGames?.();
+      if (res?.success && Array.isArray(res.games)) {
+        setInstalledGames(res.games);
+      }
+    } catch (err: any) {
+      setErrorInfo({ message: 'Erreur détection bibliothèque de jeux', technical: err.message });
+    } finally {
+      setScanningGames(false);
+    }
+  };
 
   const showNotice = (msg: string) => {
     setNotice(msg);
@@ -26,16 +59,20 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
   const toggleMode = async () => {
     if (!api) return;
     const next = !gamingActive;
-    await api.toggleGaming(next);
-    if (next) {
-      await api.gamingModeOn();
-      await api.networkGamingOn();
-    } else {
-      await api.gamingModeOff();
-      await api.networkGamingOff();
+    try {
+      await api.toggleGaming(next);
+      if (next) {
+        await api.gamingModeOn();
+        await api.networkGamingOn();
+      } else {
+        await api.gamingModeOff();
+        await api.networkGamingOff();
+      }
+      onGamingToggle(next);
+      showNotice(next ? '🎮 Mode Gaming activé — Priorité CPU, GPU & Anti-Lag appliqués' : 'Mode Gaming désactivé');
+    } catch (err: any) {
+      setErrorInfo({ message: 'Impossible d’activer le mode gaming', technical: err.message });
     }
-    onGamingToggle(next);
-    showNotice(next ? '🎮 Mode Gaming activé — Boost complet appliqué' : 'Mode Gaming désactivé');
   };
 
   const toggleOverlay = async () => {
@@ -43,146 +80,249 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
     const next = !overlayEnabled;
     await api.overlayToggle(next);
     setOverlayEnabled(next);
-    showNotice(next ? '🖥️ Overlay HUD activé' : 'Overlay HUD désactivé');
+    showNotice(next ? '🖥️ Overlay HUD activé (Ctrl+Shift+O)' : 'Overlay HUD masqué');
   };
 
-  const GAME_LAUNCHERS = [
-    { name: 'Steam', icon: '🎮', desc: 'Plateforme principale gaming' },
-    { name: 'Epic Games', icon: '⚡', desc: 'Epic Games Store' },
-    { name: 'Battle.net', icon: '⚔️', desc: 'Blizzard Entertainment' },
-    { name: 'Riot Client', icon: '🏆', desc: 'Valorant, LoL...' },
-    { name: 'Origin / EA', icon: '🔶', desc: 'Electronic Arts' },
-    { name: 'Ubisoft Connect', icon: '🔷', desc: 'Ubisoft' },
-  ];
+  const saveProfileSetting = async (gameKey: string, settingKey: string, value: any) => {
+    if (!api) return;
+    const current = profiles[gameKey] || {};
+    const updated = { ...current, [settingKey]: value };
+    await api.saveProfile(gameKey, updated);
+    setProfiles((prev) => ({ ...prev, [gameKey]: updated }));
+    showNotice('Profil sauvegardé.');
+  };
 
   return (
-    <div className="tab-scroll animate-in">
-      <div className="tab-header">
+    <div className="tab-scroll space-y-6 max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
         <div>
-          <h1 className="tab-title">Mode Gaming</h1>
-          <p className="tab-subtitle">Détection auto · Overlay HUD · Profils par jeu</p>
-        </div>
-        {gamingActive && currentGame && (
-          <div className="badge badge-cyan badge-dot" style={{ fontSize: 12 }}>
-            {currentGame} détecté
-          </div>
-        )}
-      </div>
-
-      {notice && <div className="notice notice-success animate-in" style={{ marginBottom: 16 }}>{notice}</div>}
-
-      {/* Main Toggle */}
-      <div className={`card ${gamingActive ? 'card-glow-cyan' : ''} animate-in`} style={{ marginBottom: 20, padding: 28 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-          {/* Gaming icon */}
-          <div style={{
-            width: 64, height: 64,
-            borderRadius: 16,
-            background: gamingActive ? 'rgba(0,212,255,0.12)' : 'rgba(255,255,255,0.04)',
-            border: `1px solid ${gamingActive ? 'var(--border-cyan)' : 'var(--border)'}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 28,
-            transition: 'var(--transition)',
-            flexShrink: 0,
-          }}>
-            {gamingActive ? '⚡' : '🎮'}
-          </div>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontWeight: 700, fontSize: 18, marginBottom: 4 }}>
-              {gamingActive ? `Mode Gaming Actif${currentGame ? ` · ${currentGame}` : ''}` : 'Mode Gaming'}
-            </p>
-            <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-              {gamingActive
-                ? 'Plan haute perf · Services suspendus · QoS réseau · GPU prioritaire · Overlay actif'
-                : 'Active toutes les optimisations gaming : CPU, RAM, GPU, réseau, Nagle.'}
-            </p>
-          </div>
-          <label className="toggle" style={{ transform: 'scale(1.3)', transformOrigin: 'right center' }}>
-            <input type="checkbox" checked={gamingActive} onChange={toggleMode} />
-            <div className="toggle-track" />
-            <div className="toggle-thumb" />
-          </label>
+          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
+            <Gamepad2 className="w-6 h-6 text-purple-400" />
+            Mode Gaming & Détection Intelligente
+          </h1>
+          <p className="text-sm text-zinc-400 mt-1">
+            Détection heuristique plein écran (Win32) · Profils par jeu · Overlay HUD transparent
+          </p>
         </div>
 
         {gamingActive && (
-          <div className="grid-4" style={{ marginTop: 20 }}>
-            {[
-              { icon: '⚡', label: 'Plan haute perf', active: true },
-              { icon: '🌐', label: 'QoS réseau', active: true },
-              { icon: '🎯', label: 'GPU prioritaire', active: true },
-              { icon: '🔇', label: 'Services suspendus', active: true },
-            ].map((b) => (
-              <div key={b.label} style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                padding: '10px 8px',
-                borderRadius: 8,
-                background: 'rgba(0,212,255,0.06)',
-                border: '1px solid rgba(0,212,255,0.15)',
-                fontSize: 11, fontWeight: 600, color: 'var(--cyan)',
-              }}>
-                <span style={{ fontSize: 18 }}>{b.icon}</span>
-                {b.label}
-              </div>
-            ))}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-semibold">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+            {currentGame ? `EN JEU : ${currentGame}` : 'BOOST GAMING ACTIF'}
           </div>
         )}
       </div>
 
-      {/* Overlay & Detection */}
-      <div className="grid-2" style={{ marginBottom: 20 }}>
-        <div className={`card ${overlayEnabled ? 'card-glow-cyan' : ''}`}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-            <p style={{ fontWeight: 600, fontSize: 14 }}>🖥️ Overlay HUD</p>
-            <label className="toggle">
-              <input type="checkbox" checked={overlayEnabled} onChange={toggleOverlay} />
-              <div className="toggle-track" />
-              <div className="toggle-thumb" />
-            </label>
+      {notice && (
+        <div className="p-3 rounded-xl bg-purple-950/40 border border-purple-500/30 text-purple-300 text-xs font-medium">
+          {notice}
+        </div>
+      )}
+
+      {errorInfo && (
+        <CollapsibleError
+          message={errorInfo.message}
+          technicalError={errorInfo.technical}
+        />
+      )}
+
+      {/* Main Switch Card */}
+      <div className="p-6 rounded-2xl bg-gradient-to-r from-[#120d2b] to-[#0c0c24] border border-purple-500/30 shadow-xl space-y-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${
+              gamingActive
+                ? 'bg-cyan-500/20 border border-cyan-500/50 shadow-[0_0_20px_rgba(6,182,212,0.3)]'
+                : 'bg-white/5 border border-white/10'
+            }`}>
+              <Zap className={`w-7 h-7 ${gamingActive ? 'text-cyan-400' : 'text-zinc-500'}`} />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-white">
+                {gamingActive ? 'Optimisation Gaming Maximale' : 'Mode Gaming en Veille'}
+              </h3>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                {gamingActive
+                  ? 'Plan d’alimentation haute performance, processus d’arrière-plan bridés et QoS paquets active.'
+                  : 'S’active automatiquement dès qu’un jeu plein écran est détecté au premier plan.'}
+              </p>
+            </div>
           </div>
-          <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            Affiche un petit HUD transparent en coin d'écran : CPU, RAM, VPN, statut gaming. Désactivable en 1 clic.
-          </p>
-          {overlayEnabled && (
-            <div className="badge badge-cyan badge-dot" style={{ marginTop: 10 }}>HUD actif en coin supérieur gauche</div>
-          )}
+
+          <button
+            onClick={toggleMode}
+            className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md ${
+              gamingActive
+                ? 'bg-cyan-500 text-black hover:bg-cyan-400 shadow-cyan-500/30'
+                : 'bg-purple-600 text-white hover:bg-purple-500 shadow-purple-900/30'
+            }`}
+          >
+            {gamingActive ? 'Désactiver le Boost' : 'Forcer l’activation'}
+          </button>
         </div>
 
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-            <p style={{ fontWeight: 600, fontSize: 14 }}>🔍 Détection automatique</p>
-            <span className="badge badge-green badge-dot">Actif</span>
+        {gamingActive && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-3 border-t border-purple-500/10">
+            <div className="p-3 rounded-xl bg-black/40 border border-white/5 flex items-center gap-2.5">
+              <Zap className="w-4 h-4 text-cyan-400" />
+              <span className="text-xs text-zinc-300 font-medium">Alimentation Maximale</span>
+            </div>
+            <div className="p-3 rounded-xl bg-black/40 border border-white/5 flex items-center gap-2.5">
+              <Layers className="w-4 h-4 text-purple-400" />
+              <span className="text-xs text-zinc-300 font-medium">Priorité CPU Haute</span>
+            </div>
+            <div className="p-3 rounded-xl bg-black/40 border border-white/5 flex items-center gap-2.5">
+              <Monitor className="w-4 h-4 text-emerald-400" />
+              <span className="text-xs text-zinc-300 font-medium">Anti-Nagle TCP Actif</span>
+            </div>
+            <div className="p-3 rounded-xl bg-black/40 border border-white/5 flex items-center gap-2.5">
+              <Shield className="w-4 h-4 text-amber-400" />
+              <span className="text-xs text-zinc-300 font-medium">Télémétrie Suspendue</span>
+            </div>
           </div>
-          <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            Surveille les processus toutes les 5s. Détecte plus de 200 jeux connus et active le mode gaming automatiquement.
+        )}
+      </div>
+
+      {/* Overlay & Fullscreen Detection Settings */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Overlay HUD Control */}
+        <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-white/5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+              <Monitor className="w-4 h-4 text-purple-400" />
+              Overlay HUD In-Game (Transparent)
+            </h3>
+            <button
+              onClick={toggleOverlay}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                overlayEnabled ? 'bg-cyan-500 text-black' : 'bg-white/10 text-zinc-300 hover:bg-white/15'
+              }`}
+            >
+              {overlayEnabled ? 'Affiché' : 'Masqué'}
+            </button>
+          </div>
+          <p className="text-xs text-zinc-400 leading-relaxed">
+            Affiche un mini-widget transparent au-dessus de vos jeux affichant le CPU, la RAM, le ping et le profil actif.
+          </p>
+          <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-center justify-between text-xs">
+            <span className="text-zinc-400">Raccourci global clavier :</span>
+            <kbd className="px-2 py-1 rounded bg-white/10 font-mono text-purple-300 text-[11px]">
+              Ctrl + Shift + O
+            </kbd>
+          </div>
+        </div>
+
+        {/* Generic Fullscreen Detection */}
+        <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-white/5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+              <Zap className="w-4 h-4 text-cyan-400" />
+              Détecteur Générique Plein Écran
+            </h3>
+            <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-semibold">
+              Actif (Win32)
+            </span>
+          </div>
+          <p className="text-xs text-zinc-400 leading-relaxed">
+            Ne dépend d'aucune liste fermée : Vanguard interroge <code className="text-cyan-300">GetForegroundWindow()</code> pour détecter n'importe quel jeu ou simulateur 3D et appliquer les optimisations en temps réel.
           </p>
           {currentGame && (
-            <div className="notice notice-info" style={{ marginTop: 10, fontSize: 12 }}>
-              Jeu actuellement détecté : <strong>{currentGame}</strong>
+            <div className="p-2.5 rounded-xl bg-purple-950/40 border border-purple-500/20 text-xs text-purple-300 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
+              <span>Fenêtre active : <strong>{currentGame}</strong></span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Launchers Detected */}
-      <div className="card animate-in">
-        <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>🎯 Lanceurs de jeux pris en charge</p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-          {GAME_LAUNCHERS.map((l) => (
-            <div key={l.name} style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '10px 12px',
-              borderRadius: 8,
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border)',
-            }}>
-              <span style={{ fontSize: 20 }}>{l.icon}</span>
-              <div>
-                <p style={{ fontSize: 13, fontWeight: 600 }}>{l.name}</p>
-                <p style={{ fontSize: 10, color: 'var(--text-muted)' }}>{l.desc}</p>
-              </div>
-            </div>
-          ))}
+      {/* Installed Games Library Scanner */}
+      <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-white/5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+              <Gamepad2 className="w-4 h-4 text-purple-400" />
+              Bibliothèque de Jeux Détectés ({installedGames.length})
+            </h3>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              Scanne automatiquement vos répertoires Steam, Epic Games, GOG Galaxy & Riot
+            </p>
+          </div>
+
+          <button
+            onClick={scanGames}
+            disabled={scanningGames}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-zinc-200 transition-colors"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${scanningGames ? 'animate-spin text-purple-400' : ''}`} />
+            <span>Re-scanner</span>
+          </button>
         </div>
+
+        {installedGames.length === 0 ? (
+          <p className="text-xs text-zinc-500 py-4 text-center">
+            {scanningGames ? 'Analyse du système en cours...' : 'Aucun jeu détecté dans les dossiers par défaut.'}
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-72 overflow-y-auto pr-1">
+            {installedGames.map((game, idx) => {
+              const profile = profiles[game.name] || {};
+              const isSelected = selectedGameForProfile === game.name;
+
+              return (
+                <div
+                  key={idx}
+                  className={`p-3 rounded-xl border text-xs transition-all ${
+                    isSelected
+                      ? 'bg-purple-950/40 border-purple-500/50'
+                      : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.04]'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-semibold text-zinc-200 truncate">{game.name}</p>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-purple-400 mt-0.5 inline-block">
+                        {game.platform}
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => setSelectedGameForProfile(isSelected ? null : game.name)}
+                      className="p-1 rounded-md text-zinc-400 hover:text-white"
+                      title="Configurer le profil de ce jeu"
+                    >
+                      <Sliders className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {isSelected && (
+                    <div className="mt-3 pt-3 border-t border-white/5 space-y-2">
+                      <label className="flex items-center justify-between text-[11px] text-zinc-300">
+                        <span>Ne Pas Déranger (DND)</span>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(profile.dnd)}
+                          onChange={(e) => saveProfileSetting(game.name, 'dnd', e.target.checked)}
+                          className="accent-purple-500"
+                        />
+                      </label>
+
+                      <label className="flex items-center justify-between text-[11px] text-zinc-300">
+                        <span>Priorité CPU Haute</span>
+                        <input
+                          type="checkbox"
+                          checked={profile.highPriority ?? true}
+                          onChange={(e) => saveProfileSetting(game.name, 'highPriority', e.target.checked)}
+                          className="accent-purple-500"
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

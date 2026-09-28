@@ -1,6 +1,6 @@
 {
   "name": "astral-vanguard",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Astral Vanguard - Gaming, Security & Anti-Lag Suite",
   "author": "urnova",
   "private": true,
@@ -19,13 +19,15 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "public/icon.ico"
+      "icon": "public/icon.ico",
+      "requestedExecutionLevel": "requireAdministrator"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "runAfterFinish": true
+      "runAfterFinish": true,
+      "allowElevation": true
     },
     "extraResources": [
       {

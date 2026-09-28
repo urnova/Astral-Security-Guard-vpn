@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { Shield, ShieldAlert, ShieldCheck, RefreshCw, Zap, FolderPlus, Trash2, RotateCcw } from 'lucide-react';
+import { CollapsibleError } from '../ui/CollapsibleError';
 
 const api = (window as any).vanguard;
 
@@ -13,34 +15,56 @@ export default function SecurityTab() {
   const [aiState, setAiState] = useState<AiState>('idle');
   const [rollbackLog, setRollbackLog] = useState<any[]>([]);
   const [exclusions, setExclusions] = useState<string[]>([]);
+  const [newExclusionPath, setNewExclusionPath] = useState('');
   const [remediationScript, setRemediationScript] = useState('');
   const [remediating, setRemediating] = useState(false);
+  const [updatingSignatures, setUpdatingSignatures] = useState(false);
+  const [defenderStatus, setDefenderStatus] = useState<any>(null);
+  const [errorInfo, setErrorInfo] = useState<{ message: string; technical?: string } | null>(null);
   const [notice, setNotice] = useState('');
 
-  useEffect(() => {
+  const loadData = () => {
     if (!api) return;
-    api.listRollback().then((r: any) => setRollbackLog(r.entries || []));
-    api.getExclusions().then((r: any) => setExclusions(r.paths || []));
+    api.getSecurityStatus?.().then((res: any) => {
+      if (res?.success) setDefenderStatus(res.data);
+    });
+    api.listRollback?.().then((r: any) => setRollbackLog(r.entries || []));
+    api.getExclusions?.().then((r: any) => setExclusions(r.paths || []));
+  };
 
-    const cleanup = api.on('security-event', (event: any) => {
+  useEffect(() => {
+    loadData();
+
+    const cleanup = api?.on?.('security:scan-event', (event: any) => {
       if (event.type === 'scan-complete') {
         setThreats(event.threats || []);
         setScanState('done');
         if ((event.threats || []).length > 0) {
           runAiAnalysis(event.threats);
+        } else {
+          runAiAnalysis([]);
         }
+      } else if (event.type === 'scan-error') {
+        setScanState('idle');
+        setErrorInfo({
+          message: 'Échec de l’analyse antivirus.',
+          technical: event.error,
+        });
       }
     });
-    return cleanup;
+
+    return () => {
+      if (typeof cleanup === 'function') cleanup();
+    };
   }, []);
 
   const runAiAnalysis = async (t: any[]) => {
     if (!api) return;
     setAiState('loading');
     const res = await api.aiAnalyze(t);
-    if (res.success) {
+    if (res?.success) {
       setAiAnalysis(res.analysis);
-      if (res.analysis.remediationScript) {
+      if (res.analysis?.remediationScript) {
         setRemediationScript(res.analysis.remediationScript);
       }
     }
@@ -49,70 +73,157 @@ export default function SecurityTab() {
 
   const startScan = async () => {
     if (!api) return;
+    setErrorInfo(null);
     setThreats([]);
     setAiAnalysis(null);
     setAiState('idle');
     setScanState('scanning');
-    await api.createRestorePoint('Avant scan de sécurité');
-    if (scanType === 'quick') {
-      api.quickScan();
+
+    try {
+      await api.createRestorePoint(`Avant scan antivirus (${scanType})`);
+      const res = await api.startScan(scanType);
+      if (!res?.success) {
+        setScanState('idle');
+        setErrorInfo({
+          message: res?.error || 'Erreur lors du lancement de l’analyse.',
+          technical: res?.rawError,
+        });
+      }
+    } catch (err: any) {
+      setScanState('idle');
+      setErrorInfo({
+        message: 'Erreur inattendue lors de l’analyse.',
+        technical: err.message,
+      });
+    }
+  };
+
+  const handleUpdateSignatures = async () => {
+    if (!api) return;
+    setUpdatingSignatures(true);
+    setErrorInfo(null);
+    try {
+      const res = await api.updateSignatures();
+      if (res?.success) {
+        setNotice('✅ Signatures Windows Defender mises à jour avec succès.');
+        loadData();
+      } else {
+        setErrorInfo({
+          message: res?.error || 'Impossible de mettre à jour les signatures.',
+          technical: res?.rawError,
+        });
+      }
+    } finally {
+      setUpdatingSignatures(false);
+      setTimeout(() => setNotice(''), 4000);
+    }
+  };
+
+  const handleAddExclusion = async () => {
+    if (!api || !newExclusionPath.trim()) return;
+    const pathToAdd = newExclusionPath.trim();
+    const res = await api.addExclusion(pathToAdd);
+    if (res?.success) {
+      setNewExclusionPath('');
+      api.getExclusions().then((r: any) => setExclusions(r.paths || []));
+      setNotice('✅ Exception ajoutée à Windows Defender.');
+      setTimeout(() => setNotice(''), 3000);
     } else {
-      api.fullScan();
+      setErrorInfo({
+        message: 'Impossible d’ajouter l’exception.',
+        technical: res?.error,
+      });
+    }
+  };
+
+  const handleRemoveExclusion = async (pathToRemove: string) => {
+    if (!api) return;
+    const res = await api.removeExclusion(pathToRemove);
+    if (res?.success) {
+      api.getExclusions().then((r: any) => setExclusions(r.paths || []));
+      setNotice('✅ Exception retirée de Windows Defender.');
+      setTimeout(() => setNotice(''), 3000);
+    } else {
+      setErrorInfo({
+        message: 'Impossible de retirer l’exception.',
+        technical: res?.error,
+      });
     }
   };
 
   const runRemediation = async () => {
     if (!api || !remediationScript) return;
     setRemediating(true);
-    await api.createRestorePoint('Avant remédiation IA');
-    const res = await api.runRemediation(remediationScript);
-    setRemediating(false);
-    setNotice(res.success ? '✅ Script exécuté avec succès.' : `❌ Erreur : ${res.error}`);
-    setTimeout(() => setNotice(''), 4000);
+    setErrorInfo(null);
+    try {
+      const res = await api.runRemediation(remediationScript);
+      if (res?.success) {
+        setNotice('✅ Remédiation appliquée avec succès.');
+        setRemediationScript('');
+        loadData();
+      } else {
+        setErrorInfo({
+          message: 'Erreur lors de l’application de la remédiation.',
+          technical: res?.error,
+        });
+      }
+    } finally {
+      setRemediating(false);
+      setTimeout(() => setNotice(''), 4000);
+    }
   };
 
-  const riskColor: Record<string, string> = {
-    faible: 'green', moyen: 'orange', élevé: 'red', critique: 'red',
-    low: 'green', medium: 'orange', high: 'red', critical: 'red',
+  const riskBadgeColor: Record<string, string> = {
+    sain: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
+    faible: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
+    moyen: 'bg-amber-500/20 text-amber-400 border-amber-500/40',
+    élevé: 'bg-red-500/20 text-red-400 border-red-500/40',
+    critique: 'bg-red-600/30 text-red-300 border-red-500/60',
   };
 
   return (
-    <div className="tab-scroll animate-in">
-      <div className="tab-header">
+    <div className="tab-scroll space-y-6 max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
         <div>
-          <h1 className="tab-title">Sécurité</h1>
-          <p className="tab-subtitle">Audit Windows Defender · Analyse IA · Remédiation</p>
+          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
+            <Shield className="w-6 h-6 text-purple-400" />
+            Sécurité & Bouclier Defender
+          </h1>
+          <p className="text-sm text-zinc-400 mt-1">
+            Supervision native Microsoft Defender · Heuristique autonome zéro-cloud · Gestion des exclusions
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+
+        <div className="flex items-center gap-3">
           <select
             value={scanType}
             onChange={(e) => setScanType(e.target.value as any)}
-            style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-md)',
-              color: 'var(--text-primary)',
-              padding: '6px 12px',
-              fontSize: 13,
-              cursor: 'pointer',
-            }}
+            disabled={scanState === 'scanning'}
+            className="bg-[#0f0f29] border border-purple-500/30 text-zinc-200 text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-purple-500"
           >
-            <option value="quick">Analyse rapide</option>
-            <option value="full">Analyse complète</option>
+            <option value="quick">Analyse Rapide (QuickScan)</option>
+            <option value="full">Analyse Complète (FullScan)</option>
           </select>
+
           <button
-            className={`btn ${scanState === 'scanning' ? 'btn-ghost' : 'btn-primary'}`}
             onClick={startScan}
             disabled={scanState === 'scanning'}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold shadow-lg transition-all ${
+              scanState === 'scanning'
+                ? 'bg-purple-950/60 text-purple-300 cursor-not-allowed border border-purple-500/30'
+                : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-purple-900/30'
+            }`}
           >
             {scanState === 'scanning' ? (
-              <><div className="spinner" /> Analyse en cours...</>
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin text-purple-400" />
+                <span>Analyse en cours...</span>
+              </>
             ) : (
               <>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                </svg>
-                Lancer l'analyse
+                <Zap className="w-4 h-4" />
+                <span>Lancer l'analyse</span>
               </>
             )}
           </button>
@@ -120,99 +231,118 @@ export default function SecurityTab() {
       </div>
 
       {notice && (
-        <div className={`notice ${notice.startsWith('✅') ? 'notice-success' : 'notice-danger'} animate-in`}
-             style={{ marginBottom: 16 }}>
+        <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs font-medium">
           {notice}
         </div>
       )}
 
-      {/* Scan Results */}
-      {scanState === 'done' && (
-        <div className="animate-in" style={{ marginBottom: 20 }}>
-          {threats.length === 0 ? (
-            <div className="notice notice-success">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-              </svg>
-              <span style={{ fontWeight: 600 }}>Aucune menace détectée · Votre système est propre.</span>
-            </div>
-          ) : (
-            <div className="notice notice-danger" style={{ marginBottom: 12 }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-              </svg>
-              <span style={{ fontWeight: 600 }}>{threats.length} menace(s) détectée(s)</span>
-            </div>
-          )}
-
-          {threats.map((t: any, i: number) => (
-            <div key={i} className="card" style={{ marginBottom: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: 600, fontSize: 14 }}>{t.ThreatName || t.Name || 'Menace inconnue'}</span>
-                <span className="badge badge-red">{t.ActionSuccess ? 'Traité' : 'Actif'}</span>
-              </div>
-              {t.InitialDetectionTime && (
-                <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
-                  Détecté le {new Date(t.InitialDetectionTime).toLocaleString('fr-FR')}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
+      {errorInfo && (
+        <CollapsibleError
+          message={errorInfo.message}
+          technicalError={errorInfo.technical}
+        />
       )}
 
-      {/* AI Analysis */}
-      {aiState !== 'idle' && (
-        <div className="card card-glow-violet animate-in" style={{ marginBottom: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(139,92,246,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-accent)' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="2">
-                <path d="M12 2a10 10 0 110 20A10 10 0 0112 2z" opacity="0.3"/>
-                <path d="M12 6v6l4 2"/>
-              </svg>
+      {/* Defender Status Banner */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="p-4 rounded-2xl bg-[#0c0c24]/90 border border-purple-500/20 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20">
+              <ShieldCheck className="w-5 h-5 text-purple-400" />
             </div>
             <div>
-              <p style={{ fontWeight: 700, fontSize: 14 }}>Analyse IA · Gemini Flash</p>
-              <p style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Diagnostic automatique de sécurité</p>
+              <p className="text-xs text-zinc-400">Protection Temps Réel</p>
+              <p className="text-sm font-semibold text-zinc-100">
+                {defenderStatus?.RealTimeProtectionEnabled ? 'Activée (OK)' : 'Non confirmée'}
+              </p>
             </div>
-            {aiState === 'loading' && <div className="spinner" style={{ marginLeft: 'auto' }} />}
+          </div>
+          <span className={`w-2.5 h-2.5 rounded-full ${defenderStatus?.RealTimeProtectionEnabled ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-amber-500'}`} />
+        </div>
+
+        <div className="p-4 rounded-2xl bg-[#0c0c24]/90 border border-purple-500/20 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
+              <Shield className="w-5 h-5 text-indigo-400" />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-400">Moteur Antivirus</p>
+              <p className="text-sm font-semibold text-zinc-100">
+                {defenderStatus?.AntivirusEnabled ? 'Microsoft Defender' : 'Désactivé / Inconnu'}
+              </p>
+            </div>
+          </div>
+          <span className={`w-2.5 h-2.5 rounded-full ${defenderStatus?.AntivirusEnabled ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-red-500'}`} />
+        </div>
+
+        <div className="p-4 rounded-2xl bg-[#0c0c24]/90 border border-purple-500/20 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-zinc-400">Signatures antivirales</p>
+            <p className="text-sm font-semibold text-zinc-100">
+              {defenderStatus?.AntivirusSignatureVersion || 'À jour'}
+            </p>
+          </div>
+          <button
+            onClick={handleUpdateSignatures}
+            disabled={updatingSignatures}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-zinc-200 transition-colors"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${updatingSignatures ? 'animate-spin text-purple-400' : ''}`} />
+            <span>{updatingSignatures ? 'Mise à jour...' : 'Actualiser'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Autonomous Heuristic AI Box */}
+      {aiState !== 'idle' && (
+        <div className="p-5 rounded-2xl bg-gradient-to-br from-[#120d2b] to-[#0c0c24] border border-purple-500/30 shadow-xl space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-purple-500/20 border border-purple-500/40">
+                <Zap className="w-5 h-5 text-purple-300" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white tracking-wide">
+                  Bouclier IA Heuristique Autonome
+                </h3>
+                <p className="text-xs text-zinc-400">
+                  Détection locale sans cloud · Analyse des faux-positifs gaming & cracks
+                </p>
+              </div>
+            </div>
+
+            {aiAnalysis && (
+              <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${riskBadgeColor[aiAnalysis.riskLevel?.toLowerCase()] || 'bg-zinc-800 text-zinc-300'}`}>
+                Risque : {aiAnalysis.riskLevel}
+              </span>
+            )}
           </div>
 
-          {aiState === 'done' && aiAnalysis && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                <span className="section-label">Niveau de risque</span>
-                <span className={`badge badge-${riskColor[aiAnalysis.riskLevel?.toLowerCase()] || 'orange'}`}>
-                  {aiAnalysis.riskLevel?.toUpperCase() || 'INCONNU'}
-                </span>
-              </div>
-
+          {aiAnalysis && (
+            <div className="space-y-3 pt-2 border-t border-purple-500/10">
+              <p className="text-xs text-zinc-300 leading-relaxed">
+                {aiAnalysis.summary}
+              </p>
               {aiAnalysis.explanation && (
-                <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                <div className="p-3 rounded-xl bg-black/40 border border-white/5 text-xs text-zinc-400 whitespace-pre-line leading-relaxed">
                   {aiAnalysis.explanation}
-                </p>
+                </div>
               )}
 
               {remediationScript && (
-                <div>
-                  <p className="section-label" style={{ marginBottom: 8 }}>Script de remédiation généré</p>
-                  <div className="code-block">{remediationScript}</div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                    <button
-                      className="btn btn-primary btn-sm"
-                      onClick={runRemediation}
-                      disabled={remediating}
-                    >
-                      {remediating ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Exécution...</> : '⚡ Exécuter le script'}
-                    </button>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => api?.createRestorePoint('Avant remédiation manuelle')}
-                    >
-                      🔄 Créer un point de restauration
-                    </button>
-                  </div>
+                <div className="space-y-2 pt-2">
+                  <p className="text-xs font-semibold text-purple-300">Script de remédiation sécurisé :</p>
+                  <pre className="p-3 rounded-xl bg-black/60 border border-purple-500/20 text-xs font-mono text-zinc-300 overflow-x-auto">
+                    {remediationScript}
+                  </pre>
+                  <button
+                    onClick={runRemediation}
+                    disabled={remediating}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition-colors"
+                  >
+                    {remediating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                    <span>Appliquer la remédiation sécurisée</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -220,46 +350,98 @@ export default function SecurityTab() {
         </div>
       )}
 
-      {/* Two columns: exclusions + rollback */}
-      <div className="grid-2">
-        {/* Exclusions */}
-        <div className="card">
-          <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Exceptions Defender</p>
-          {exclusions.length === 0 ? (
-            <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Aucune exception configurée</p>
-          ) : (
-            exclusions.map((p, i) => (
-              <div key={i} style={{ fontSize: 12, color: 'var(--text-secondary)', padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
-                📁 {p}
-              </div>
-            ))
-          )}
+      {/* Exclusions & Restore Points Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Defender Exclusions */}
+        <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-white/5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+              <FolderPlus className="w-4 h-4 text-purple-400" />
+              Exceptions Windows Defender
+            </h3>
+            <span className="text-xs text-zinc-500">{exclusions.length} active(s)</span>
+          </div>
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newExclusionPath}
+              onChange={(e) => setNewExclusionPath(e.target.value)}
+              placeholder="Ex: C:\Games\MonJeu"
+              className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-purple-500"
+            />
+            <button
+              onClick={handleAddExclusion}
+              disabled={!newExclusionPath.trim()}
+              className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white text-xs font-semibold transition-colors shrink-0"
+            >
+              Ajouter
+            </button>
+          </div>
+
+          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+            {exclusions.length === 0 ? (
+              <p className="text-xs text-zinc-500 py-3">Aucune exception configurée dans Defender.</p>
+            ) : (
+              exclusions.map((path, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/5 text-xs text-zinc-300"
+                >
+                  <span className="truncate font-mono text-[11px]">{path}</span>
+                  <button
+                    onClick={() => handleRemoveExclusion(path)}
+                    title="Supprimer cette exclusion"
+                    className="p-1 rounded-md text-zinc-500 hover:text-red-400 transition-colors shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
-        {/* Rollback Log */}
-        <div className="card">
-          <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Journal de restauration</p>
-          {rollbackLog.length === 0 ? (
-            <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Aucun point de restauration créé</p>
-          ) : (
-            rollbackLog.slice(0, 5).map((e: any) => (
-              <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-                <div>
-                  <p style={{ fontSize: 12, fontWeight: 500 }}>{e.description}</p>
-                  <p style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                    {new Date(e.timestamp).toLocaleString('fr-FR')}
-                  </p>
-                </div>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => api?.restoreEntry(e.id)}
-                  style={{ fontSize: 10 }}
+        {/* Windows Restore Points */}
+        <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-white/5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+              <RotateCcw className="w-4 h-4 text-purple-400" />
+              Points de Restauration Système
+            </h3>
+            <button
+              onClick={() => api?.openSystemRestore?.()}
+              className="text-xs text-purple-400 hover:text-purple-300 transition-colors font-medium"
+            >
+              Ouvrir rstrui.exe
+            </button>
+          </div>
+
+          <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+            {rollbackLog.length === 0 ? (
+              <p className="text-xs text-zinc-500 py-3">Aucun point de restauration enregistré par Vanguard.</p>
+            ) : (
+              rollbackLog.slice(0, 6).map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.03] border border-white/5 text-xs"
                 >
-                  Restaurer
-                </button>
-              </div>
-            ))
-          )}
+                  <div className="min-w-0 pr-2">
+                    <p className="font-medium text-zinc-200 truncate">{item.description}</p>
+                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                      {new Date(item.timestamp).toLocaleString('fr-FR')}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => api?.openSystemRestore?.()}
+                    className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-300 text-xs transition-colors shrink-0"
+                  >
+                    Restaurer
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
     </div>

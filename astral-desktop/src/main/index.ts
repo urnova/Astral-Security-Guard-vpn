@@ -1,5 +1,7 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut } from 'electron';
 import path from 'path';
+import { logger } from './logger';
+import { isAdmin, getWindowsBuildInfo, relaunchElevated } from './adminHelper';
 import { setupAutoUpdater } from './updater';
 import { setupSecurityIPC } from './security';
 import { setupVpnIPC } from './vpn';
@@ -7,11 +9,7 @@ import { setupPerformanceIPC } from './performance';
 import { setupNetworkIPC } from './network';
 import { setupGamingIPC, startGameDetection } from './gaming';
 import { setupRollbackIPC } from './rollback';
-import { setupDoctorIPC } from './doctor';
-import { exec } from 'child_process';
-import util from 'util';
-
-const execPromise = util.promisify(exec);
+import { setupDoctorIPC, executeSosPing } from './doctor';
 
 process.env.DIST = path.join(__dirname, '../..');
 process.env.PUBLIC = app.isPackaged
@@ -28,6 +26,7 @@ const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 
 // ── Splash Window ────────────────────────────────────────────────────────────
 function createSplash() {
+  logger.info('[App] Creating Splash window...');
   splashWin = new BrowserWindow({
     width: 480,
     height: 300,
@@ -53,6 +52,7 @@ function createSplash() {
 
 // ── Main Window ──────────────────────────────────────────────────────────────
 function createMainWindow() {
+  logger.info('[App] Creating Main window...');
   mainWin = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -91,15 +91,22 @@ function createMainWindow() {
     mainWin.loadFile(path.join(__dirname, '../../dist/index.html'));
   }
 
-  // Show main window after splash
+  // Show main window after splash transition
   mainWin.once('ready-to-show', () => {
+    logger.info('[App] Main window ready-to-show. Transitioning from splash...');
     setTimeout(() => {
       splashWin?.close();
       splashWin = null;
       mainWin?.show();
       setupAutoUpdater(mainWin!);
       startGameDetection(mainWin!, () => overlayWin, setOverlayWin);
-    }, 2800);
+
+      // Check elevation and broadcast status
+      const admin = isAdmin();
+      const osInfo = getWindowsBuildInfo();
+      logger.info(`[App] Running with admin rights: ${admin}, OS: ${osInfo.edition} (${osInfo.buildNumber})`);
+      mainWin?.webContents.send('admin:status', { isAdmin: admin, osInfo });
+    }, 2500);
   });
 
   mainWin.on('close', (e) => {
@@ -117,9 +124,10 @@ function setOverlayWin(w: BrowserWindow | null) {
 
 export function createOverlay() {
   if (overlayWin) return;
+  logger.info('[App] Creating gaming HUD overlay window...');
   overlayWin = new BrowserWindow({
-    width: 240,
-    height: 150,
+    width: 260,
+    height: 160,
     x: 24,
     y: 24,
     frame: false,
@@ -160,104 +168,101 @@ export function toggleOverlay() {
   }
 }
 
-// ── System Tray (Windows Hidden Icons Area) ──────────────────────────────────
+// ── System Tray ─────────────────────────────────────────────────────────────
 function createTray() {
-  const icon = nativeImage.createFromPath(path.join(process.env.PUBLIC!, 'icon.ico'));
-  tray = new Tray(icon.resize({ width: 16, height: 16 }));
+  try {
+    const iconPath = path.join(process.env.PUBLIC!, 'icon.ico');
+    const icon = nativeImage.createFromPath(iconPath);
+    tray = new Tray(icon.resize({ width: 16, height: 16 }));
 
-  const updateMenu = (activeMode = 'gaming') => {
-    const menu = Menu.buildFromTemplate([
-      {
-        label: 'Ouvrir Astral Vanguard',
-        click: () => {
-          mainWin?.show();
-          mainWin?.focus();
-        },
-      },
-      { type: 'separator' },
-      {
-        label: 'Mode Actif',
-        submenu: [
-          {
-            label: 'Mode Gaming (Faible Latence)',
-            type: 'radio',
-            checked: activeMode === 'gaming',
-            click: () => {
-              mainWin?.webContents.send('doctor:set-mode', 'gaming');
-              updateMenu('gaming');
-            },
+    const updateMenu = (activeMode = 'gaming') => {
+      const menu = Menu.buildFromTemplate([
+        {
+          label: 'Ouvrir Astral Vanguard',
+          click: () => {
+            mainWin?.show();
+            mainWin?.focus();
           },
-          {
-            label: 'Mode Bureau / Pro',
-            type: 'radio',
-            checked: activeMode === 'office',
-            click: () => {
-              mainWin?.webContents.send('doctor:set-mode', 'office');
-              updateMenu('office');
-            },
-          },
-          {
-            label: 'Mode Cyber-Shield (Sécurité Max)',
-            type: 'radio',
-            checked: activeMode === 'shield',
-            click: () => {
-              mainWin?.webContents.send('doctor:set-mode', 'shield');
-              updateMenu('shield');
-            },
-          },
-          {
-            label: 'Mode Éco / Silencieux',
-            type: 'radio',
-            checked: activeMode === 'eco',
-            click: () => {
-              mainWin?.webContents.send('doctor:set-mode', 'eco');
-              updateMenu('eco');
-            },
-          },
-        ],
-      },
-      { type: 'separator' },
-      {
-        label: '⚡ SOS Déblocage Ping (1002ms)',
-        click: async () => {
-          await execPromise(`powershell -Command "Clear-DnsClientCache; ipconfig /flushdns; arp -d * 2>$null"`).catch(() => {});
-          mainWin?.webContents.send('doctor:lag-alert', {
-            message: 'SOS Réseau exécuté : Cache DNS et sockets purgés avec succès !',
-          });
         },
-      },
-      {
-        label: '🚀 Vider la RAM (Boost)',
-        click: async () => {
-          await execPromise(
-            `powershell -Command "[System.GC]::Collect(); [System.GC]::WaitForPendingFinalizers()"`
-          ).catch(() => {});
-          mainWin?.webContents.send('perf:boost-done', { message: 'Mémoire RAM purgée !' });
+        { type: 'separator' },
+        {
+          label: 'Mode Système',
+          submenu: [
+            {
+              label: 'Mode Gaming (Faible Latence)',
+              type: 'radio',
+              checked: activeMode === 'gaming',
+              click: () => {
+                mainWin?.webContents.send('doctor:set-mode', 'gaming');
+                updateMenu('gaming');
+              },
+            },
+            {
+              label: 'Mode Bureau / Standard',
+              type: 'radio',
+              checked: activeMode === 'office',
+              click: () => {
+                mainWin?.webContents.send('doctor:set-mode', 'office');
+                updateMenu('office');
+              },
+            },
+            {
+              label: 'Mode Cyber-Shield (Sécurité Max)',
+              type: 'radio',
+              checked: activeMode === 'shield',
+              click: () => {
+                mainWin?.webContents.send('doctor:set-mode', 'shield');
+                updateMenu('shield');
+              },
+            },
+            {
+              label: 'Mode Éco / Silencieux',
+              type: 'radio',
+              checked: activeMode === 'eco',
+              click: () => {
+                mainWin?.webContents.send('doctor:set-mode', 'eco');
+                updateMenu('eco');
+              },
+            },
+          ],
         },
-      },
-      {
-        label: 'Afficher / Masquer l\'Overlay HUD',
-        click: () => toggleOverlay(),
-      },
-      { type: 'separator' },
-      {
-        label: 'Quitter Définitivement',
-        click: () => {
-          minimizeToTray = false;
-          app.exit(0);
+        { type: 'separator' },
+        {
+          label: '⚡ SOS Déblocage Ping (1002ms)',
+          click: async () => {
+            logger.info('[Tray] User triggered SOS Déblocage Ping from tray');
+            const res = await executeSosPing();
+            mainWin?.webContents.send('doctor:lag-alert', {
+              message: res.success ? res.message : `Erreur SOS: ${res.error}`,
+            });
+          },
         },
-      },
-    ]);
+        {
+          label: 'Afficher / Masquer l\'Overlay HUD (Ctrl+Shift+O)',
+          click: () => toggleOverlay(),
+        },
+        { type: 'separator' },
+        {
+          label: 'Quitter Définitivement',
+          click: () => {
+            minimizeToTray = false;
+            app.exit(0);
+          },
+        },
+      ]);
 
-    tray?.setContextMenu(menu);
-  };
+      tray?.setContextMenu(menu);
+    };
 
-  updateMenu('gaming');
-  tray.setToolTip('Astral Vanguard - Protection & Optimisation active');
-  tray.on('double-click', () => {
-    mainWin?.show();
-    mainWin?.focus();
-  });
+    updateMenu('gaming');
+    tray.setToolTip('Astral Vanguard - Protection & Optimisation active');
+    tray.on('double-click', () => {
+      mainWin?.show();
+      mainWin?.focus();
+    });
+  } catch (err: any) {
+    logger.warn('[Tray] Could not initialize system tray:', err.message);
+  }
 }
 
 // ── Boot Sequence ─────────────────────────────────────────────────────────────
@@ -269,7 +274,7 @@ app.whenReady().then(() => {
     createTray();
   }, 400);
 
-  // Default auto-start with Windows
+  // Auto-start with Windows
   app.setLoginItemSettings({ openAtLogin: true, path: app.getPath('exe') });
 
   // Register Global Shortcut for HUD toggle (Ctrl+Shift+O)
@@ -277,7 +282,9 @@ app.whenReady().then(() => {
     globalShortcut.register('CommandOrControl+Shift+O', () => {
       toggleOverlay();
     });
-  } catch {}
+  } catch (err: any) {
+    logger.warn('[App] Could not register global shortcut:', err.message);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
@@ -290,8 +297,22 @@ app.on('will-quit', () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    // Keep running in system tray
+    // Keep running in system tray on Windows
   }
+});
+
+// Admin Elevation IPC
+ipcMain.handle('admin:get-status', () => {
+  return {
+    isAdmin: isAdmin(),
+    osInfo: getWindowsBuildInfo(),
+  };
+});
+
+ipcMain.handle('admin:relaunch-elevated', () => {
+  logger.info('[App] User requested elevated relaunch');
+  relaunchElevated();
+  return { success: true };
 });
 
 // IPC: overlay & window control
