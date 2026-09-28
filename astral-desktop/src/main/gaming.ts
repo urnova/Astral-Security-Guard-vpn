@@ -1,8 +1,6 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import { runPowerShell } from './psHelper';
 import { logger } from './logger';
-import fs from 'fs';
-import path from 'path';
 
 let gameDetectionInterval: NodeJS.Timeout | null = null;
 let currentGameName: string | null = null;
@@ -11,10 +9,27 @@ let gamingModeActive = false;
 let sessionStartTime = 0;
 let sessionPings: number[] = [];
 
-// Exclusions to avoid falsely triggering on browsers or IDEs
+// AUTO-DETECTION IS DISABLED BY DEFAULT for safety.
+// The detection algorithm had critical false positives (e.g. Perplexity, Edge in fullscreen).
+// It requires a proper 2-level library-based redesign before being re-enabled.
+// Users can still toggle gaming mode MANUALLY at any time.
+let autoDetectEnabled = false;
+
+// Exclusions: browsers, IDEs, system tools, launchers, and the app itself
 const EXCLUDED_PROCESSES = new Set([
-  'explorer', 'chrome', 'msedge', 'firefox', 'brave', 'code', 'devenv',
-  'electron', 'Astral Vanguard', 'powershell', 'cmd', 'taskmgr', 'discord', 'spotify'
+  // Browsers
+  'chrome', 'msedge', 'firefox', 'brave', 'opera', 'vivaldi',
+  // System / OS
+  'explorer', 'powershell', 'cmd', 'taskmgr', 'mmc', 'regedit', 'svchost',
+  // Dev tools
+  'code', 'devenv', 'rider', 'idea64', 'clion64', 'webstorm64', 'pycharm64',
+  // Game launchers (NOT games themselves)
+  'steam', 'epicgameslauncher', 'gog galaxy', 'riotclientservices', 'leagueoflegends',
+  'battlenet', 'origin', 'eadesktop', 'ubisoft connect', 'xboxapp', 'gamebarftserver',
+  // Communication
+  'discord', 'slack', 'teams', 'zoom', 'spotify',
+  // This app
+  'electron', 'astral vanguard',
 ]);
 
 // Saved per-game profiles
@@ -72,6 +87,15 @@ export function setupGamingIPC(
     logger.info(`Profil de jeu sauvegardé pour [${gameName}]`, settings);
     return { success: true };
   });
+
+  // ── Enable/Disable Auto-Detection ─────────────────────────────────────────
+  ipcMain.handle('gaming:set-auto-detect', (_, enabled: boolean) => {
+    autoDetectEnabled = enabled;
+    logger.info(`Détection automatique de jeux : ${enabled ? 'ACTIVÉE' : 'DÉSACTIVÉE'}`);
+    return { success: true, autoDetectEnabled };
+  });
+
+  ipcMain.handle('gaming:get-auto-detect', () => ({ autoDetectEnabled }));
 
   // ── Scan Installed Game Libraries (Steam, Epic, Xbox, GOG, Riot) ─────────
   ipcMain.handle('gaming:scan-libraries', async () => {
@@ -137,6 +161,9 @@ export function startGameDetection(
 
   gameDetectionInterval = setInterval(async () => {
     try {
+      // AUTO-DETECT GUARD: loop runs but does nothing if autoDetect is disabled
+      if (!autoDetectEnabled) return;
+
       const script = `
         Add-Type @"
           using System;
