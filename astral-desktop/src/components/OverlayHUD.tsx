@@ -3,12 +3,26 @@ import { useState, useEffect } from 'react';
 const api = (window as any).vanguard;
 
 export default function OverlayHUD() {
-  const [metrics, setMetrics] = useState({ cpu: 24, ramPercent: 48 });
-  const [ping, setPing] = useState<number>(22);
-  const [mode, setMode] = useState('GAMING');
+  const [metrics, setMetrics] = useState({ cpu: 0, ramPercent: 0 });
+  const [ping, setPing] = useState<number>(0);
+  const [mode, setMode] = useState('STANDARD');
 
   useEffect(() => {
     if (!api) return;
+
+    // Load initial real metrics
+    api.getMetrics?.().then((res: any) => {
+      if (res?.data) {
+        setMetrics({
+          cpu: Math.round(res.data.cpuPercent || 0),
+          ramPercent: Math.round((res.data.ramUsed / (res.data.ramTotal || 1)) * 100),
+        });
+      }
+    });
+
+    api.getSystemMode?.().then((m: string) => {
+      if (m) setMode(m.toUpperCase());
+    });
 
     const cleanupMetrics = api.on('overlay-metrics', (data: any) => {
       if (data) setMetrics(data);

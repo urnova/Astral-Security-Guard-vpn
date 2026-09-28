@@ -239,7 +239,7 @@ export default function DownloadScanModal() {
             <div className="flex items-center gap-1.5">
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${badgeBg}`}>
                 {currentScan.status === 'scanning' && 'Analyse en cours...'}
-                {currentScan.status === 'safe' && 'Fichier sain'}
+                {currentScan.status === 'safe' && 'Aucune menace détectée (Defender)'}
                 {currentScan.status === 'suspect' && 'Fichier suspect'}
                 {currentScan.status === 'threat' && 'Menace détectée !'}
               </span>

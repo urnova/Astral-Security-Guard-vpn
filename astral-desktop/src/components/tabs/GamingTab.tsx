@@ -145,7 +145,7 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
               <p className="text-xs text-zinc-400 mt-0.5">
                 {gamingActive
                   ? 'Plan d’alimentation haute performance, processus d’arrière-plan bridés et QoS paquets active.'
-                  : 'S’active automatiquement dès qu’un jeu plein écran est détecté au premier plan.'}
+                  : 'Activation manuelle en un clic. Détection auto désactivée par défaut pour éviter tout faux positif.'}
               </p>
             </div>
           </div>

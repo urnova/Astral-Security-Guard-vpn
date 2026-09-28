@@ -103,6 +103,11 @@ const api = {
   getProfile: () => ipcRenderer.invoke('profile:get'),
   saveUserProfile: (profile: { firstName: string; lastName: string }) => ipcRenderer.invoke('profile:save', profile),
 
+  // Notifications
+  testNotification: (title?: string, body?: string) => ipcRenderer.invoke('notification:test', { title, body }),
+  sendNotification: (options: { title: string; body: string; critical?: boolean }) => ipcRenderer.invoke('notification:send', options),
+
+
   // Event listeners
   on: (channel: string, fn: (...args: any[]) => void) => {
     const sub = (_: any, ...args: any[]) => fn(...args);

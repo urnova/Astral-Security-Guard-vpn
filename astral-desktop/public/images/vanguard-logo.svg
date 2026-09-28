@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="vg-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.8"/>
+    </linearGradient>
+    <linearGradient id="vg-border" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="50%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#c084fc"/>
+    </linearGradient>
+    <linearGradient id="vg-v-left" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+    <linearGradient id="vg-v-right" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <filter id="vg-neon" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Outer Ambient Glow -->
+  <polygon points="256,32 448,96 432,336 256,480 80,336 64,96" fill="url(#vg-glow)" opacity="0.3" filter="url(#vg-neon)" />
+
+  <!-- Shield Body -->
+  <polygon points="256,32 448,96 432,336 256,480 80,336 64,96" fill="#0b0f19" stroke="url(#vg-border)" stroke-width="8" stroke-linejoin="round" />
+
+  <!-- Inner Cyber Bevel -->
+  <polygon points="256,68 416,122 402,320 256,444 110,320 96,122" fill="none" stroke="#06b6d4" stroke-width="2.5" stroke-opacity="0.6" stroke-linejoin="round" />
+
+  <!-- Vanguard 'V' Wing Left -->
+  <polygon points="150,160 205,160 256,320 256,395" fill="url(#vg-v-left)" />
+
+  <!-- Vanguard 'V' Wing Right -->
+  <polygon points="362,160 307,160 256,320 256,395" fill="url(#vg-v-right)" />
+
+  <!-- Vanguard Razor Core Blade -->
+  <polygon points="256,130 290,200 256,260 222,200" fill="#ffffff" filter="url(#vg-neon)" />
+  <circle cx="256" cy="200" r="4" fill="#00f0ff" />
+</svg>

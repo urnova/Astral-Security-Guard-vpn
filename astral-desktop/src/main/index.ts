@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut } from 'electron';
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut, Notification } from 'electron';
 import path from 'path';
 import { logger } from './logger';
 import { isAdmin, getWindowsBuildInfo, relaunchElevated } from './adminHelper';
@@ -19,36 +19,42 @@ process.env.PUBLIC = app.isPackaged
   : path.join(process.env.DIST, '../public');
 
 let mainWin: BrowserWindow | null = null;
-let splashWin: BrowserWindow | null = null;
 let overlayWin: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let minimizeToTray = true;
 
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 
-// ── Splash Window ────────────────────────────────────────────────────────────
-function createSplash() {
-  logger.info('[App] Creating Splash window...');
-  splashWin = new BrowserWindow({
-    width: 480,
-    height: 300,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    resizable: false,
-    center: true,
-    skipTaskbar: true,
-    webPreferences: {
-      preload: path.join(__dirname, '../preload/index.js'),
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-  });
+// ── Native Windows Notification Dispatcher ────────────────────────────────────
+export function notifyUser(title: string, body: string, isCritical = false) {
+  if (mainWin && !mainWin.isDestroyed()) {
+    mainWin.webContents.send('notification:trigger', {
+      type: isCritical ? 'threat' : 'info',
+      title,
+      message: body,
+      critical: isCritical,
+    });
+  }
 
-  if (VITE_DEV_SERVER_URL) {
-    splashWin.loadURL(`${VITE_DEV_SERVER_URL}#/splash`);
-  } else {
-    splashWin.loadFile(path.join(__dirname, '../../dist/index.html'), { hash: '/splash' });
+  // Windows native notification when main window is hidden or minimized
+  if (Notification.isSupported() && (!mainWin || !mainWin.isVisible() || mainWin.isMinimized())) {
+    try {
+      const n = new Notification({
+        title,
+        body,
+        icon: path.join(process.env.PUBLIC!, 'icon.ico'),
+      });
+      n.on('click', () => {
+        if (mainWin) {
+          if (mainWin.isMinimized()) mainWin.restore();
+          mainWin.show();
+          mainWin.focus();
+        }
+      });
+      n.show();
+    } catch (err: any) {
+      logger.warn('[Notification] Failed to show native notification:', err.message);
+    }
   }
 }
 
@@ -95,22 +101,18 @@ function createMainWindow() {
     mainWin.loadFile(path.join(__dirname, '../../dist/index.html'));
   }
 
-  // Show main window after splash transition
+  // Show main window directly without separate popup window or artificial delay
   mainWin.once('ready-to-show', () => {
-    logger.info('[App] Main window ready-to-show. Transitioning from splash...');
-    setTimeout(() => {
-      splashWin?.close();
-      splashWin = null;
-      mainWin?.show();
-      setupAutoUpdater(mainWin!);
-      startGameDetection(mainWin!, () => overlayWin, setOverlayWin);
+    logger.info('[App] Main window ready-to-show. Revealing main window...');
+    mainWin?.show();
+    setupAutoUpdater(mainWin!);
+    startGameDetection(mainWin!, () => overlayWin, setOverlayWin);
 
-      // Check elevation and broadcast status
-      const admin = isAdmin();
-      const osInfo = getWindowsBuildInfo();
-      logger.info(`[App] Running with admin rights: ${admin}, OS: ${osInfo.edition} (${osInfo.buildNumber})`);
-      mainWin?.webContents.send('admin:status', { isAdmin: admin, osInfo });
-    }, 2500);
+    // Check elevation and broadcast status
+    const admin = isAdmin();
+    const osInfo = getWindowsBuildInfo();
+    logger.info(`[App] Running with admin rights: ${admin}, OS: ${osInfo.edition} (${osInfo.buildNumber})`);
+    mainWin?.webContents.send('admin:status', { isAdmin: admin, osInfo });
   });
 
   mainWin.on('close', (e) => {
@@ -271,12 +273,8 @@ function createTray() {
 
 // ── Boot Sequence ─────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
-  createSplash();
-
-  setTimeout(() => {
-    createMainWindow();
-    createTray();
-  }, 400);
+  createMainWindow();
+  createTray();
 
   // Auto-start with Windows
   app.setLoginItemSettings({ openAtLogin: true, path: app.getPath('exe') });
@@ -349,3 +347,15 @@ ipcMain.handle('settings:set-minimize-tray', (_, enabled: boolean) => {
   minimizeToTray = enabled;
   return { success: true, minimizeToTray };
 });
+
+// Native Notification IPC
+ipcMain.handle('notification:test', (_, { title, body }: { title: string; body: string }) => {
+  notifyUser(title || 'Vanguard Protection', body || 'Test de notification native Windows réussi.');
+  return { success: true };
+});
+
+ipcMain.handle('notification:send', (_, { title, body, critical }: { title: string; body: string; critical?: boolean }) => {
+  notifyUser(title, body, Boolean(critical));
+  return { success: true };
+});
+

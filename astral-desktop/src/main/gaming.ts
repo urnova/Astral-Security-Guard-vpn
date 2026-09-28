@@ -15,14 +15,14 @@ let sessionPings: number[] = [];
 // Users can still toggle gaming mode MANUALLY at any time.
 let autoDetectEnabled = false;
 
-// Exclusions: browsers, IDEs, system tools, launchers, and the app itself
+// Exclusions: browsers, IDEs, system tools, launchers, productivity tools, and the app itself
 const EXCLUDED_PROCESSES = new Set([
-  // Browsers
-  'chrome', 'msedge', 'firefox', 'brave', 'opera', 'vivaldi',
+  // Browsers & Web tools
+  'chrome', 'msedge', 'edge', 'firefox', 'brave', 'opera', 'vivaldi', 'perplexity', 'perplexity-app', 'chatgpt',
   // System / OS
   'explorer', 'powershell', 'cmd', 'taskmgr', 'mmc', 'regedit', 'svchost',
-  // Dev tools
-  'code', 'devenv', 'rider', 'idea64', 'clion64', 'webstorm64', 'pycharm64',
+  // Dev tools & Productivity
+  'code', 'devenv', 'rider', 'idea64', 'clion64', 'webstorm64', 'pycharm64', 'notion', 'obsidian',
   // Game launchers (NOT games themselves)
   'steam', 'epicgameslauncher', 'gog galaxy', 'riotclientservices', 'leagueoflegends',
   'battlenet', 'origin', 'eadesktop', 'ubisoft connect', 'xboxapp', 'gamebarftserver',
