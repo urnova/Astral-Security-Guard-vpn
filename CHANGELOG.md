@@ -90,3 +90,11 @@ Ce journal consigne de manière chronologique et détaillée toutes les modifica
 - [x] Auto-updater résilient : transmission des droits admin au child process pour mise à jour silencieuse sans popup UAC grâce à `requestedExecutionLevel: requireAdministrator` et `allowElevation: true` dans la configuration NSIS.
 - [x] Auto-updater syntaxe vérifiée : utilisation de la syntaxe positionnelle `quitAndInstall(true, true)` correspondant à `electron-builder v24.9.1` et `electron-updater v6.1.7` définis dans `package.json`, avec wrapper défensif prenant en charge la syntaxe déstructurée v27+ (`quitAndInstall({ isSilent: true, isForceRunAfter: true })`) en cas de montée de version.
 - [x] Suppression des faux tokens Authorization de release pour téléchargement direct sans blocage 401 sur le dépôt public GitHub `urnova/Astral-Security-Guard-vpn`.
+
+### Section 17. Moteur de Rollback en Deux Niveaux (Two-Tier Rollback Engine)
+- [x] **Niveau 1 (Granulaire & Illimité - Source de Vérité)** : Sauvegarde locale automatique et instantanée avant toute modification (registre, fichiers, scripts) stockée sous `%APPDATA%/AstralVanguard/rollback/<timestamp>/`.
+- [x] **Export Registre `.reg` conforme** : Export ultra-rapide via `reg.exe` avec injection obligatoire du BOM UTF-16LE (`\ufeff`) pour compatibilité native parfaite avec l'import Windows sans erreur d'en-tête de registre.
+- [x] **Restauration 1-clic** : Le bouton "Restaurer" par entrée dans le Journal de Restauration s'appuie directement sur le Niveau 1 local (réinjection `.reg` et copie des fichiers originaux).
+- [x] **Niveau 2 (Filet de Sécurité Système)** : Déclenchement de `Checkpoint-Computer` avec ajustement de `SystemRestorePointCreationFrequency = 0`. Détection précise du quota Windows de 24h (`frequency_limited`) pour éviter les échecs silencieux et garantir la traçabilité.
+- [x] **Badges UI Explicites dans le Journal** : Chaque entrée affiche précisément son statut : `💾 Sauvegarde locale (Registre/Fichiers)` et `🛡️ Point Système Windows (OK #seq)` ou `⚠️ Quota Windows 24h (Restauration locale garantie)`.
+- [x] **Validation automatisée multi-actions même jour** : Suite de tests `scripts/test-same-day-rollback.ts` validée avec succès (Action 1 et Action 2 consécutives le même jour créent et restaurent leurs instantanés sans blocage).

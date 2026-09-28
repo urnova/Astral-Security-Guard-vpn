@@ -173,6 +173,26 @@ export default function SecurityTab() {
     }
   };
 
+  const handleRestoreEntry = async (item: any) => {
+    if (!api) return;
+    setErrorInfo(null);
+    try {
+      const res = await api.restoreEntry(item.id);
+      if (res?.success) {
+        setNotice(`✅ ${res.message || 'Restauration effectuée avec succès.'}`);
+        loadData();
+      } else {
+        setErrorInfo({
+          message: 'Impossible de restaurer ce point de sauvegarde.',
+          technical: res?.error,
+        });
+      }
+    } catch (err: any) {
+      setErrorInfo({ message: 'Erreur lors de la restauration', technical: err.message });
+    }
+    setTimeout(() => setNotice(''), 4000);
+  };
+
   const riskBadgeColor: Record<string, string> = {
     sain: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
     faible: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
@@ -402,42 +422,95 @@ export default function SecurityTab() {
           </div>
         </div>
 
-        {/* Windows Restore Points */}
+        {/* Two-Tier Rollback & Windows Restore Points */}
         <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-white/5 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-              <RotateCcw className="w-4 h-4 text-purple-400" />
-              Points de Restauration Système
-            </h3>
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-purple-400" />
+                Journal de Restauration & Sauvegardes
+              </h3>
+              <p className="text-[11px] text-zinc-500 mt-0.5">
+                Double protection : sauvegarde locale immédiate (.reg/fichiers) + point Windows
+              </p>
+            </div>
             <button
               onClick={() => api?.openSystemRestore?.()}
-              className="text-xs text-purple-400 hover:text-purple-300 transition-colors font-medium"
+              className="text-xs text-purple-400 hover:text-purple-300 transition-colors font-medium shrink-0"
+              title="Ouvrir l'assistant natif Windows de restauration système"
             >
               Ouvrir rstrui.exe
             </button>
           </div>
 
-          <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+          <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
             {rollbackLog.length === 0 ? (
-              <p className="text-xs text-zinc-500 py-3">Aucun point de restauration enregistré par Vanguard.</p>
+              <p className="text-xs text-zinc-500 py-3">Aucune sauvegarde locale enregistrée.</p>
             ) : (
-              rollbackLog.slice(0, 6).map((item) => (
+              rollbackLog.slice(0, 10).map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.03] border border-white/5 text-xs"
+                  className="p-3 rounded-xl bg-white/[0.02] border border-white/5 hover:border-purple-500/20 text-xs transition-colors space-y-2"
                 >
-                  <div className="min-w-0 pr-2">
-                    <p className="font-medium text-zinc-200 truncate">{item.description}</p>
-                    <p className="text-[11px] text-zinc-500 mt-0.5">
-                      {new Date(item.timestamp).toLocaleString('fr-FR')}
-                    </p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-zinc-200 truncate">{item.description}</p>
+                      <p className="text-[10px] text-zinc-500 mt-0.5 font-mono">
+                        {new Date(item.timestamp).toLocaleString('fr-FR')}
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => handleRestoreEntry(item)}
+                      className="px-3 py-1.5 rounded-lg bg-purple-600/80 hover:bg-purple-600 text-white text-xs font-semibold transition-colors shrink-0 shadow-sm"
+                    >
+                      Restaurer
+                    </button>
                   </div>
-                  <button
-                    onClick={() => api?.openSystemRestore?.()}
-                    className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-300 text-xs transition-colors shrink-0"
-                  >
-                    Restaurer
-                  </button>
+
+                  {/* Two-Tier Protection Badges */}
+                  <div className="flex items-center gap-2 flex-wrap pt-1.5 border-t border-white/5 text-[10px]">
+                    {/* Tier 1: Local Backup Badge */}
+                    {item.hasRegistryBackup && item.hasFileBackup ? (
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-medium">
+                        💾 Sauvegarde locale (Registre + Fichiers)
+                      </span>
+                    ) : item.hasRegistryBackup ? (
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-medium">
+                        💾 Sauvegarde Registre (.reg exporté)
+                      </span>
+                    ) : item.hasFileBackup ? (
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-medium">
+                        💾 Sauvegarde Fichiers
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-medium">
+                        💾 Sauvegarde locale active
+                      </span>
+                    )}
+
+                    {/* Tier 2: Windows System Restore Badge */}
+                    {item.hasSystemRestorePoint ? (
+                      <span className="px-2 py-0.5 rounded-md bg-purple-500/10 border border-purple-500/30 text-purple-300 font-medium">
+                        🛡️ Point Système Windows (OK{item.systemRestoreSeq ? ` #${item.systemRestoreSeq}` : ''})
+                      </span>
+                    ) : item.systemRestoreStatus === 'frequency_limited' ? (
+                      <span
+                        className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-300 font-medium"
+                        title="Limite Windows 24h atteinte. La sauvegarde locale garantit 100% de la restauration."
+                      >
+                        ⚠️ Quota Windows 24h (Restauration locale garantie)
+                      </span>
+                    ) : item.systemRestoreStatus === 'disabled' ? (
+                      <span className="px-2 py-0.5 rounded-md bg-zinc-800 border border-white/10 text-zinc-400 font-medium">
+                        🛡️ Point Système (Non-admin - Local garanti)
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-md bg-zinc-800 border border-white/10 text-zinc-400 font-medium">
+                        🛡️ Point Système (Local seul)
+                      </span>
+                    )}
+                  </div>
                 </div>
               ))
             )}

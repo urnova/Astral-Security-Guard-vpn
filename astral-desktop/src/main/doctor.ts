@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import { runPowerShell } from './psHelper';
 import { logger } from './logger';
+import { createRollbackSnapshot } from './rollback';
 
 export type SystemMode = 'gaming' | 'office' | 'shield' | 'eco';
 
@@ -33,7 +34,18 @@ export async function executeSosPing(): Promise<{
     pingBefore = parseInt(pingTestBefore.stdout || '0', 10) || 0;
   } catch {}
 
-  // 2. Execute network stack repair script via Base64 UTF-16LE
+  // 2. Create lightweight local .reg & system rollback snapshot before modifications
+  try {
+    await createRollbackSnapshot('SOS Déblocage Ping (Pile Réseau & DeliveryOptimization)', {
+      keys: [
+        'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\DeliveryOptimization\\Config',
+      ],
+    });
+  } catch (err: any) {
+    logger.warn('Avertissement snapshot pré-SOS Ping:', err.message);
+  }
+
+  // 3. Execute network stack repair script via Base64 UTF-16LE
   const repairScript = `
     # 1. Vider le cache DNS
     Clear-DnsClientCache
@@ -109,6 +121,20 @@ export function setupDoctorIPC(win: BrowserWindow) {
   // ── Keyboard Bug & Keylogger Doctor ─────────────────────────────────────────
   ipcMain.handle('doctor:fix-keyboard', async () => {
     logger.info('Exécution du diagnostic et réparation clavier...');
+
+    // Create lightweight local .reg & system rollback snapshot before modifications
+    try {
+      await createRollbackSnapshot('Réparation Clavier & Accessibilité (FilterKeys/StickyKeys)', {
+        keys: [
+          'HKCU\\Control Panel\\Keyboard',
+          'HKCU\\Control Panel\\Accessibility\\Keyboard Response',
+          'HKCU\\Control Panel\\Accessibility\\StickyKeys',
+          'HKCU\\Control Panel\\Accessibility\\ToggleKeys',
+        ],
+      });
+    } catch (err: any) {
+      logger.warn('Avertissement snapshot pré-réparation clavier:', err.message);
+    }
 
     const keyboardScript = `
       # 1. Désactiver FilterKeys et StickyKeys (touches rémanentes qui avalent les frappes)

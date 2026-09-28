@@ -8,6 +8,7 @@ import { BrowserWindow, ipcMain } from 'electron';
 import { runPowerShell } from './psHelper';
 import { logger } from './logger';
 import { isAdmin } from './adminHelper';
+import { createRollbackSnapshot } from './rollback';
 
 export interface ThreatInfo {
   ThreatID?: number;
@@ -309,10 +310,8 @@ export function setupSecurityIPC(win: BrowserWindow) {
       return { success: false, requiresElevation: true, error: 'Droits administrateur requis.' };
     }
     try {
-      // 1. Create safety restore point
-      try {
-        await runPowerShell(`Checkpoint-Computer -Description 'Vanguard Pre-Threat Remediation' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction SilentlyContinue`);
-      } catch {}
+      // 1. Create two-tier rollback snapshot (Tier 1: .reg & files local snapshot, Tier 2: Checkpoint-Computer)
+      await createRollbackSnapshot('Remédiation de menace de sécurité');
 
       // 2. Execute remediation
       const res = await runPowerShell<string>(script);

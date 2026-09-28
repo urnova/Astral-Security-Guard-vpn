@@ -83,7 +83,8 @@ const api = {
   getOverlayStatus: () => ipcRenderer.invoke('overlay:status'),
 
   // Rollback & System Restore
-  createRestorePoint: (desc: string) => ipcRenderer.invoke('rollback:create-restore-point', desc),
+  createRestorePoint: (desc: string, options?: any) => ipcRenderer.invoke('rollback:create-restore-point', desc, options),
+  restoreEntry: (id: string) => ipcRenderer.invoke('rollback:restore', id),
   listRollback: () => ipcRenderer.invoke('rollback:list'),
   openSystemRestore: () => ipcRenderer.invoke('rollback:open-system-restore'),
   listSystemRestore: () => ipcRenderer.invoke('rollback:list-system'),
