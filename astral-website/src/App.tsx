@@ -9,14 +9,15 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`)
+    fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`)
       .then((res) => res.json())
       .then((data) => {
-        if (data && data.assets && data.assets.length > 0) {
-          const exeAsset = data.assets.find((asset: any) => asset.name.endsWith('.exe'));
+        const release = Array.isArray(data) ? data[0] : data;
+        if (release && release.assets && release.assets.length > 0) {
+          const exeAsset = release.assets.find((asset: any) => asset.name.endsWith('.exe'));
           if (exeAsset) {
             setDownloadUrl(exeAsset.browser_download_url);
-            setVersion(data.tag_name || 'v2.1.0');
+            setVersion(release.tag_name || 'v2.1.0');
           }
         }
       })
