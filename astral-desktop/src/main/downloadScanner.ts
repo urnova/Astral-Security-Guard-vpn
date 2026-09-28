@@ -52,6 +52,66 @@ const DEFAULT_IGNORED_EXTS = [
   '.pdf',
 ];
 
+const SPOOFED_SYSTEM_EXECUTABLES = new Set([
+  'svchost.exe',
+  'csrss.exe',
+  'lsass.exe',
+  'smss.exe',
+  'services.exe',
+  'taskhostw.exe',
+  'taskhost.exe',
+  'winlogon.exe',
+  'explorer.exe',
+  'dwm.exe',
+  'spoolsv.exe',
+  'rundll32.exe',
+  'conhost.exe',
+  'cmd.exe',
+  'powershell.exe',
+  'runtimebroker.exe',
+]);
+
+function checkMasqueradedExtension(fileName: string): boolean {
+  const parts = fileName.toLowerCase().split('.');
+  if (parts.length < 3) return false;
+  const penultimate = '.' + parts[parts.length - 2];
+  const finalExt = '.' + parts[parts.length - 1];
+
+  const fakeDocExts = [
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+    '.jpg', '.jpeg', '.png', '.gif', '.mp3', '.mp4', '.txt',
+  ];
+  const dangerousExecExts = ['.exe', '.scr', '.vbs', '.js', '.wsf', '.hta', '.bat', '.cmd', '.ps1'];
+
+  return fakeDocExts.includes(penultimate) && dangerousExecExts.includes(finalExt);
+}
+
+function checkSystemExecutableSpoofing(fileName: string): boolean {
+  return SPOOFED_SYSTEM_EXECUTABLES.has(fileName.toLowerCase().trim());
+}
+
+function checkAmbiguousDefenderOutput(output: string): { isAmbiguous: boolean; name?: string } {
+  const ambiguousPatterns = [
+    /pua:[^\r\n]+/i,
+    /pup:[^\r\n]+/i,
+    /potentially unwanted/i,
+    /adware:[^\r\n]+/i,
+    /hacktool:[^\r\n]+/i,
+    /riskware:[^\r\n]+/i,
+  ];
+
+  for (const pat of ambiguousPatterns) {
+    const match = output.match(pat);
+    if (match) {
+      return { isAmbiguous: true, name: match[0].trim() };
+    }
+  }
+  return { isAmbiguous: false };
+}
+
+// In-memory rolling history of scanned files (max 50)
+const recentScans: ScanResult[] = [];
+
 function getConfigPath(): string {
   const base = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
   return path.join(base, 'AstralVanguard', 'scanner_config.json');
@@ -225,8 +285,26 @@ export async function scanSingleFile(filePath: string): Promise<ScanResult> {
 
       logger.info(`[DownloadScanner] Scan completed in ${scanDurationMs}ms (exit code ${code})`);
 
-      // Code 2 or threat detected
+      // 1. Threat detected by Defender (Exit code 2 or explicit threat strings)
       if (code === 2 || combinedOutput.includes('threats detected') || combinedOutput.includes('found threats')) {
+        const puaCheck = checkAmbiguousDefenderOutput(combinedOutput);
+        if (puaCheck.isAmbiguous) {
+          const res: ScanResult = {
+            id,
+            filePath,
+            fileName,
+            sizeBytes,
+            ext,
+            status: 'suspect',
+            threatName: `Application potentiellement indésirable (${puaCheck.name})`,
+            scanDurationMs,
+            timestamp: new Date().toISOString(),
+          };
+          recentScans.unshift(res);
+          if (recentScans.length > 50) recentScans.pop();
+          return resolve(res);
+        }
+
         let threatName = 'Menace détectée par Windows Defender';
         const match = stdout.match(/Threat\s*:\s*([^\r\n]+)/i);
         if (match && match[1]) {
@@ -244,47 +322,113 @@ export async function scanSingleFile(filePath: string): Promise<ScanResult> {
           scanDurationMs,
           timestamp: new Date().toISOString(),
         };
+        recentScans.unshift(res);
+        if (recentScans.length > 50) recentScans.pop();
         return resolve(res);
       }
 
-      // Check double-extension masquerade (e.g. report.pdf.exe)
-      const baseWithoutExt = path.parse(path.parse(filePath).name).ext;
-      const isMasqueraded = ['.pdf', '.png', '.jpg', '.doc', '.xlsx', '.mp4'].includes(baseWithoutExt.toLowerCase());
+      // 2. Strong Suspicious Signals (Double extension, spoofed system binary, or PUA warning)
+      const isMasqueraded = checkMasqueradedExtension(fileName);
+      const isSpoofedSys = checkSystemExecutableSpoofing(fileName);
+      const puaCheck = checkAmbiguousDefenderOutput(combinedOutput);
 
-      // Executables signature check
+      // Signature verification: informational only! Never triggers 'suspect' alone.
       let isUnsigned = false;
-      let isSuspect = isMasqueraded;
-
-      if (['.exe', '.msi', '.bat', '.cmd', '.ps1', '.vbs', '.scr', '.dll'].includes(ext)) {
+      if (['.exe', '.msi', '.dll'].includes(ext)) {
         try {
-          const sigCheck = await runPowerShell(
-            `(Get-AuthenticodeSignature -FilePath "${filePath.replace(/"/g, '`"')}").Status`,
-            { timeout: 4000 }
-          );
+          const sigScript = `
+            $p = "${filePath.replace(/"/g, '`"')}"
+            if (Test-Path -LiteralPath $p) {
+              $sig = Get-AuthenticodeSignature -LiteralPath $p -ErrorAction SilentlyContinue
+              if ($sig -and $sig.Status) { $sig.Status.ToString() } else { 'NotSigned' }
+            } else {
+              'NotSigned'
+            }
+          `;
+          const sigCheck = await runPowerShell(sigScript, { timeout: 4000 });
           const sigStatus = (sigCheck.stdout || '').trim();
           if (sigStatus !== 'Valid') {
             isUnsigned = true;
-            if (isMasqueraded || ext === '.scr' || ext === '.vbs') {
-              isSuspect = true;
-            }
           }
-        } catch {}
+        } catch {
+          isUnsigned = true;
+        }
       }
 
-      const status: ScanResult['status'] = isSuspect ? 'suspect' : 'safe';
+      if (isMasqueraded) {
+        logger.warn(`[DownloadScanner] Double extension masquée détectée: ${fileName}`);
+        const res: ScanResult = {
+          id,
+          filePath,
+          fileName,
+          sizeBytes,
+          ext,
+          status: 'suspect',
+          threatName: 'Extension masquée trompeuse détectée (ex: .pdf.exe)',
+          isUnsigned,
+          scanDurationMs,
+          timestamp: new Date().toISOString(),
+        };
+        recentScans.unshift(res);
+        if (recentScans.length > 50) recentScans.pop();
+        return resolve(res);
+      }
+
+      if (isSpoofedSys) {
+        logger.warn(`[DownloadScanner] Nom d'exécutable système trompeur dans Téléchargements: ${fileName}`);
+        const res: ScanResult = {
+          id,
+          filePath,
+          fileName,
+          sizeBytes,
+          ext,
+          status: 'suspect',
+          threatName: `Nom trompeur imitant un binaire système Windows (${fileName})`,
+          isUnsigned,
+          scanDurationMs,
+          timestamp: new Date().toISOString(),
+        };
+        recentScans.unshift(res);
+        if (recentScans.length > 50) recentScans.pop();
+        return resolve(res);
+      }
+
+      if (puaCheck.isAmbiguous) {
+        logger.warn(`[DownloadScanner] Signal PUA/PUP ambigu: ${puaCheck.name}`);
+        const res: ScanResult = {
+          id,
+          filePath,
+          fileName,
+          sizeBytes,
+          ext,
+          status: 'suspect',
+          threatName: `Application potentiellement indésirable (${puaCheck.name})`,
+          isUnsigned,
+          scanDurationMs,
+          timestamp: new Date().toISOString(),
+        };
+        recentScans.unshift(res);
+        if (recentScans.length > 50) recentScans.pop();
+        return resolve(res);
+      }
+
+      // 3. Clean File (Including unsigned indie dev software/tools)
+      // Unsigned alone is marked as safe with isUnsigned info badge: ZERO intrusive popups!
       const res: ScanResult = {
         id,
         filePath,
         fileName,
         sizeBytes,
         ext,
-        status,
-        threatName: isSuspect ? 'Exécutable suspect / Non vérifié' : undefined,
+        status: 'safe',
+        threatName: undefined,
         isUnsigned,
         scanDurationMs,
         timestamp: new Date().toISOString(),
       };
-      resolve(res);
+      recentScans.unshift(res);
+      if (recentScans.length > 50) recentScans.pop();
+      return resolve(res);
     });
 
     proc.on('error', (err) => {
@@ -351,8 +495,8 @@ async function handleFileEvent(folderPath: string, filename: string) {
       return;
     }
 
-    // 5. Notify renderer of scan starting
-    if (activeMainWindow && !activeMainWindow.isDestroyed()) {
+    // 5. Notify renderer of scan starting only if user wants real-time feedback for safe files
+    if (activeMainWindow && !activeMainWindow.isDestroyed() && currentConfig.showModalEvenIfSafe) {
       activeMainWindow.webContents.send('download-scanner:scan-start', {
         filePath,
         fileName: filename,
@@ -394,8 +538,8 @@ async function handleFileEvent(folderPath: string, filename: string) {
       } else if (result.status === 'suspect') {
         activeMainWindow.webContents.send('notification:trigger', {
           type: 'info',
-          title: '⚠️ Téléchargement suspect non signé',
-          message: `Fichier : ${filename}. Aucun certificat valide détecté.`,
+          title: '⚠️ Fichier téléchargé suspect',
+          message: `${filename} : ${result.threatName || 'Anomalie heuristique détectée.'}`,
           critical: false,
         });
       }
@@ -641,5 +785,10 @@ export function setupDownloadScannerIPC(win: BrowserWindow) {
     } catch (err: any) {
       return { success: false, error: err.message };
     }
+  });
+
+  // ── Rolling Scan History ──────────────────────────────────────────────────
+  ipcMain.handle('download-scanner:get-history', () => {
+    return { success: true, history: recentScans };
   });
 }

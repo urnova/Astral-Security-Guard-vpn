@@ -97,6 +97,7 @@ const api = {
   deleteScannedFile: (filePath: string) => ipcRenderer.invoke('download-scanner:delete-file', filePath),
   quarantineScannedFile: (filePath: string) => ipcRenderer.invoke('download-scanner:quarantine-file', filePath),
   openScannedFolder: (filePath: string) => ipcRenderer.invoke('download-scanner:open-folder', filePath),
+  getScannerHistory: () => ipcRenderer.invoke('download-scanner:get-history'),
 
   // Event listeners
   on: (channel: string, fn: (...args: any[]) => void) => {

@@ -295,9 +295,16 @@ export default function DownloadScanModal() {
 
             {currentScan.status === 'safe' && (
               <div className="space-y-2">
-                <div className="flex items-center gap-2 text-emerald-400 text-xs">
-                  <CheckCircle2 className="w-4 h-4 shrink-0" />
-                  <span>Aucune menace détectée. Fichier prêt à l'emploi.</span>
+                <div className="flex items-start gap-2 text-emerald-400 text-xs">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold text-emerald-300">Aucune menace détectée. Fichier prêt à l'emploi.</span>
+                    {currentScan.isUnsigned && (
+                      <p className="text-[10px] text-zinc-400 mt-0.5">
+                        Éditeur indépendant / Logiciel non signé certifié sain par Defender.
+                      </p>
+                    )}
+                  </div>
                 </div>
                 {/* Auto close progress line */}
                 <div className="h-1 w-full bg-black/40 rounded-full overflow-hidden">
