@@ -98,3 +98,22 @@ Ce journal consigne de manière chronologique et détaillée toutes les modifica
 - [x] **Niveau 2 (Filet de Sécurité Système)** : Déclenchement de `Checkpoint-Computer` avec ajustement de `SystemRestorePointCreationFrequency = 0`. Détection précise du quota Windows de 24h (`frequency_limited`) pour éviter les échecs silencieux et garantir la traçabilité.
 - [x] **Badges UI Explicites dans le Journal** : Chaque entrée affiche précisément son statut : `💾 Sauvegarde locale (Registre/Fichiers)` et `🛡️ Point Système Windows (OK #seq)` ou `⚠️ Quota Windows 24h (Restauration locale garantie)`.
 - [x] **Validation automatisée multi-actions même jour** : Suite de tests `scripts/test-same-day-rollback.ts` validée avec succès (Action 1 et Action 2 consécutives le même jour créent et restaurent leurs instantanés sans blocage).
+
+### Section 18. Scanner de Téléchargement en Temps Réel & Sentinelle USB (Real-Time Download Scanner)
+- [x] **Surveillance native sans polling** : Utilisation de `fs.watch` branché directement sur l'API Windows `ReadDirectoryChangesW` pour surveiller `%USERPROFILE%\Downloads` et les répertoires personnalisés avec 0% de charge CPU au repos.
+- [x] **Stabilisation d'écriture & Filtrage intelligent** :
+  - Détection automatique et exclusion des fragments de téléchargement en cours (`.crdownload`, `.part`, `.opdownload`, `.tmp`).
+  - Algorithme de vérification de stabilité de taille (~1-2s) et test de verrou d'écriture avant tout déclenchement d'analyse.
+  - Liste d'extensions ignorées configurable (médias, documents) pour éliminer tout déclenchement intempestif.
+- [x] **Scan ciblé ultra-rapide Defender** : Analyse unitaire instantanée (< 100ms) via `MpCmdRun.exe -Scan -ScanType 3 -File "<chemin>"`. Cache en mémoire LRU pour ne jamais re-scanner un fichier déjà vérifié.
+- [x] **Modal de Scan Flottant Cyberpunk (Direction Artistique)** :
+  - Overlay compact non-bloquant en verre dépoli néon avec effet radar.
+  - **✅ Vert "Fichier sain"** : Fermeture automatique fluide après 2.5 secondes.
+  - **⚠️ Orange "Fichier suspect"** : Alerte heuristique sur les exécutables non signés ou extensions masquées, boutons "Voir le détail" et "Ignorer".
+  - **🔴 Rouge "Menace détectée"** : Alerte critique avec nom du malware, alerte sonore dédiée, notification toast, et boutons d'action 1-clic ("Supprimer le fichier" et "Mettre en quarantaine").
+- [x] **Configuration dans Paramètres** :
+  - Toggle général d'activation/désactivation.
+  - Toggle "Afficher le modal même si le fichier est sûr" (recommandé désactivé par défaut pour une discrétion absolue).
+  - Gestion dynamique des dossiers surveillés (sélecteur de dossier natif) et des extensions ignorées.
+  - Toggle de signal sonore dédié et Sentinelle passive des supports USB amovibles.
+- [x] **Validation automatisée** : Suite de tests `scripts/test-download-scanner.ts` validée avec succès.

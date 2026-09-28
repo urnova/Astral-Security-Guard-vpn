@@ -1,5 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, RefreshCw, Volume2, BellOff, ShieldAlert, Monitor, Zap, Download, CheckCircle, Keyboard } from 'lucide-react';
+import {
+  Settings,
+  RefreshCw,
+  Volume2,
+  BellOff,
+  ShieldAlert,
+  Monitor,
+  Zap,
+  Download,
+  CheckCircle,
+  Keyboard,
+  Scan,
+  Plus,
+  Trash2,
+  FolderPlus,
+} from 'lucide-react';
 import { CollapsibleError } from '../ui/CollapsibleError';
 import { playSound, setMasterVolume } from '../../lib/audioSynth';
 
@@ -18,6 +33,24 @@ export default function SettingsTab({ dndEnabled = false, onDndChange }: Setting
   const [watchdogEnabled, setWatchdogEnabled] = useState(true);
   const [watchdogThreshold, setWatchdogThreshold] = useState(250);
   const [volume, setVolume] = useState(60);
+
+  // Real-Time Download Scanner State
+  const [scannerConfig, setScannerConfig] = useState<{
+    enabled: boolean;
+    watchDirs: string[];
+    ignoredExtensions: string[];
+    showModalEvenIfSafe: boolean;
+    soundEnabled: boolean;
+    usbScanEnabled: boolean;
+  }>({
+    enabled: true,
+    watchDirs: [],
+    ignoredExtensions: ['.txt', '.jpg', '.jpeg', '.png', '.gif', '.mp3', '.mp4', '.pdf'],
+    showModalEvenIfSafe: false,
+    soundEnabled: true,
+    usbScanEnabled: true,
+  });
+  const [newExtInput, setNewExtInput] = useState('');
 
   // Doctor state
   const [pingResetLoading, setPingResetLoading] = useState(false);
@@ -62,6 +95,12 @@ export default function SettingsTab({ dndEnabled = false, onDndChange }: Setting
       if (state) setUpdaterState(state);
     });
 
+    api.getScannerConfig?.().then((res: any) => {
+      if (res?.success && res.config) {
+        setScannerConfig(res.config);
+      }
+    });
+
     const cleanupUpdater = api.on?.('updater:state-changed', (state: any) => {
       setUpdaterState(state);
     });
@@ -70,6 +109,43 @@ export default function SettingsTab({ dndEnabled = false, onDndChange }: Setting
       if (typeof cleanupUpdater === 'function') cleanupUpdater();
     };
   }, []);
+
+  const handleUpdateScannerConfig = async (partial: any) => {
+    const updated = { ...scannerConfig, ...partial };
+    setScannerConfig(updated);
+    await api?.saveScannerConfig?.(partial);
+  };
+
+  const handleAddWatchFolder = async () => {
+    const res = await api?.selectScannerFolder?.();
+    if (res?.success && res.folderPath) {
+      if (!scannerConfig.watchDirs.includes(res.folderPath)) {
+        const next = [...scannerConfig.watchDirs, res.folderPath];
+        handleUpdateScannerConfig({ watchDirs: next });
+      }
+    }
+  };
+
+  const handleRemoveWatchFolder = (dir: string) => {
+    const next = scannerConfig.watchDirs.filter((d) => d !== dir);
+    handleUpdateScannerConfig({ watchDirs: next });
+  };
+
+  const handleAddIgnoredExtension = () => {
+    let ext = newExtInput.trim().toLowerCase();
+    if (!ext) return;
+    if (!ext.startsWith('.')) ext = '.' + ext;
+    if (!scannerConfig.ignoredExtensions.includes(ext)) {
+      const next = [...scannerConfig.ignoredExtensions, ext];
+      handleUpdateScannerConfig({ ignoredExtensions: next });
+    }
+    setNewExtInput('');
+  };
+
+  const handleRemoveIgnoredExtension = (ext: string) => {
+    const next = scannerConfig.ignoredExtensions.filter((e) => e !== ext);
+    handleUpdateScannerConfig({ ignoredExtensions: next });
+  };
 
   const handleAutostartToggle = async (val: boolean) => {
     setAutostart(val);
@@ -444,6 +520,182 @@ export default function SettingsTab({ dndEnabled = false, onDndChange }: Setting
               {updaterState?.status === 'not-available' && (
                 <p className="text-zinc-500 pt-1">Votre application est à jour.</p>
               )}
+            </div>
+          </div>
+
+          {/* Real-Time Download Scanner & Passive Protection Settings */}
+          <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-purple-500/30 shadow-xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-purple-500/15 text-purple-400 border border-purple-500/20">
+                  <Scan className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    Scanner de Téléchargement en Temps Réel
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                        scannerConfig.enabled
+                          ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                          : 'bg-zinc-800 border-white/10 text-zinc-400'
+                      }`}
+                    >
+                      {scannerConfig.enabled ? 'Actif' : 'Désactivé'}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-zinc-400">
+                    Surveillance FileSystemWatcher sans polling · Scan ciblé MpCmdRun
+                  </p>
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={scannerConfig.enabled}
+                onChange={(e) => handleUpdateScannerConfig({ enabled: e.target.checked })}
+                className="w-4 h-4 accent-purple-500 cursor-pointer"
+              />
+            </div>
+
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Surveille l'écriture complète des fichiers téléchargés et déclenche une analyse locale ultra-rapide par Microsoft Defender sans jamais ralentir le navigateur ni bloquer l'explorateur.
+            </p>
+
+            {/* Sub-Options */}
+            <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-3">
+              {/* Show modal even if safe toggle */}
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-zinc-200 block">
+                      Afficher le modal même si le fichier est sûr
+                    </span>
+                    <span className="px-1.5 py-0.2 rounded bg-purple-500/10 text-[9px] font-semibold text-purple-300 border border-purple-500/20">
+                      Recommandé : Non
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-zinc-500 block mt-0.5">
+                    Par défaut désactivé pour éviter toute intrusion sur les téléchargements sains. Vanguard n'affiche le modal qu'en cas de fichier suspect ou dangereux.
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={scannerConfig.showModalEvenIfSafe}
+                  onChange={(e) => handleUpdateScannerConfig({ showModalEvenIfSafe: e.target.checked })}
+                  className="w-4 h-4 accent-purple-500 cursor-pointer shrink-0 mt-0.5"
+                />
+              </div>
+
+              {/* Dedicated Sound Toggle */}
+              <div className="flex items-center justify-between pt-2.5 border-t border-white/5">
+                <div>
+                  <span className="text-xs font-medium text-zinc-200 block">Alerte sonore dédiée</span>
+                  <span className="text-[11px] text-zinc-500">Signal sonore indépendant lors des détections de téléchargement</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={scannerConfig.soundEnabled}
+                  onChange={(e) => handleUpdateScannerConfig({ soundEnabled: e.target.checked })}
+                  className="w-4 h-4 accent-purple-500 cursor-pointer shrink-0"
+                />
+              </div>
+
+              {/* USB Passive Sentinel Toggle */}
+              <div className="flex items-center justify-between pt-2.5 border-t border-white/5">
+                <div>
+                  <span className="text-xs font-medium text-zinc-200 block">Sentinelle Clés USB Amovibles</span>
+                  <span className="text-[11px] text-zinc-500">Vérification passive et discrète des fichiers autorun lors de l'insertion</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={scannerConfig.usbScanEnabled}
+                  onChange={(e) => handleUpdateScannerConfig({ usbScanEnabled: e.target.checked })}
+                  className="w-4 h-4 accent-purple-500 cursor-pointer shrink-0"
+                />
+              </div>
+            </div>
+
+            {/* Watched Folders */}
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-zinc-300">Dossiers surveillés :</span>
+                <button
+                  onClick={handleAddWatchFolder}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-600/80 hover:bg-purple-600 text-white text-[11px] font-semibold transition-colors shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Ajouter un dossier</span>
+                </button>
+              </div>
+
+              <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                {scannerConfig.watchDirs.length === 0 ? (
+                  <p className="text-xs text-zinc-500">Aucun dossier configuré.</p>
+                ) : (
+                  scannerConfig.watchDirs.map((dir, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white/[0.03] border border-white/5 text-xs text-zinc-300"
+                    >
+                      <span className="truncate font-mono text-[11px]" title={dir}>
+                        {dir}
+                      </span>
+                      {scannerConfig.watchDirs.length > 1 && (
+                        <button
+                          onClick={() => handleRemoveWatchFolder(dir)}
+                          className="p-1 rounded text-zinc-500 hover:text-red-400 transition-colors shrink-0"
+                          title="Retirer ce dossier"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Ignored Extensions */}
+            <div className="space-y-2 pt-2 border-t border-white/5">
+              <span className="text-xs font-semibold text-zinc-300">
+                Extensions ignorées (fichiers non-exécutables / médias) :
+              </span>
+
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newExtInput}
+                  onChange={(e) => setNewExtInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleAddIgnoredExtension();
+                  }}
+                  placeholder="Ex: .iso ou .mkv"
+                  className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-purple-500"
+                />
+                <button
+                  onClick={handleAddIgnoredExtension}
+                  disabled={!newExtInput.trim()}
+                  className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white text-xs font-semibold transition-colors shrink-0"
+                >
+                  Ajouter
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-wrap max-h-24 overflow-y-auto pr-1">
+                {scannerConfig.ignoredExtensions.map((ext, idx) => (
+                  <span
+                    key={idx}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/10 text-[11px] font-mono text-zinc-300"
+                  >
+                    <span>{ext}</span>
+                    <button
+                      onClick={() => handleRemoveIgnoredExtension(ext)}
+                      className="text-zinc-500 hover:text-red-400 ml-0.5"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
 

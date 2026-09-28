@@ -8,6 +8,7 @@ import VpnTab from './components/tabs/VpnTab';
 import SettingsTab from './components/tabs/SettingsTab';
 import Sidebar from './components/Sidebar';
 import UpdateModal from './components/UpdateModal';
+import DownloadScanModal from './components/DownloadScanModal';
 import { NotificationSystem } from './components/NotificationSystem';
 import { ShieldAlert } from 'lucide-react';
 
@@ -129,6 +130,8 @@ export default function App() {
       </div>
 
       <NotificationSystem dndEnabled={dndEnabled} />
+
+      <DownloadScanModal />
 
       {updateInfo && (
         <UpdateModal info={updateInfo} onClose={() => setUpdateInfo(null)} />

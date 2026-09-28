@@ -89,6 +89,15 @@ const api = {
   openSystemRestore: () => ipcRenderer.invoke('rollback:open-system-restore'),
   listSystemRestore: () => ipcRenderer.invoke('rollback:list-system'),
 
+  // Real-Time Download Scanner & USB Sentinel
+  getScannerConfig: () => ipcRenderer.invoke('download-scanner:get-config'),
+  saveScannerConfig: (cfg: any) => ipcRenderer.invoke('download-scanner:save-config', cfg),
+  selectScannerFolder: () => ipcRenderer.invoke('download-scanner:select-folder'),
+  scanFile: (filePath: string) => ipcRenderer.invoke('download-scanner:scan-file', filePath),
+  deleteScannedFile: (filePath: string) => ipcRenderer.invoke('download-scanner:delete-file', filePath),
+  quarantineScannedFile: (filePath: string) => ipcRenderer.invoke('download-scanner:quarantine-file', filePath),
+  openScannedFolder: (filePath: string) => ipcRenderer.invoke('download-scanner:open-folder', filePath),
+
   // Event listeners
   on: (channel: string, fn: (...args: any[]) => void) => {
     const sub = (_: any, ...args: any[]) => fn(...args);
