@@ -7,9 +7,27 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
-const TOKEN = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+// ── Charge .env local si présent (toujours ignoré par .gitignore) ────────────
+const envPath = path.join(rootDir, '.env');
+if (fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, 'utf8');
+  for (const line of envContent.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx !== -1) {
+      const key = trimmed.slice(0, eqIdx).trim();
+      const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
+      if (!process.env[key]) {
+        process.env[key] = val;
+      }
+    }
+  }
+}
+
+const TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
 if (!TOKEN) {
-  console.error('Error: GH_TOKEN or GITHUB_TOKEN environment variable is required.');
+  console.error('Error: GITHUB_TOKEN ou GH_TOKEN est requis via variable d\'environnement ou fichier local .env');
   process.exit(1);
 }
 const OWNER = 'urnova';

@@ -4,3 +4,6 @@ dist-electron
 release
 .tsbuildinfo
 *.log
+.env
+.env.*
+*.env
