@@ -108,8 +108,8 @@ Ce journal consigne de manière chronologique et détaillée toutes les modifica
 - [x] **Scan ciblé ultra-rapide Defender** : Analyse unitaire instantanée (< 100ms) via `MpCmdRun.exe -Scan -ScanType 3 -File "<chemin>"`. Cache en mémoire LRU pour ne jamais re-scanner un fichier déjà vérifié.
 - [x] **Modal de Scan Flottant Cyberpunk (Direction Artistique)** :
   - Overlay compact non-bloquant en verre dépoli néon avec effet radar.
-  - **✅ Vert "Fichier sain"** : Fermeture automatique fluide après 2.5 secondes.
-  - **⚠️ Orange "Fichier suspect"** : Alerte heuristique sur les exécutables non signés ou extensions masquées, boutons "Voir le détail" et "Ignorer".
+  - **✅ Vert "Fichier sain"** : Fermeture automatique fluide après 2.5 secondes. Zéro popup par défaut si l'option de discrétion est activée. Les logiciels indépendants/outils dev non signés certifiés sains par Defender reçoivent un badge informatif discret sans interruption.
+  - **⚠️ Orange "Fichier suspect"** : Alerte heuristique ciblée sur les anomalies réelles (double extension masquée type `.pdf.exe`, usurpation de nom système Windows comme `svchost.exe` dans Téléchargements, avertissement PUA/PUP ambigu), boutons "Voir le détail" et "Ignorer".
   - **🔴 Rouge "Menace détectée"** : Alerte critique avec nom du malware, alerte sonore dédiée, notification toast, et boutons d'action 1-clic ("Supprimer le fichier" et "Mettre en quarantaine").
 - [x] **Configuration dans Paramètres** :
   - Toggle général d'activation/désactivation.
