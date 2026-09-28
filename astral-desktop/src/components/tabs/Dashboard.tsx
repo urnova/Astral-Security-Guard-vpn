@@ -1,5 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Shield, ShieldAlert, ShieldCheck, Zap, Activity, HardDrive, Clock, CheckCircle, RefreshCw, Radio, Gamepad2, Sliders } from 'lucide-react';
+﻿import { useState, useEffect, useCallback } from 'react';
+import {
+  Shield, ShieldCheck, ShieldAlert, Zap, Activity,
+  HardDrive, Clock, Cpu, Wifi, Gamepad2, RefreshCw,
+  ChevronRight, AlertTriangle, CheckCircle, ArrowUpRight
+} from 'lucide-react';
 import { CollapsibleError } from '../ui/CollapsibleError';
 
 const api = (window as any).vanguard;
@@ -17,302 +21,344 @@ interface Props {
   gamingActive: boolean;
   currentGame: string | null;
   onTabChange: (tab: string) => void;
+  firstName?: string;
 }
 
-export default function Dashboard({ gamingActive, currentGame, onTabChange }: Props) {
-  const [metrics, setMetrics] = useState<Metrics | null>(null);
-  const [secStatus, setSecStatus] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [sosLoading, setSosLoading] = useState(false);
-  const [sosResult, setSosResult] = useState<{ pingBefore?: number; pingAfter?: number; message?: string } | null>(null);
-  const [currentMode, setCurrentMode] = useState<string>('gaming');
-  const [errorInfo, setErrorInfo] = useState<{ message: string; technical?: string } | null>(null);
+function greeting(name: string) {
+  const h = new Date().getHours();
+  const time = h < 12 ? 'Bonjour' : h < 18 ? 'Bon après-midi' : 'Bonsoir';
+  return name ? `${time}, ${name}` : 'Tableau de bord';
+}
 
-  const loadData = useCallback(async () => {
-    if (!api) {
-      setLoading(false);
-      return;
-    }
+function fmtUptime(h: number) {
+  if (h < 1) return `${Math.round(h * 60)} min`;
+  const d = Math.floor(h / 24), hh = Math.floor(h % 24);
+  return d > 0 ? `${d}j ${hh}h` : `${hh}h`;
+}
+
+function fmtGB(gb: number) { return gb >= 1 ? `${gb.toFixed(1)} Go` : `${(gb * 1024).toFixed(0)} Mo`; }
+
+export default function Dashboard({ gamingActive, currentGame, onTabChange, firstName = '' }: Props) {
+  const [metrics,    setMetrics]    = useState<Metrics | null>(null);
+  const [secStatus,  setSecStatus]  = useState<any>(null);
+  const [loading,    setLoading]    = useState(true);
+  const [mode,       setMode]       = useState('gaming');
+  const [errorInfo,  setErrorInfo]  = useState<{ message: string; technical?: string } | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!api) { setLoading(false); return; }
     try {
       const [m, s, modeRes] = await Promise.all([
         api.getMetrics?.(),
         api.getSecurityStatus?.(),
         api.getSystemMode?.(),
       ]);
-      if (m?.success) setMetrics(m.data);
-      if (s?.success) setSecStatus(s.data);
-      if (modeRes) setCurrentMode(modeRes);
-    } catch {}
+      if (m?.success)  setMetrics(m.data);
+      if (s?.success)  setSecStatus(s.data);
+      if (modeRes)     setMode(modeRes);
+    } catch { /* IPC failure is non-fatal */ }
     setLoading(false);
+    setRefreshing(false);
   }, []);
 
   useEffect(() => {
-    loadData();
-    const id = setInterval(loadData, 5000);
+    load();
+    const id = setInterval(load, 6000);
     return () => clearInterval(id);
-  }, [loadData]);
+  }, [load]);
 
-  const handleSosPing = async () => {
-    if (!api) return;
-    setSosLoading(true);
-    setSosResult(null);
-    setErrorInfo(null);
-    try {
-      const res = await api.emergencyPingReset();
-      if (res?.success) {
-        setSosResult({
-          pingBefore: res.pingBefore,
-          pingAfter: res.pingAfter,
-          message: res.message,
-        });
-      } else {
-        setErrorInfo({
-          message: 'Échec de la procédure SOS Déblocage Réseau.',
-          technical: res?.technicalError || res?.error,
-        });
-      }
-    } catch (err: any) {
-      setErrorInfo({ message: 'Erreur inattendue lors du SOS Ping', technical: err.message });
-    } finally {
-      setSosLoading(false);
-    }
+  const handleRefresh = () => { setRefreshing(true); load(); };
+
+  const ram   = metrics && metrics.ramTotal > 0
+    ? Math.round((metrics.ramUsed / metrics.ramTotal) * 100) : 0;
+  const disk  = metrics
+    ? Math.round(metrics.diskUsedGB / (metrics.diskUsedGB + metrics.diskFreeGB) * 100) : 0;
+  const defOk = Boolean(secStatus?.AntivirusEnabled && secStatus?.RealTimeProtectionEnabled);
+  const fwOk  = Boolean(secStatus?.FirewallEnabled);
+
+  const modeColors: Record<string, string> = {
+    gaming: 'badge-cyan', office: 'badge-violet', shield: 'badge-green', eco: 'badge-muted',
   };
-
-  const handleModeChange = async (mode: 'gaming' | 'office' | 'shield' | 'eco') => {
-    if (!api) return;
-    try {
-      await api.setSystemMode(mode);
-      setCurrentMode(mode);
-    } catch {}
+  const modeLabel: Record<string, string> = {
+    gaming: 'Gaming', office: 'Bureau', shield: 'Protection', eco: 'Économie',
   };
-
-  const ramPct = metrics && metrics.ramTotal > 0 ? Math.round((metrics.ramUsed / metrics.ramTotal) * 100) : 0;
-  const diskTotal = metrics ? metrics.diskUsedGB + metrics.diskFreeGB : 0;
-  const diskPct = diskTotal > 0 ? Math.round((metrics!.diskUsedGB / diskTotal) * 100) : 0;
-  const defenderOk = Boolean(secStatus?.AntivirusEnabled && secStatus?.RealTimeProtectionEnabled);
 
   return (
-    <div className="tab-scroll space-y-6 max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
+    <div className="tab-scroll animate-in">
+      {/* ── Page header ── */}
+      <div className="page-header">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
-            {gamingActive ? (
-              <>
-                <Gamepad2 className="w-6 h-6 text-cyan-400" />
-                <span>Mode Gaming · {currentGame || 'Jeu détecté'}</span>
-              </>
-            ) : (
-              <>
-                <Zap className="w-6 h-6 text-purple-400" />
-                <span>Tableau de Bord & Vue d'Ensemble</span>
-              </>
-            )}
-          </h1>
-          <p className="text-sm text-zinc-400 mt-1">
+          <h1 className="page-title">
             {gamingActive
-              ? 'Toutes les optimisations faible latence et priorité matérielle sont actives'
-              : 'Votre système Windows 10/11 sous la surveillance proactive d’Astral Vanguard'}
+              ? <span style={{ color: 'var(--cyan)' }}>Mode Gaming actif</span>
+              : greeting(firstName)}
+          </h1>
+          <p className="page-subtitle">
+            {gamingActive
+              ? `Session en cours — ${currentGame || 'jeu détecté'}`
+              : 'État du système en temps réel · Astral Vanguard'}
           </p>
         </div>
-
-        {gamingActive && (
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-semibold">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-            GAMING ACTIF
-          </div>
-        )}
+        <div className="page-actions">
+          {!gamingActive && (
+            <span className={`badge ${modeColors[mode] ?? 'badge-muted'}`}>
+              <span className="badge-dot" /> {modeLabel[mode] ?? mode}
+            </span>
+          )}
+          {gamingActive && (
+            <span className="badge badge-cyan">
+              <span className="badge-dot" style={{ animationName: 'dotPulse', animation: 'dotPulse 1.4s infinite' }} />
+              GAMING ACTIF
+            </span>
+          )}
+          <button className="btn btn-ghost btn-sm btn-icon" onClick={handleRefresh} title="Actualiser" aria-label="Actualiser">
+            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </div>
 
       {errorInfo && (
-        <CollapsibleError
-          message={errorInfo.message}
-          technicalError={errorInfo.technical}
-        />
+        <CollapsibleError message={errorInfo.message} technicalError={errorInfo.technical} />
       )}
 
-      {/* SOS Result Banner */}
-      {sosResult && (
-        <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/40 space-y-1.5 text-xs text-emerald-200">
-          <div className="flex items-center gap-2 font-bold text-emerald-300">
-            <CheckCircle className="w-4 h-4" />
-            <span>SOS Réseau terminé : {sosResult.message}</span>
+      {/* ── 4 metric cards ── */}
+      {loading ? (
+        <div className="grid-4">
+          {[0,1,2,3].map(i => (
+            <div key={i} className="metric-card" style={{ minHeight: 110 }}>
+              <div className="skeleton" style={{ height: 20, width: '60%', borderRadius: 4 }} />
+              <div className="skeleton" style={{ height: 32, width: '45%', borderRadius: 4, marginTop: 4 }} />
+            </div>
+          ))}
+        </div>
+      ) : metrics ? (
+        <div className="grid-4">
+          {/* CPU */}
+          <div className="metric-card card-p">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div className="metric-icon" style={{ background: 'rgba(0,212,255,0.12)', color: 'var(--cyan)' }}>
+                <Cpu size={18} />
+              </div>
+              <span className={`badge ${metrics.cpuPercent > 80 ? 'badge-red' : metrics.cpuPercent > 60 ? 'badge-orange' : 'badge-green'}`}>
+                {metrics.cpuPercent > 80 ? 'Élevé' : metrics.cpuPercent > 60 ? 'Modéré' : 'Normal'}
+              </span>
+            </div>
+            <div className="metric-label" style={{ marginTop: 10 }}>CPU</div>
+            <div className="metric-value">{metrics.cpuPercent.toFixed(0)}<span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-muted)' }}>%</span></div>
+            <div className="progress-bar"><div className="progress-fill progress-cyan" style={{ width: `${metrics.cpuPercent}%` }} /></div>
           </div>
-          <div className="flex items-center gap-6 font-mono text-[11px] pt-1 text-zinc-300">
-            <span>Latence avant : <strong className="text-red-400">{sosResult.pingBefore} ms</strong></span>
-            <span>Latence après : <strong className="text-emerald-400">{sosResult.pingAfter} ms</strong></span>
+
+          {/* RAM */}
+          <div className="metric-card card-p">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div className="metric-icon" style={{ background: 'rgba(139,92,246,0.12)', color: 'var(--violet)' }}>
+                <Activity size={18} />
+              </div>
+              <span className={`badge ${ram > 85 ? 'badge-red' : ram > 70 ? 'badge-orange' : 'badge-violet'}`}>
+                {ram > 85 ? 'Élevé' : ram > 70 ? 'Modéré' : 'Normal'}
+              </span>
+            </div>
+            <div className="metric-label" style={{ marginTop: 10 }}>Mémoire vive</div>
+            <div className="metric-value">{ram}<span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-muted)' }}>%</span></div>
+            <div className="metric-sub">{fmtGB(metrics.ramUsed)} / {fmtGB(metrics.ramTotal)}</div>
+            <div className="progress-bar"><div className="progress-fill progress-violet" style={{ width: `${ram}%` }} /></div>
           </div>
+
+          {/* Disk */}
+          <div className="metric-card card-p">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div className="metric-icon" style={{ background: 'rgba(16,217,160,0.10)', color: 'var(--green)' }}>
+                <HardDrive size={18} />
+              </div>
+              <span className={`badge ${disk > 90 ? 'badge-red' : 'badge-green'}`}>{disk > 90 ? 'Plein' : 'OK'}</span>
+            </div>
+            <div className="metric-label" style={{ marginTop: 10 }}>Stockage</div>
+            <div className="metric-value">{disk}<span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-muted)' }}>%</span></div>
+            <div className="metric-sub">{fmtGB(metrics.diskFreeGB)} libres</div>
+            <div className="progress-bar"><div className="progress-fill progress-green" style={{ width: `${disk}%` }} /></div>
+          </div>
+
+          {/* Uptime */}
+          <div className="metric-card card-p">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div className="metric-icon" style={{ background: 'rgba(255,209,102,0.10)', color: 'var(--gold)' }}>
+                <Clock size={18} />
+              </div>
+            </div>
+            <div className="metric-label" style={{ marginTop: 10 }}>Depuis le démarrage</div>
+            <div className="metric-value" style={{ fontSize: 22 }}>{fmtUptime(metrics.uptimeHours)}</div>
+            <div className="metric-sub">Session active</div>
+          </div>
+        </div>
+      ) : (
+        <div className="notice notice-warn">
+          <AlertTriangle size={15} />
+          <span>Métriques système indisponibles. Vanguard ne peut pas lire les données système.</span>
         </div>
       )}
 
-      {/* Defender Status Banner */}
-      <div className={`p-4 rounded-xl border flex items-center justify-between gap-3 text-xs ${
-        defenderOk
-          ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-300'
-          : 'bg-amber-950/30 border-amber-500/30 text-amber-300'
-      }`}>
-        <div className="flex items-center gap-3">
-          {defenderOk ? (
-            <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
-          ) : (
-            <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0" />
-          )}
-          <span className="font-semibold">
-            {defenderOk
-              ? 'Protection Active · Microsoft Defender opérationnel · Surveillance HIDS en veille'
-              : 'Attention · Moteur de protection à auditer · Cliquez sur Sécurité pour inspecter'}
-          </span>
-        </div>
-        <button
-          onClick={() => onTabChange('security')}
-          className="text-xs underline hover:no-underline font-medium shrink-0"
-        >
-          Détails sécurité
-        </button>
-      </div>
-
-      {/* System Metrics 4-Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="p-4 rounded-2xl bg-[#0c0c24]/90 border border-white/5">
-          <span className="text-xs text-zinc-400 font-medium">Charge Processeur (CPU)</span>
-          <p className="text-2xl font-black text-cyan-400 mt-1">
-            {loading ? '–' : `${metrics?.cpuPercent ?? 0}%`}
-          </p>
-          <div className="w-full h-1.5 rounded-full bg-white/5 mt-3 overflow-hidden">
-            <div
-              className="h-full bg-cyan-400 transition-all duration-300"
-              style={{ width: `${Math.min(100, metrics?.cpuPercent ?? 0)}%` }}
-            />
+      {/* ── Security status ── */}
+      <div className="grid-2" style={{ gap: 16 }}>
+        {/* Security card */}
+        <div className={`card card-p ${defOk && fwOk ? 'card-green' : 'card-red'}`}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {defOk && fwOk
+                ? <ShieldCheck size={20} style={{ color: 'var(--green)' }} />
+                : <ShieldAlert size={20} style={{ color: 'var(--red)' }} />}
+              <span className="section-title">Windows Defender</span>
+            </div>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => onTabChange('security')}
+              style={{ fontSize: 12 }}
+            >
+              Détails <ChevronRight size={13} />
+            </button>
           </div>
-        </div>
 
-        <div className="p-4 rounded-2xl bg-[#0c0c24]/90 border border-white/5">
-          <span className="text-xs text-zinc-400 font-medium">Mémoire Vive (RAM)</span>
-          <p className="text-2xl font-black text-purple-400 mt-1">
-            {loading ? '–' : `${ramPct}%`}
-          </p>
-          <div className="w-full h-1.5 rounded-full bg-white/5 mt-3 overflow-hidden">
-            <div
-              className="h-full bg-purple-500 transition-all duration-300"
-              style={{ width: `${Math.min(100, ramPct)}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-[#0c0c24]/90 border border-white/5">
-          <span className="text-xs text-zinc-400 font-medium">Espace Disque (C:)</span>
-          <p className="text-2xl font-black text-amber-400 mt-1">
-            {loading ? '–' : `${diskPct}%`}
-          </p>
-          <p className="text-[10px] text-zinc-500 mt-2 font-mono">
-            {metrics?.diskFreeGB ?? 0} Go libres
-          </p>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-[#0c0c24]/90 border border-white/5">
-          <span className="text-xs text-zinc-400 font-medium">Temps d'activité</span>
-          <p className="text-2xl font-black text-emerald-400 mt-1">
-            {loading ? '–' : `${metrics?.uptimeHours ?? 0}h`}
-          </p>
-          <p className="text-[10px] text-zinc-500 mt-2">Dernier redémarrage</p>
-        </div>
-      </div>
-
-      {/* Quick Actions & Emergency Tools */}
-      <div className="space-y-3">
-        <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
-          Actions Rapides & Procédures d'Urgence
-        </h3>
-
-        <div className="flex items-center gap-3 flex-wrap">
-          {/* Real SOS Button */}
-          <button
-            onClick={handleSosPing}
-            disabled={sosLoading}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-lg shadow-amber-900/20"
-            title="Purge DNS/ARP, réinitialise sockets TCP et stoppe le P2P Windows Update"
-          >
-            {sosLoading ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Déblocage en cours...</span>
-              </>
-            ) : (
-              <>
-                <Zap className="w-4 h-4" />
-                <span>⚡ SOS Déblocage Ping (1002ms)</span>
-              </>
-            )}
-          </button>
-
-          <button
-            onClick={() => onTabChange('security')}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition-colors shadow-lg shadow-purple-900/20"
-          >
-            <Shield className="w-4 h-4" />
-            <span>Audit Antivirus & Menaces</span>
-          </button>
-
-          <button
-            onClick={() => onTabChange('network')}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold transition-colors shadow-lg shadow-cyan-900/20"
-          >
-            <Activity className="w-4 h-4" />
-            <span>Test Débit & Gigue</span>
-          </button>
-
-          <button
-            onClick={() => api?.overlayToggle?.()}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-200 text-xs font-semibold transition-colors border border-white/5"
-          >
-            <Radio className="w-4 h-4 text-purple-400" />
-            <span>Overlay HUD (Ctrl+Shift+O)</span>
-          </button>
-
-          <button
-            onClick={() => onTabChange('settings')}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-200 text-xs font-semibold transition-colors border border-white/5"
-          >
-            <Sliders className="w-4 h-4 text-amber-400" />
-            <span>Docteur Clavier</span>
-          </button>
-        </div>
-      </div>
-
-      {/* System Modes Switcher Bar */}
-      <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-white/5 space-y-3">
-        <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
-          Mode Système Actif
-        </h3>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { id: 'gaming', label: 'Mode Gaming', sub: 'Faible latence & Turbo', color: 'cyan', icon: '🎮' },
-            { id: 'office', label: 'Mode Bureau', sub: 'Équilibré & Multitâche', color: 'purple', icon: '💼' },
-            { id: 'shield', label: 'Cyber-Shield', sub: 'Défense Defender max', color: 'emerald', icon: '🛡️' },
-            { id: 'eco', label: 'Mode Éco', sub: 'Silencieux & Basse conso', color: 'amber', icon: '🍃' },
-          ].map((m) => {
-            const isSelected = currentMode === m.id;
-            return (
-              <button
-                key={m.id}
-                onClick={() => handleModeChange(m.id as any)}
-                className={`p-3 rounded-xl border text-left transition-all ${
-                  isSelected
-                    ? 'bg-purple-950/40 border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.15)]'
-                    : 'bg-black/30 border-white/5 hover:bg-white/[0.03]'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">{m.icon}</span>
-                  <span className="text-xs font-bold text-white">{m.label}</span>
+          {secStatus !== null ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <StatusRow
+                label="Antivirus"
+                ok={secStatus.AntivirusEnabled}
+                value={secStatus.AntivirusEnabled ? 'Actif' : 'Inactif'}
+              />
+              <StatusRow
+                label="Protection temps réel"
+                ok={secStatus.RealTimeProtectionEnabled}
+                value={secStatus.RealTimeProtectionEnabled ? 'Activée' : 'Désactivée'}
+              />
+              <StatusRow
+                label="Pare-feu"
+                ok={secStatus.FirewallEnabled}
+                value={secStatus.FirewallEnabled ? 'Actif' : 'Inactif'}
+              />
+              {secStatus.AntivirusSignatureLastUpdated && (
+                <div className="data-row" style={{ paddingTop: 6, borderTop: '1px solid var(--border)' }}>
+                  <span className="data-row-label">Signatures</span>
+                  <span className="data-row-value" style={{ fontSize: 11, fontFamily: 'var(--mono)' }}>
+                    {new Date(secStatus.AntivirusSignatureLastUpdated).toLocaleDateString('fr-FR')}
+                  </span>
                 </div>
-                <p className="text-[10px] text-zinc-400 mt-1">{m.sub}</p>
-              </button>
-            );
-          })}
+              )}
+            </div>
+          ) : (
+            <div className="notice notice-warn" style={{ fontSize: 12 }}>
+              <AlertTriangle size={13} />
+              État Defender non disponible — droits admin requis.
+            </div>
+          )}
+        </div>
+
+        {/* Quick actions */}
+        <div className="card card-surface card-p">
+          <div style={{ marginBottom: 14 }}>
+            <span className="section-title">Actions rapides</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <ActionBtn
+              label="Analyse rapide Defender"
+              sub="Lance une analyse des zones critiques"
+              icon={<Shield size={15} />}
+              color="var(--green)"
+              bg="rgba(16,217,160,0.10)"
+              onClick={() => onTabChange('security')}
+            />
+            <ActionBtn
+              label="Optimiser les performances"
+              sub="Libérer la RAM et gérer les démarrages"
+              icon={<Zap size={15} />}
+              color="var(--violet)"
+              bg="rgba(139,92,246,0.10)"
+              onClick={() => onTabChange('performance')}
+            />
+            <ActionBtn
+              label="Test de débit réseau"
+              sub="Mesurer la vitesse de connexion"
+              icon={<Wifi size={15} />}
+              color="var(--cyan)"
+              bg="rgba(0,212,255,0.08)"
+              onClick={() => onTabChange('network')}
+            />
+            <ActionBtn
+              label="Mode Gaming"
+              sub={gamingActive ? 'Session gaming active' : 'Activation manuelle uniquement'}
+              icon={<Gamepad2 size={15} />}
+              color={gamingActive ? 'var(--cyan)' : 'var(--text-muted)'}
+              bg={gamingActive ? 'rgba(0,212,255,0.08)' : 'rgba(255,255,255,0.04)'}
+              onClick={() => onTabChange('gaming')}
+            />
+          </div>
         </div>
       </div>
+
+      {/* ── Status overview strip ── */}
+      <div className="card card-p" style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'center' }}>
+        <ModuleStatus label="Scanner téléchargements" active={true} />
+        <ModuleStatus label="Watchdog réseau" active={true} />
+        <ModuleStatus label="VPN" active={false} neutral />
+        <ModuleStatus label={`Mode gaming${gamingActive ? ' · ' + (currentGame || 'Jeu') : ''}`} active={gamingActive} neutral={!gamingActive} />
+        <div style={{ marginLeft: 'auto' }}>
+          <button className="btn btn-ghost btn-sm" onClick={handleRefresh}>
+            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+            Actualiser
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatusRow({ label, ok, value }: { label: string; ok: boolean; value: string }) {
+  return (
+    <div className="data-row" style={{ padding: '6px 0' }}>
+      <span className="data-row-label">{label}</span>
+      <span className={`badge ${ok ? 'badge-green' : 'badge-red'}`} style={{ fontSize: 11 }}>
+        {ok ? <CheckCircle size={10} /> : <AlertTriangle size={10} />} {value}
+      </span>
+    </div>
+  );
+}
+
+function ActionBtn({ label, sub, icon, color, bg, onClick }: {
+  label: string; sub: string; icon: React.ReactNode;
+  color: string; bg: string; onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px',
+        borderRadius: 'var(--radius-md)', border: '1px solid var(--border)',
+        background: 'transparent', textAlign: 'left', transition: 'background var(--transition)',
+        width: '100%',
+      }}
+      onMouseEnter={e => (e.currentTarget.style.background = bg)}
+      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+    >
+      <div style={{ color, flexShrink: 0 }}>{icon}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{label}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{sub}</div>
+      </div>
+      <ArrowUpRight size={13} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
+    </button>
+  );
+}
+
+function ModuleStatus({ label, active, neutral }: { label: string; active: boolean; neutral?: boolean }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+      <span style={{
+        width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+        background: neutral ? 'var(--text-faint)' : active ? 'var(--green)' : 'var(--red)',
+        boxShadow: active && !neutral ? 'var(--glow-green)' : 'none',
+      }} />
+      <span style={{ fontSize: 12, color: neutral ? 'var(--text-muted)' : active ? 'var(--text-secondary)' : 'var(--red)' }}>
+        {label}
+      </span>
     </div>
   );
 }

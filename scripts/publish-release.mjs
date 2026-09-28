@@ -30,10 +30,16 @@ if (!TOKEN) {
   console.error('Error: GITHUB_TOKEN ou GH_TOKEN est requis via variable d\'environnement ou fichier local .env');
   process.exit(1);
 }
+
 const OWNER = 'urnova';
 const REPO = 'Astral-Security-Guard-vpn';
-const TAG = 'v2.2.0';
-const RELEASE_NAME = 'Astral Vanguard v2.2.0 - Refonte Complète & Scanner Temps Réel';
+
+// Read dynamic package version
+const pkgPath = path.join(rootDir, 'astral-desktop', 'package.json');
+const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+const VERSION = pkg.version;
+const TAG = `v${VERSION}`;
+const RELEASE_NAME = `Astral Vanguard v${VERSION} - Refonte Intégrale Design System & Packaging`;
 
 function httpsRequest(urlStr, options = {}, bodyBufferOrStream = null) {
   return new Promise((resolve, reject) => {
@@ -88,11 +94,12 @@ function httpsRequest(urlStr, options = {}, bodyBufferOrStream = null) {
 function getReleaseNotes() {
   const changelogPath = path.join(rootDir, 'CHANGELOG.md');
   const content = fs.readFileSync(changelogPath, 'utf8');
-  const match = content.match(/## \[2\.2\.0\][^\n]*\n([\s\S]*?)(?=\n## \[|$)/);
+  const regex = new RegExp(`## \\[${VERSION.replace(/\./g, '\\.')}\\][^\\n]*\\n([\\s\\S]*?)(?=\\n## \\[|$)`);
+  const match = content.match(regex);
   if (match && match[1]) {
-    return `## 🚀 Astral Vanguard v2.2.0\n\n${match[1].trim()}\n\n---\n*Compilé et certifié par Astral Security.*`;
+    return `## 🚀 Astral Vanguard v${VERSION}\n\n${match[1].trim()}\n\n---\n*Compilé et certifié par Astral Security.*`;
   }
-  return 'Release v2.2.0 - Astral Vanguard Complete Overhaul';
+  return `Release v${VERSION} - Astral Vanguard Complete Overhaul`;
 }
 
 async function uploadAsset(uploadUrlTemplate, fileName, filePath) {
@@ -143,24 +150,29 @@ async function main() {
 
   // 2. Prepare files to upload from dist-electron/release
   const releaseDir = path.join(rootDir, 'astral-desktop', 'dist-electron', 'release');
-  const installerExe = path.join(releaseDir, 'Astral Vanguard Setup 2.2.0.exe');
-  const blockmapFile = path.join(releaseDir, 'Astral Vanguard Setup 2.2.0.exe.blockmap');
+  const installerExeSpaced = path.join(releaseDir, `Astral Vanguard Setup ${VERSION}.exe`);
+  const installerExeHyphen = path.join(releaseDir, `Astral-Vanguard-Setup-${VERSION}.exe`);
+  const blockmapFileSpaced = path.join(releaseDir, `Astral Vanguard Setup ${VERSION}.exe.blockmap`);
+  const blockmapFileHyphen = path.join(releaseDir, `Astral-Vanguard-Setup-${VERSION}.exe.blockmap`);
   const latestYml = path.join(releaseDir, 'latest.yml');
 
-  if (!fs.existsSync(installerExe)) {
-    throw new Error(`Installer not found at: ${installerExe}`);
+  if (!fs.existsSync(installerExeSpaced) && !fs.existsSync(installerExeHyphen)) {
+    throw new Error(`Installer not found at: ${installerExeSpaced}`);
   }
   if (!fs.existsSync(latestYml)) {
     throw new Error(`latest.yml not found at: ${latestYml}`);
   }
 
+  const actualExe = fs.existsSync(installerExeHyphen) ? installerExeHyphen : installerExeSpaced;
+  const actualBlockmap = fs.existsSync(blockmapFileHyphen) ? blockmapFileHyphen : blockmapFileSpaced;
+
   // Assets to ensure both electron-updater and direct manual downloads resolve seamlessly:
   const assetsToUpload = [
     { name: 'latest.yml', path: latestYml },
-    { name: 'Astral-Vanguard-Setup-2.2.0.exe', path: installerExe },
-    { name: 'Astral Vanguard Setup 2.2.0.exe', path: installerExe },
-    { name: 'Astral-Vanguard-Setup-2.2.0.exe.blockmap', path: blockmapFile },
-    { name: 'Astral Vanguard Setup 2.2.0.exe.blockmap', path: blockmapFile }
+    { name: `Astral-Vanguard-Setup-${VERSION}.exe`, path: actualExe },
+    { name: `Astral Vanguard Setup ${VERSION}.exe`, path: actualExe },
+    { name: `Astral-Vanguard-Setup-${VERSION}.exe.blockmap`, path: actualBlockmap },
+    { name: `Astral Vanguard Setup ${VERSION}.exe.blockmap`, path: actualBlockmap }
   ];
 
   // 3. Upload missing or outdated assets
@@ -171,7 +183,7 @@ async function main() {
 
     if (existing) {
       if (existing.size === expectedSize) {
-        console.log(`[Release] Asset "${asset.name}" already present as "${existing.name}" with identical size (${existing.size} bytes). Skipping.`);
+        console.log(`[Release] Asset "${asset.name}" already present with identical size (${existing.size} bytes). Skipping.`);
         continue;
       } else {
         console.log(`[Release] Asset "${asset.name}" size mismatch (${existing.size} vs ${expectedSize}). Deleting old asset...`);
@@ -192,10 +204,10 @@ async function main() {
 
   const expectedRequirements = [
     { label: 'latest.yml', names: ['latest.yml'] },
-    { label: 'Astral-Vanguard-Setup-2.2.0.exe (Auto-Updater)', names: ['Astral-Vanguard-Setup-2.2.0.exe'] },
-    { label: 'Astral Vanguard Setup 2.2.0.exe (Manual download)', names: ['Astral Vanguard Setup 2.2.0.exe', 'Astral.Vanguard.Setup.2.2.0.exe'] },
-    { label: 'Astral-Vanguard-Setup-2.2.0.exe.blockmap', names: ['Astral-Vanguard-Setup-2.2.0.exe.blockmap'] },
-    { label: 'Astral Vanguard Setup 2.2.0.exe.blockmap', names: ['Astral Vanguard Setup 2.2.0.exe.blockmap', 'Astral.Vanguard.Setup.2.2.0.exe.blockmap'] }
+    { label: `Astral-Vanguard-Setup-${VERSION}.exe (Auto-Updater)`, names: [`Astral-Vanguard-Setup-${VERSION}.exe`] },
+    { label: `Astral Vanguard Setup ${VERSION}.exe (Manual download)`, names: [`Astral Vanguard Setup ${VERSION}.exe`, `Astral.Vanguard.Setup.${VERSION}.exe`] },
+    { label: `Astral-Vanguard-Setup-${VERSION}.exe.blockmap`, names: [`Astral-Vanguard-Setup-${VERSION}.exe.blockmap`] },
+    { label: `Astral Vanguard Setup ${VERSION}.exe.blockmap`, names: [`Astral Vanguard Setup ${VERSION}.exe.blockmap`, `Astral.Vanguard.Setup.${VERSION}.exe.blockmap`] }
   ];
 
   for (const req of expectedRequirements) {
@@ -226,12 +238,12 @@ async function main() {
   console.log(`[Verification] Latest release resolved: tag=${latestEndpoint.tag_name}, draft=${latestEndpoint.draft}`);
 
   const latestYmlAsset = latestEndpoint.assets.find(a => a.name === 'latest.yml');
-  const exeHyphenAsset = latestEndpoint.assets.find(a => a.name === 'Astral-Vanguard-Setup-2.2.0.exe');
-  const exeSpaceAsset = latestEndpoint.assets.find(a => a.name === 'Astral Vanguard Setup 2.2.0.exe');
+  const exeHyphenAsset = latestEndpoint.assets.find(a => a.name === `Astral-Vanguard-Setup-${VERSION}.exe`);
+  const exeSpaceAsset = latestEndpoint.assets.find(a => a.name === `Astral Vanguard Setup ${VERSION}.exe`);
 
   console.log(`- latest.yml: ${latestYmlAsset ? `FOUND (${latestYmlAsset.browser_download_url})` : 'MISSING'}`);
-  console.log(`- Astral-Vanguard-Setup-2.2.0.exe: ${exeHyphenAsset ? `FOUND (${exeHyphenAsset.browser_download_url})` : 'MISSING'}`);
-  console.log(`- Astral Vanguard Setup 2.2.0.exe: ${exeSpaceAsset ? `FOUND (${exeSpaceAsset.browser_download_url})` : 'MISSING'}`);
+  console.log(`- Astral-Vanguard-Setup-${VERSION}.exe: ${exeHyphenAsset ? `FOUND (${exeHyphenAsset.browser_download_url})` : 'MISSING'}`);
+  console.log(`- Astral Vanguard Setup ${VERSION}.exe: ${exeSpaceAsset ? `FOUND (${exeSpaceAsset.browser_download_url})` : 'MISSING'}`);
 }
 
 main().catch(err => {

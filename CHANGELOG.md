@@ -10,6 +10,37 @@ Ce journal consigne de manière chronologique et détaillée toutes les modifica
 * **`framer-motion-ui` & `opera-gx-aesthetic`** : Conception de l'interface en mode sombre profond, accents néon adaptatifs, micro-interactions, skeleton loaders et compteurs animés fluides.
 * **`native-audio-synth`** : Moteur sonore Web Audio API synthétisant des carillons discrets pour chaque type d'alerte sans dépendance de fichiers audio externes.
 
+## [2.3.0] - Refonte Intégrale Design System & Packaging Officiel (2026-09-28)
+
+### 🎨 Refonte Visuelle Gaming & Design System
+- **Nouvelle identité Vanguard** : logo vectoriel haute fidélité (SVG/PNG/ICO multi-résolutions 16 à 256px) avec variantes dédiées pour l'application, l'installateur NSIS et le désinstallateur.
+- **Polices locales haute performance** : polices embarquées (`@fontsource/inter`, `@fontsource/space-grotesk`, `@fontsource/jetbrains-mono`) garantissant un fonctionnement 100% autonome sans réseau.
+- **Splash Screen intégré** : suppression de la fenêtre popup séparée et du délai artificiel de 2.5s au profit d'une transition intégrée fluide basée sur l'initialisation réelle du sous-système.
+- **Design System Cyber Gaming** : fond sombre profond (#07090e), cartes de navigation claires, badges d'état précis, aucun contrôle HTML brut.
+- **Compatibilité DPI Windows** : interface réactive testée et soignée à 100%, 125% et 150% d'échelle Windows.
+
+### 🛡️ Sécurité & Microsoft Defender
+- **Supervision native Defender** : scans rapide, complet et personnalisé par sélection de dossier.
+- **Transparence UAC** : indication claire et bannière d'alerte pour les fonctions exigeant les privilèges Administrateur (exclusions Defender, signatures).
+- **Scanner de téléchargement** : état d'analyse vérifié ("Aucune menace détectée (Defender)") sans déclaration abusive de certification à 100%.
+- **Intégrité système** : maintien de la neutralisation des actions invasives (aucun arrêt des services Windows de base, aucun reset réseau intempestif).
+
+### ⚡ Performance & Gaming
+- **Profil Utilisateur persistant** : prénom et nom sauvegardés localement avec mise à jour immédiate de la salutation personnalisée sur le tableau de bord.
+- **Mode Gaming explicite** : activation manuelle mise en avant ; détection automatique désactivée par défaut pour éliminer les faux positifs.
+- **Exclusion stricte des navigateurs** : Edge, Chrome, Firefox, Perplexity, navigateurs Web et IDEs ne peuvent plus déclencher le mode Gaming.
+- **Overlay HUD léger** : affichage temps réel repositionnable avec hotkey `Ctrl+Shift+O`, sans fausses données de démonstration.
+
+### 🌐 Réseau & Anti-Bufferbloat
+- **Mesure transparente** : latence précisément étiquetée "Latence TCP (Serveur test)" pour ne pas être confondue avec le ping in-game.
+- **Sélecteur DNS & Diagnostic Wi-Fi** : bascule 1-clic Cloudflare / Google / Auto DHCP et analyse des adaptateurs réseau.
+- **Protection de la navigation** : aucune modification persistante du registre TCP n'entrave la navigation web quotidienne.
+
+### 📦 Notifications, Modales & Packaging
+- **Notifications natives Windows** : réception des alertes système y compris lorsque Vanguard est minimisé dans le Systray.
+- **Modale de mise à jour dynamique** : branchée sur `electron-updater` avec progression réelle en Mo, gestion des échecs et report automatique si un jeu est en cours.
+- **Installateur NSIS v2.3.0** : packaging Windows 64-bit avec élévation automatique et métadonnées d'auto-update `latest.yml`.
+
 ---
 
 ## [2.2.0] - Refonte Définitive (2026-09-28)

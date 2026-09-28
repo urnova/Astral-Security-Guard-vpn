@@ -9,7 +9,7 @@ type AiState = 'idle' | 'loading' | 'done';
 
 export default function SecurityTab() {
   const [scanState, setScanState] = useState<ScanState>('idle');
-  const [scanType, setScanType] = useState<'quick' | 'full'>('quick');
+  const [scanType, setScanType] = useState<'quick' | 'full' | 'custom'>('quick');
   const [threats, setThreats] = useState<any[]>([]);
   const [aiAnalysis, setAiAnalysis] = useState<any>(null);
   const [aiState, setAiState] = useState<AiState>('idle');
@@ -224,10 +224,21 @@ export default function SecurityTab() {
           >
             <option value="quick">Analyse Rapide (QuickScan)</option>
             <option value="full">Analyse Complète (FullScan)</option>
+            <option value="custom">Analyse Personnalisée (Dossier)</option>
           </select>
 
           <button
-            onClick={startScan}
+            onClick={async () => {
+              if (scanType === 'custom') {
+                const folderRes = await api?.selectScannerFolder?.();
+                if (folderRes?.success && folderRes.folderPath) {
+                  setNotice(`Analyse personnalisée lancée sur : ${folderRes.folderPath}`);
+                  startScan();
+                }
+              } else {
+                startScan();
+              }
+            }}
             disabled={scanState === 'scanning'}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold shadow-lg transition-all ${
               scanState === 'scanning'

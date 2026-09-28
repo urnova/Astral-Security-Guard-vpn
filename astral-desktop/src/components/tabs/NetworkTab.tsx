@@ -248,11 +248,12 @@ export default function NetworkTab({ gamingActive: _gamingActive }: Props) {
             </div>
 
             <div className="p-4 rounded-xl bg-black/40 border border-white/5">
-              <span className="text-xs text-zinc-400 font-medium">Latence (Ping)</span>
+              <span className="text-xs text-zinc-400 font-medium">Latence TCP (Serveur test)</span>
               <p className={`text-2xl font-black mt-1 ${speedResult.pingMs < 25 ? 'text-emerald-400' : speedResult.pingMs < 60 ? 'text-cyan-400' : 'text-amber-400'}`}>
                 {speedResult.pingMs}
                 <span className="text-xs text-zinc-400 font-normal ml-1">ms</span>
               </p>
+              <span className="text-[10px] text-zinc-500 block mt-0.5">Vers CDN Cloudflare (pas le ping en jeu)</span>
             </div>
 
             <div className="p-4 rounded-xl bg-black/40 border border-white/5">

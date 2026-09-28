@@ -45,36 +45,17 @@ export async function executeSosPing(): Promise<{
     logger.warn('Avertissement snapshot pré-SOS Ping:', err.message);
   }
 
-  // 3. Execute network stack repair script via Base64 UTF-16LE
+  // 3. Safe-only DNS flush — NO registry changes, NO netsh resets.
+  // SAFETY NOTE: netsh ip reset, netsh winsock reset, TcpAckFrequency, TCPNoDelay,
+  // and DODownloadMode changes have been removed from this automatic path.
+  // They require explicit user opt-in from Settings > Advanced Network Options.
   const repairScript = `
-    # 1. Vider le cache DNS
+    # 1. Vider le cache DNS (non-destructif)
     Clear-DnsClientCache
     ipconfig /flushdns | Out-Null
 
-    # 2. Vider la table ARP
+    # 2. Vider la table ARP (non-destructif)
     arp -d * 2>$null
-
-    # 3. Désactiver le partage P2P de Windows Update (cause majeure du pic 1000ms)
-    $wudoPath = "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\DeliveryOptimization\\Config"
-    if (-not (Test-Path $wudoPath)) {
-      New-Item -Path $wudoPath -Force | Out-Null
-    }
-    Set-ItemProperty -Path $wudoPath -Name "DODownloadMode" -Value 0 -ErrorAction SilentlyContinue
-
-    # 4. Optimisation TCP Gaming (Désactivation de l'algorithme de Nagle)
-    $adapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' }
-    foreach ($adapter in $adapters) {
-      $guid = $adapter.InterfaceGuid
-      $regPath = "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\$guid"
-      if (Test-Path $regPath) {
-        Set-ItemProperty -Path $regPath -Name "TcpAckFrequency" -Value 1 -ErrorAction SilentlyContinue
-        Set-ItemProperty -Path $regPath -Name "TCPNoDelay" -Value 1 -ErrorAction SilentlyContinue
-      }
-    }
-
-    # 5. Réinitialisation des sockets réseau
-    netsh int ip reset 2>$null | Out-Null
-    netsh winsock reset 2>$null | Out-Null
 
     [PSCustomObject]@{
       repaired = $true
@@ -183,21 +164,19 @@ export function setupDoctorIPC(win: BrowserWindow) {
 
     try {
       if (mode === 'gaming') {
-        // Stop background telemetry & updates temporarily for minimum latency
-        await runPowerShell(`
-          Stop-Service -Name 'wuauserv' -ErrorAction SilentlyContinue
-          Stop-Service -Name 'DiagTrack' -ErrorAction SilentlyContinue
-        `);
+        // SAFETY: wuauserv and DiagTrack are NO LONGER stopped in gaming mode.
+        // Stopping wuauserv breaks Defender signature updates, Edge background services,
+        // and Microsoft Store. This optimization is removed until a safe alternative
+        // with measurable benefit and full reversibility can be demonstrated.
+        logger.info('[Mode Gaming] Mode UI-only activé. Aucun service système modifié.');
       } else if (mode === 'shield') {
         // Enforce Defender real-time monitoring
         await runPowerShell(`
           Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction SilentlyContinue
         `);
       } else if (mode === 'office') {
-        // Restore standard background services
-        await runPowerShell(`
-          Start-Service -Name 'wuauserv' -ErrorAction SilentlyContinue
-        `);
+        // No-op: wuauserv is no longer stopped, so no need to restart it here
+        logger.info('[Mode Office] Aucune modification de service requise.');
       }
     } catch (e) {
       logger.warn('Avertissement lors de l\'application du mode système', e);

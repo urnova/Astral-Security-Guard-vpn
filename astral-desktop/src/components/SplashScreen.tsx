@@ -1,62 +1,180 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { ShieldCheck, Cpu, Wifi, Activity } from 'lucide-react';
 
-export default function SplashScreen() {
-  const [progress, setProgress] = useState(0);
-  const [status, setStatus] = useState('Initialisation...');
+interface SplashScreenProps {
+  onFinish?: () => void;
+}
 
-  const steps = [
-    { pct: 20, label: 'Chargement des modules...' },
-    { pct: 45, label: 'Connexion aux services...' },
-    { pct: 65, label: 'Vérification de la sécurité...' },
-    { pct: 85, label: 'Prêt au démarrage...' },
-    { pct: 100, label: 'Bienvenue dans Astral Vanguard' },
-  ];
+export default function SplashScreen({ onFinish }: SplashScreenProps) {
+  const [progress, setProgress] = useState(15);
+  const [status, setStatus] = useState('Démarrage du moteur Vanguard...');
+  const [fading, setFading] = useState(false);
 
   useEffect(() => {
-    let i = 0;
-    const run = () => {
-      if (i >= steps.length) return;
-      setProgress(steps[i].pct);
-      setStatus(steps[i].label);
-      i++;
-      setTimeout(run, i === steps.length ? 400 : 480);
+    const api = (window as any).vanguard;
+    let isMounted = true;
+
+    async function initialize() {
+      try {
+        // Step 1: Check IPC Bridge
+        if (!isMounted) return;
+        setProgress(35);
+        setStatus('Connexion aux sous-systèmes Windows...');
+
+        // Step 2: Fetch profile & admin status in parallel
+        if (api) {
+          await Promise.allSettled([
+            api.getProfile?.(),
+            api.getAdminStatus?.(),
+            api.getSettings?.(),
+          ]);
+        }
+
+        if (!isMounted) return;
+        setProgress(70);
+        setStatus('Initialisation de la télémétrie & Defender...');
+
+        // Step 3: Fetch initial metrics / security status
+        if (api) {
+          await Promise.allSettled([
+            api.getSecurityStatus?.(),
+            api.getMetrics?.(),
+          ]);
+        }
+
+        if (!isMounted) return;
+        setProgress(100);
+        setStatus('Système prêt · Chargement de l’interface');
+
+        // Smooth transition out
+        setTimeout(() => {
+          if (!isMounted) return;
+          setFading(true);
+          setTimeout(() => {
+            if (isMounted) onFinish?.();
+          }, 350);
+        }, 250);
+      } catch (e) {
+        // Even if some check fails, don't block user
+        if (!isMounted) return;
+        setProgress(100);
+        setStatus('Prêt avec connectivité partielle');
+        setTimeout(() => {
+          if (isMounted) {
+            setFading(true);
+            setTimeout(() => onFinish?.(), 300);
+          }
+        }, 300);
+      }
+    }
+
+    initialize();
+
+    return () => {
+      isMounted = false;
     };
-    setTimeout(run, 300);
-  }, []);
+  }, [onFinish]);
 
   return (
-    <div className="splash-root">
-      <div className="splash-bg" />
-      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>
-        <img
-          src="/logo.png"
-          alt="Astral Vanguard"
-          className="splash-logo"
-          onError={(e) => {
-            // Fallback SVG icon if image not found
-            (e.target as HTMLImageElement).style.display = 'none';
-          }}
-        />
-        {/* SVG fallback logo */}
-        <svg width="80" height="80" viewBox="0 0 80 80" fill="none" className="splash-logo" style={{ position: 'absolute' }}>
-          <defs>
-            <linearGradient id="lg1" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#00d4ff"/>
-              <stop offset="100%" stopColor="#8b5cf6"/>
-            </linearGradient>
-          </defs>
-          <path d="M40 6 L70 22 L70 54 L40 74 L10 54 L10 22 Z" stroke="url(#lg1)" strokeWidth="2" fill="none" opacity="0.6"/>
-          <path d="M40 18 L60 28 L60 52 L40 64 L20 52 L20 28 Z" stroke="url(#lg1)" strokeWidth="1.5" fill="none" opacity="0.4"/>
-          <path d="M30 38 L40 22 L50 38 L43 38 L43 58 L37 58 L37 38 Z" fill="url(#lg1)" opacity="0.9"/>
-        </svg>
-
-        <div className="splash-title">ASTRAL VANGUARD</div>
-        <div className="splash-sub">by Astral Security · v1.0.0</div>
-        <div className="splash-progress">
-          <div className="splash-progress-fill" style={{ width: `${progress}%` }} />
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 99999,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#07090e',
+        backgroundImage: 'radial-gradient(ellipse at 50% 30%, rgba(139, 92, 246, 0.12), transparent 70%)',
+        opacity: fading ? 0 : 1,
+        transition: 'opacity 0.35s ease-out',
+        pointerEvents: fading ? 'none' : 'auto',
+      }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, maxWidth: 420, width: '90%' }}>
+        {/* Vanguard Brand Logo */}
+        <div style={{ position: 'relative', width: 96, height: 96 }}>
+          <img
+            src="/images/vanguard-logo.svg"
+            alt="Astral Vanguard Logo"
+            style={{
+              width: '100%',
+              height: '100%',
+              filter: 'drop-shadow(0 0 24px rgba(6, 182, 212, 0.45)) drop-shadow(0 0 40px rgba(139, 92, 246, 0.3))',
+            }}
+            onError={(e) => {
+              // fallback to logo.png
+              (e.target as HTMLImageElement).src = '/logo.png';
+            }}
+          />
         </div>
-        <div style={{ fontSize: 11, color: 'rgba(160,160,200,0.5)', letterSpacing: '0.05em', height: 16 }}>
-          {status}
+
+        {/* Title & Brand */}
+        <div style={{ textAlign: 'center' }}>
+          <div
+            style={{
+              fontFamily: "'Space Grotesk', system-ui, sans-serif",
+              fontSize: 22,
+              fontWeight: 800,
+              letterSpacing: '0.15em',
+              background: 'linear-gradient(135deg, #ffffff 40%, #c084fc 80%, #38bdf8 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              textTransform: 'uppercase',
+            }}
+          >
+            ASTRAL VANGUARD
+          </div>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 500,
+              color: 'rgba(148, 163, 184, 0.8)',
+              marginTop: 4,
+              letterSpacing: '0.04em',
+            }}
+          >
+            Protection & Performance Suite · <span style={{ color: '#a78bfa', fontFamily: 'monospace' }}>v2.3.0</span>
+          </div>
+        </div>
+
+        {/* Real Progress Bar */}
+        <div style={{ width: '100%', marginTop: 8 }}>
+          <div
+            style={{
+              height: 4,
+              width: '100%',
+              backgroundColor: 'rgba(255, 255, 255, 0.08)',
+              borderRadius: 9999,
+              overflow: 'hidden',
+              position: 'relative',
+            }}
+          >
+            <div
+              style={{
+                height: '100%',
+                width: `${progress}%`,
+                background: 'linear-gradient(90deg, #06b6d4, #8b5cf6)',
+                borderRadius: 9999,
+                transition: 'width 0.3s ease-in-out',
+                boxShadow: '0 0 12px rgba(6, 182, 212, 0.6)',
+              }}
+            />
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginTop: 10,
+              fontSize: 11,
+              color: 'rgba(148, 163, 184, 0.75)',
+            }}
+          >
+            <span>{status}</span>
+            <span style={{ fontFamily: 'monospace', color: '#38bdf8' }}>{progress}%</span>
+          </div>
         </div>
       </div>
     </div>

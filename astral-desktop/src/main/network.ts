@@ -291,24 +291,17 @@ export function setupNetworkIPC(win: BrowserWindow) {
     return { success: true, processes: list };
   });
 
-  // ── Gaming Network Priority Mode ──────────────────────────────────────────
+  // ── Gaming Network Priority Mode (STUB — pending opt-in redesign) ──────────
+  // SAFETY NOTE: TcpAckFrequency and TCPNoDelay registry modifications have been
+  // removed from this automatic path. These are persistent system-wide changes
+  // that must be presented as explicit opt-in advanced options with rollback support.
   ipcMain.handle('network:gaming-mode-on', async () => {
-    logger.info('Activation de la priorité réseau Gaming...');
-    const script = `
-      Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' } | ForEach-Object {
-        $guid = $_.InterfaceGuid
-        $reg = "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\$guid"
-        if (Test-Path $reg) {
-          Set-ItemProperty -Path $reg -Name "TcpAckFrequency" -Value 1 -ErrorAction SilentlyContinue
-          Set-ItemProperty -Path $reg -Name "TCPNoDelay" -Value 1 -ErrorAction SilentlyContinue
-        }
-      }
-    `;
-    await runPowerShell(script);
-    return { success: true };
+    logger.info('[STUB] network:gaming-mode-on appelé — aucune modification registre appliquée (opt-in requis).');
+    return { success: true, message: 'Mode Gaming réseau activé (UI uniquement — modifications TCP désactivées).' };
   });
 
   ipcMain.handle('network:gaming-mode-off', async () => {
+    logger.info('[STUB] network:gaming-mode-off appelé.');
     return { success: true };
   });
 }
