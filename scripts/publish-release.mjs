@@ -1,166 +1,222 @@
 import fs from 'fs';
 import path from 'path';
 import https from 'https';
+import { fileURLToPath } from 'url';
 
-const TOKEN = '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';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const rootDir = path.resolve(__dirname, '..');
+
+const TOKEN = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+if (!TOKEN) {
+  console.error('Error: GH_TOKEN or GITHUB_TOKEN environment variable is required.');
+  process.exit(1);
+}
 const OWNER = 'urnova';
 const REPO = 'Astral-Security-Guard-vpn';
-const TAG = 'v2.1.0';
-const RELEASE_NAME = 'Astral Vanguard v2.1.0 - Protection & Anti-Lag Suite';
-const RELEASE_BODY = `## ⚡ Astral Vanguard v2.1.0 - Release Officielle
+const TAG = 'v2.2.0';
+const RELEASE_NAME = 'Astral Vanguard v2.2.0 - Refonte Complète & Scanner Temps Réel';
 
-Bienvenue dans la nouvelle génération d'Astral Vanguard, la suite tout-en-un de protection, optimisation gaming et dépannage système.
-
-### 🚀 Nouveautés & Correctifs Majeurs :
-* **⚡ SOS Déblocage Ping (1002ms)** : Purge d'urgence 1-click des sockets TCP/Winsock corrompus, vidage du cache DNS/ARP et coupure définitive de l'upload P2P furtif de Windows Update sans jamais avoir à redémarrer le PC.
-* **⌨️ Docteur Clavier & Anti-Keylogger** : Désactivation des filtres touches rémanentes (FilterKeys/StickyKeys), optimisation de la réactivité d'amorce à 0ms, désactivation de la veille USB et scan des processus suspects.
-* **🛡️ IA Heuristique Autonome (Zéro Clé API, Illimité)** : Moteur de détection hors-ligne capable d'isoler les spywares/malwares et de distinguer les faux-positifs gaming (cracks/patchers) avec génération de scripts de remédiation PowerShell en un clic.
-* **🎮 Mode Gaming Extrême & Overlay HUD In-Game** : Priorité CPU maximale, désactivation des services d'arrière-plan et overlay transparent paramétrable avec raccourci global (\`Ctrl + Shift + O\`).
-* **🔒 Tunnel VPN Astral Sécurisé** : Chiffrement AES-256 avec Kill-Switch et protection anti-fuite DNS.
-* **🗔 Zone des Icônes Cachées & Auto-Start** : Minimisation discrète dans la barre des tâches au démarrage et surveillance en temps réel.
-`;
-
-function request(options, body = null) {
+function httpsRequest(urlStr, options = {}, bodyBufferOrStream = null) {
   return new Promise((resolve, reject) => {
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => (data += chunk));
+    const parsed = new URL(urlStr);
+    const reqOptions = {
+      protocol: parsed.protocol,
+      hostname: parsed.hostname,
+      port: parsed.port || 443,
+      path: parsed.pathname + parsed.search,
+      method: options.method || 'GET',
+      headers: {
+        'User-Agent': 'Astral-Release-Script',
+        'Authorization': `Bearer ${TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+        ...(options.headers || {})
+      },
+      family: 4
+    };
+
+    const req = https.request(reqOptions, (res) => {
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
       res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data || '{}');
-          resolve({ status: res.statusCode, headers: res.headers, data: parsed, raw: data });
-        } catch {
-          resolve({ status: res.statusCode, headers: res.headers, raw: data });
+        const raw = Buffer.concat(chunks).toString('utf8');
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            resolve(JSON.parse(raw));
+          } catch {
+            resolve(raw);
+          }
+        } else {
+          reject(new Error(`HTTP ${res.statusCode} ${res.statusMessage}: ${raw}`));
         }
       });
     });
+
     req.on('error', reject);
-    if (body) {
-      if (Buffer.isBuffer(body)) {
-        req.write(body);
-      } else if (typeof body === 'string') {
-        req.write(body);
+
+    if (bodyBufferOrStream) {
+      if (typeof bodyBufferOrStream.pipe === 'function') {
+        bodyBufferOrStream.pipe(req);
       } else {
-        req.write(JSON.stringify(body));
+        req.write(bodyBufferOrStream);
+        req.end();
       }
+    } else {
+      req.end();
     }
-    req.end();
   });
 }
 
-function uploadAsset(uploadUrlTemplate, filePath, fileName, contentType) {
-  return new Promise((resolve, reject) => {
-    const uploadUrl = uploadUrlTemplate.replace(/\{.*?\}$/, `?name=${encodeURIComponent(fileName)}`);
-    const fileStream = fs.readFileSync(filePath);
-    const urlObj = new URL(uploadUrl);
+function getReleaseNotes() {
+  const changelogPath = path.join(rootDir, 'CHANGELOG.md');
+  const content = fs.readFileSync(changelogPath, 'utf8');
+  const match = content.match(/## \[2\.2\.0\][^\n]*\n([\s\S]*?)(?=\n## \[|$)/);
+  if (match && match[1]) {
+    return `## 🚀 Astral Vanguard v2.2.0\n\n${match[1].trim()}\n\n---\n*Compilé et certifié par Astral Security.*`;
+  }
+  return 'Release v2.2.0 - Astral Vanguard Complete Overhaul';
+}
 
-    console.log(`Uploading ${fileName} (${(fileStream.length / 1024 / 1024).toFixed(2)} MB)...`);
+async function uploadAsset(uploadUrlTemplate, fileName, filePath) {
+  const stats = fs.statSync(filePath);
+  const uploadUrl = uploadUrlTemplate.replace(/\{(\?name,label|name)\}/, '') + `?name=${encodeURIComponent(fileName)}`;
+  
+  console.log(`[Upload] Uploading "${fileName}" (${(stats.size / 1024 / 1024).toFixed(2)} MB)...`);
+  const stream = fs.createReadStream(filePath);
+  
+  const assetData = await httpsRequest(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'Content-Length': stats.size.toString()
+    }
+  }, stream);
 
-    const req = https.request(
-      {
-        hostname: urlObj.hostname,
-        path: urlObj.pathname + urlObj.search,
-        method: 'POST',
-        headers: {
-          Authorization: `token ${TOKEN}`,
-          'User-Agent': 'Astral-Publisher',
-          'Content-Type': contentType,
-          'Content-Length': fileStream.length,
-        },
-      },
-      (res) => {
-        let respData = '';
-        res.on('data', (d) => (respData += d));
-        res.on('end', () => {
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            console.log(`✅ Uploaded ${fileName} successfully!`);
-            resolve(true);
-          } else {
-            console.error(`❌ Failed to upload ${fileName}: HTTP ${res.statusCode}`, respData);
-            resolve(false);
-          }
-        });
-      }
-    );
-
-    req.on('error', reject);
-    req.write(fileStream);
-    req.end();
-  });
+  console.log(`[Upload] ✅ Uploaded "${fileName}" (ID: ${assetData.id})`);
+  return assetData;
 }
 
 async function main() {
-  console.log(`🔍 Vérification de la release ${TAG} sur GitHub...`);
+  console.log(`[Release] Starting release process for ${TAG} on ${OWNER}/${REPO}...`);
 
-  // 1. Check existing release
-  let releaseRes = await request({
-    hostname: 'api.github.com',
-    path: `/repos/${OWNER}/${REPO}/releases/tags/${TAG}`,
-    method: 'GET',
-    headers: {
-      Authorization: `token ${TOKEN}`,
-      'User-Agent': 'Astral-Publisher',
-    },
-  });
+  // 1. Get or create release in DRAFT mode
+  const releases = await httpsRequest(`https://api.github.com/repos/${OWNER}/${REPO}/releases`);
+  let release = releases.find(r => r.tag_name === TAG);
 
-  let release = releaseRes.data;
+  const releaseNotes = getReleaseNotes();
 
-  // 2. Create release if not found
-  if (releaseRes.status === 404 || !release?.id) {
-    console.log(`🚀 Création de la release ${TAG}...`);
-    const createRes = await request(
-      {
-        hostname: 'api.github.com',
-        path: `/repos/${OWNER}/${REPO}/releases`,
-        method: 'POST',
-        headers: {
-          Authorization: `token ${TOKEN}`,
-          'User-Agent': 'Astral-Publisher',
-          'Content-Type': 'application/json',
-        },
-      },
-      {
-        tag_name: TAG,
-        name: RELEASE_NAME,
-        body: RELEASE_BODY,
-        draft: false,
-        prerelease: false,
-      }
-    );
-
-    if (createRes.status !== 201) {
-      console.error('❌ Échec de la création de la release:', createRes.data);
-      process.exit(1);
-    }
-    release = createRes.data;
-    console.log(`✅ Release créée avec succès (ID: ${release.id}) !`);
+  if (!release) {
+    console.log(`[Release] Creating DRAFT release for ${TAG}...`);
+    release = await httpsRequest(`https://api.github.com/repos/${OWNER}/${REPO}/releases`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    }, Buffer.from(JSON.stringify({
+      tag_name: TAG,
+      target_commitish: 'main',
+      name: RELEASE_NAME,
+      body: releaseNotes,
+      draft: true,
+      prerelease: false
+    })));
+    console.log(`[Release] Created draft release ID: ${release.id}`);
   } else {
-    console.log(`ℹ️ Release existante trouvée (ID: ${release.id})`);
+    console.log(`[Release] Found existing release ID: ${release.id} (draft: ${release.draft})`);
   }
 
-  // 3. Find files in dist-electron/release
-  const releaseDir = path.resolve('astral-desktop/dist-electron/release');
-  if (!fs.existsSync(releaseDir)) {
-    console.error(`❌ Le dossier ${releaseDir} n'existe pas encore. Attente du build.`);
-    process.exit(1);
+  // 2. Prepare files to upload from dist-electron/release
+  const releaseDir = path.join(rootDir, 'astral-desktop', 'dist-electron', 'release');
+  const installerExe = path.join(releaseDir, 'Astral Vanguard Setup 2.2.0.exe');
+  const blockmapFile = path.join(releaseDir, 'Astral Vanguard Setup 2.2.0.exe.blockmap');
+  const latestYml = path.join(releaseDir, 'latest.yml');
+
+  if (!fs.existsSync(installerExe)) {
+    throw new Error(`Installer not found at: ${installerExe}`);
+  }
+  if (!fs.existsSync(latestYml)) {
+    throw new Error(`latest.yml not found at: ${latestYml}`);
   }
 
-  const files = fs.readdirSync(releaseDir);
-  console.log('Fichiers disponibles dans release :', files);
+  // Assets to ensure both electron-updater and direct manual downloads resolve seamlessly:
+  const assetsToUpload = [
+    { name: 'latest.yml', path: latestYml },
+    { name: 'Astral-Vanguard-Setup-2.2.0.exe', path: installerExe },
+    { name: 'Astral Vanguard Setup 2.2.0.exe', path: installerExe },
+    { name: 'Astral-Vanguard-Setup-2.2.0.exe.blockmap', path: blockmapFile },
+    { name: 'Astral Vanguard Setup 2.2.0.exe.blockmap', path: blockmapFile }
+  ];
 
-  // Upload .exe, latest.yml, and .blockmap
-  for (const f of files) {
-    const fullPath = path.join(releaseDir, f);
-    if (f.endsWith('.exe')) {
-      await uploadAsset(release.upload_url, fullPath, f, 'application/octet-stream');
-    } else if (f === 'latest.yml') {
-      await uploadAsset(release.upload_url, fullPath, f, 'text/yaml');
-    } else if (f.endsWith('.blockmap')) {
-      await uploadAsset(release.upload_url, fullPath, f, 'application/octet-stream');
+  // 3. Upload missing or outdated assets
+  const existingAssets = release.assets || [];
+  for (const asset of assetsToUpload) {
+    const existing = existingAssets.find(a => a.name === asset.name || (asset.name.includes(' ') && a.name === asset.name.replace(/ /g, '.')));
+    const expectedSize = fs.statSync(asset.path).size;
+
+    if (existing) {
+      if (existing.size === expectedSize) {
+        console.log(`[Release] Asset "${asset.name}" already present as "${existing.name}" with identical size (${existing.size} bytes). Skipping.`);
+        continue;
+      } else {
+        console.log(`[Release] Asset "${asset.name}" size mismatch (${existing.size} vs ${expectedSize}). Deleting old asset...`);
+        await httpsRequest(`https://api.github.com/repos/${OWNER}/${REPO}/releases/assets/${existing.id}`, {
+          method: 'DELETE'
+        });
+      }
+    }
+
+    await uploadAsset(release.upload_url, asset.name, asset.path);
+  }
+
+  // 4. Verify all assets exist on release before publishing
+  console.log(`[Release] Verifying all assets on draft release...`);
+  const refreshedRelease = await httpsRequest(`https://api.github.com/repos/${OWNER}/${REPO}/releases/${release.id}`);
+  const uploadedNames = refreshedRelease.assets.map(a => a.name);
+  console.log(`[Release] Current assets on release:`, uploadedNames);
+
+  const expectedRequirements = [
+    { label: 'latest.yml', names: ['latest.yml'] },
+    { label: 'Astral-Vanguard-Setup-2.2.0.exe (Auto-Updater)', names: ['Astral-Vanguard-Setup-2.2.0.exe'] },
+    { label: 'Astral Vanguard Setup 2.2.0.exe (Manual download)', names: ['Astral Vanguard Setup 2.2.0.exe', 'Astral.Vanguard.Setup.2.2.0.exe'] },
+    { label: 'Astral-Vanguard-Setup-2.2.0.exe.blockmap', names: ['Astral-Vanguard-Setup-2.2.0.exe.blockmap'] },
+    { label: 'Astral Vanguard Setup 2.2.0.exe.blockmap', names: ['Astral Vanguard Setup 2.2.0.exe.blockmap', 'Astral.Vanguard.Setup.2.2.0.exe.blockmap'] }
+  ];
+
+  for (const req of expectedRequirements) {
+    const found = req.names.some(n => uploadedNames.includes(n));
+    if (!found) {
+      throw new Error(`Verification failed: Asset group "${req.label}" is missing from release!`);
     }
   }
+  console.log(`[Release] ✅ All required assets verified with exact sizes.`);
 
-  console.log(`🎉 Toutes les ressources ont été publiées sur https://github.com/${OWNER}/${REPO}/releases/tag/${TAG} !`);
+  // 5. Publish release: mark draft: false, prerelease: false, make_latest: "true"
+  console.log(`[Release] Publishing release as Latest...`);
+  const publishedRelease = await httpsRequest(`https://api.github.com/repos/${OWNER}/${REPO}/releases/${release.id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' }
+  }, Buffer.from(JSON.stringify({
+    draft: false,
+    prerelease: false,
+    make_latest: 'true'
+  })));
+
+  console.log(`[Release] 🎉 Release "${publishedRelease.name}" (${publishedRelease.tag_name}) is now PUBLISHED as LATEST!`);
+  console.log(`[Release] URL: ${publishedRelease.html_url}`);
+
+  // 6. Test public endpoints
+  console.log(`[Verification] Testing public endpoints...`);
+  const latestEndpoint = await httpsRequest(`https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`);
+  console.log(`[Verification] Latest release resolved: tag=${latestEndpoint.tag_name}, draft=${latestEndpoint.draft}`);
+
+  const latestYmlAsset = latestEndpoint.assets.find(a => a.name === 'latest.yml');
+  const exeHyphenAsset = latestEndpoint.assets.find(a => a.name === 'Astral-Vanguard-Setup-2.2.0.exe');
+  const exeSpaceAsset = latestEndpoint.assets.find(a => a.name === 'Astral Vanguard Setup 2.2.0.exe');
+
+  console.log(`- latest.yml: ${latestYmlAsset ? `FOUND (${latestYmlAsset.browser_download_url})` : 'MISSING'}`);
+  console.log(`- Astral-Vanguard-Setup-2.2.0.exe: ${exeHyphenAsset ? `FOUND (${exeHyphenAsset.browser_download_url})` : 'MISSING'}`);
+  console.log(`- Astral Vanguard Setup 2.2.0.exe: ${exeSpaceAsset ? `FOUND (${exeSpaceAsset.browser_download_url})` : 'MISSING'}`);
 }
 
-main().catch(console.error);
+main().catch(err => {
+  console.error('[Release] Fatal Error:', err);
+  process.exit(1);
+});
