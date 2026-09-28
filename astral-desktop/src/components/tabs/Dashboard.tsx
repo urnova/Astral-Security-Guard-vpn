@@ -27,6 +27,7 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange }: Pr
   const [sosResult, setSosResult] = useState<{ pingBefore?: number; pingAfter?: number; message?: string } | null>(null);
   const [currentMode, setCurrentMode] = useState<string>('gaming');
   const [errorInfo, setErrorInfo] = useState<{ message: string; technical?: string } | null>(null);
+  const [firstName, setFirstName] = useState<string>('');
 
   const loadData = useCallback(async () => {
     if (!api) {
@@ -51,6 +52,12 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange }: Pr
     const id = setInterval(loadData, 5000);
     return () => clearInterval(id);
   }, [loadData]);
+
+  useEffect(() => {
+    api?.getProfile?.().then((p: any) => {
+      if (p?.firstName) setFirstName(p.firstName);
+    }).catch(() => {});
+  }, []);
 
   const handleSosPing = async () => {
     if (!api) return;
@@ -105,7 +112,7 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange }: Pr
             ) : (
               <>
                 <Zap className="w-6 h-6 text-purple-400" />
-                <span>Tableau de Bord & Vue d'Ensemble</span>
+                <span>{firstName ? `Bonjour, ${firstName}` : 'Tableau de Bord'}</span>
               </>
             )}
           </h1>

@@ -34,6 +34,12 @@ export default function SettingsTab({ dndEnabled = false, onDndChange }: Setting
   const [watchdogThreshold, setWatchdogThreshold] = useState(250);
   const [volume, setVolume] = useState(60);
 
+  // User Profile
+  const [profileFirstName, setProfileFirstName] = useState('');
+  const [profileLastName, setProfileLastName]   = useState('');
+  const [profileSaving, setProfileSaving]       = useState(false);
+  const [profileSaved, setProfileSaved]         = useState(false);
+
   // Real-Time Download Scanner State
   const [scannerConfig, setScannerConfig] = useState<{
     enabled: boolean;
@@ -78,6 +84,10 @@ export default function SettingsTab({ dndEnabled = false, onDndChange }: Setting
         if (res.minimizeToTray !== undefined) setMinimizeToTray(res.minimizeToTray);
         if (res.overlayActive !== undefined) setOverlayActive(res.overlayActive);
       }
+    });
+    api.getProfile?.().then((p: any) => {
+      if (p?.firstName !== undefined) setProfileFirstName(p.firstName);
+      if (p?.lastName  !== undefined) setProfileLastName(p.lastName);
     });
 
     api.getSystemMode?.().then((m: any) => {
@@ -304,7 +314,65 @@ export default function SettingsTab({ dndEnabled = false, onDndChange }: Setting
         />
       )}
 
-      {/* Grid: Left Column (Doctor Fixers) & Right Column (Settings & Updater) */}
+      {/* ── Section Profil ──────────────────────────────── */}
+      <div className="card p-5 space-y-4">
+        <div className="flex items-center gap-3 mb-1">
+          <div className="p-2 rounded-lg bg-violet-500/15 border border-violet-500/20 text-violet-400">
+            <Settings className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-white">Mon Profil</h3>
+            <p className="text-xs" style={{color: 'var(--text-muted)'}}>Prénom et nom affichés dans l'application</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="section-label">Prénom</label>
+            <input
+              type="text"
+              value={profileFirstName}
+              onChange={e => { setProfileFirstName(e.target.value); setProfileSaved(false); }}
+              placeholder="ex. Alex"
+              maxLength={64}
+              className="w-full px-3 py-2 rounded-lg text-sm bg-white/5 border border-white/10 text-white placeholder-white/20 focus:outline-none focus:border-violet-500/50 transition-colors"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="section-label">Nom</label>
+            <input
+              type="text"
+              value={profileLastName}
+              onChange={e => { setProfileLastName(e.target.value); setProfileSaved(false); }}
+              placeholder="ex. Dupont"
+              maxLength={64}
+              className="w-full px-3 py-2 rounded-lg text-sm bg-white/5 border border-white/10 text-white placeholder-white/20 focus:outline-none focus:border-violet-500/50 transition-colors"
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={async () => {
+              if (!api) return;
+              setProfileSaving(true);
+              await api.saveUserProfile?.({ firstName: profileFirstName.trim(), lastName: profileLastName.trim() });
+              setProfileSaving(false);
+              setProfileSaved(true);
+              setTimeout(() => setProfileSaved(false), 3000);
+            }}
+            disabled={profileSaving}
+            className="px-4 py-2 rounded-lg text-xs font-semibold bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white transition-colors"
+          >
+            {profileSaving ? 'Enregistrement...' : 'Enregistrer'}
+          </button>
+          {profileSaved && (
+            <span className="text-xs font-medium" style={{color: 'var(--green)'}}>
+              ✓ Profil enregistré — le message d'accueil est mis à jour
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ── Grille Doctor + Paramètres ─────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left Column: Doctor & Lag Tools */}
         <div className="space-y-6">

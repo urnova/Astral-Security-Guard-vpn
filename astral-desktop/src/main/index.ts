@@ -11,6 +11,7 @@ import { setupGamingIPC, startGameDetection } from './gaming';
 import { setupRollbackIPC } from './rollback';
 import { setupDoctorIPC, executeSosPing } from './doctor';
 import { setupDownloadScannerIPC } from './downloadScanner';
+import { setupProfileIPC } from './profile';
 
 process.env.DIST = path.join(__dirname, '../..');
 process.env.PUBLIC = app.isPackaged
@@ -86,6 +87,7 @@ function createMainWindow() {
   setupRollbackIPC(mainWin);
   setupDoctorIPC(mainWin);
   setupDownloadScannerIPC(mainWin);
+  setupProfileIPC();
 
   if (VITE_DEV_SERVER_URL) {
     mainWin.loadURL(VITE_DEV_SERVER_URL);
