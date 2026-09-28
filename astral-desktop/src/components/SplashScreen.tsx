@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ShieldCheck, Cpu, Wifi, Activity } from 'lucide-react';
+import VanguardLogo from './common/VanguardLogo';
+
 
 interface SplashScreenProps {
   onFinish?: () => void;
@@ -94,21 +96,8 @@ export default function SplashScreen({ onFinish }: SplashScreenProps) {
     >
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, maxWidth: 420, width: '90%' }}>
         {/* Vanguard Brand Logo */}
-        <div style={{ position: 'relative', width: 96, height: 96 }}>
-          <img
-            src="/images/vanguard-logo.svg"
-            alt="Astral Vanguard Logo"
-            style={{
-              width: '100%',
-              height: '100%',
-              filter: 'drop-shadow(0 0 24px rgba(6, 182, 212, 0.45)) drop-shadow(0 0 40px rgba(139, 92, 246, 0.3))',
-            }}
-            onError={(e) => {
-              // fallback to logo.png
-              (e.target as HTMLImageElement).src = '/logo.png';
-            }}
-          />
-        </div>
+        <VanguardLogo size={96} />
+
 
         {/* Title & Brand */}
         <div style={{ textAlign: 'center' }}>

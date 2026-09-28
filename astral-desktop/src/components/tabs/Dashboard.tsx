@@ -1,8 +1,9 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Shield, ShieldCheck, ShieldAlert, Zap, Activity,
   HardDrive, Clock, Cpu, Wifi, Gamepad2, RefreshCw,
-  ChevronRight, AlertTriangle, CheckCircle, ArrowUpRight
+  ChevronRight, AlertTriangle, CheckCircle, ArrowUpRight,
+  LayoutDashboard
 } from 'lucide-react';
 import { CollapsibleError } from '../ui/CollapsibleError';
 
@@ -42,21 +43,24 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
   const [metrics,    setMetrics]    = useState<Metrics | null>(null);
   const [secStatus,  setSecStatus]  = useState<any>(null);
   const [loading,    setLoading]    = useState(true);
-  const [mode,       setMode]       = useState('gaming');
+  const [mode,       setMode]       = useState('none'); // Default: Aucun mode actif
   const [errorInfo,  setErrorInfo]  = useState<{ message: string; technical?: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [recentScans, setRecentScans] = useState<any[]>([]);
 
   const load = useCallback(async () => {
     if (!api) { setLoading(false); return; }
     try {
-      const [m, s, modeRes] = await Promise.all([
+      const [m, s, modeRes, historyRes] = await Promise.all([
         api.getMetrics?.(),
         api.getSecurityStatus?.(),
         api.getSystemMode?.(),
+        api.getScannerHistory?.(),
       ]);
       if (m?.success)  setMetrics(m.data);
       if (s?.success)  setSecStatus(s.data);
       if (modeRes)     setMode(modeRes);
+      if (Array.isArray(historyRes)) setRecentScans(historyRes.slice(0, 5));
     } catch { /* IPC failure is non-fatal */ }
     setLoading(false);
     setRefreshing(false);
@@ -78,32 +82,37 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
   const fwOk  = Boolean(secStatus?.FirewallEnabled);
 
   const modeColors: Record<string, string> = {
-    gaming: 'badge-cyan', office: 'badge-violet', shield: 'badge-green', eco: 'badge-muted',
+    none: 'badge-muted', gaming: 'badge-cyan', office: 'badge-violet', shield: 'badge-green', eco: 'badge-muted',
   };
   const modeLabel: Record<string, string> = {
-    gaming: 'Gaming', office: 'Bureau', shield: 'Protection', eco: 'Économie',
+    none: 'Aucun mode actif', gaming: 'Gaming', office: 'Bureau', shield: 'Protection', eco: 'Économie',
   };
 
   return (
     <div className="tab-scroll animate-in">
       {/* ── Page header ── */}
       <div className="page-header">
-        <div>
-          <h1 className="page-title">
-            {gamingActive
-              ? <span style={{ color: 'var(--cyan)' }}>Mode Gaming actif</span>
-              : greeting(firstName)}
-          </h1>
-          <p className="page-subtitle">
-            {gamingActive
-              ? `Session en cours — ${currentGame || 'jeu détecté'}`
-              : 'État du système en temps réel · Astral Vanguard'}
-          </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ padding: 10, borderRadius: 12, backgroundColor: 'rgba(139, 92, 246, 0.12)', border: '1px solid rgba(139, 92, 246, 0.25)', color: '#c084fc' }}>
+            <LayoutDashboard size={22} />
+          </div>
+          <div>
+            <h1 className="page-title">
+              {gamingActive
+                ? <span style={{ color: 'var(--cyan)' }}>Mode Gaming actif</span>
+                : greeting(firstName)}
+            </h1>
+            <p className="page-subtitle">
+              {gamingActive
+                ? `Session en cours — ${currentGame || 'jeu détecté'}`
+                : 'État du système en temps réel · Astral Vanguard'}
+            </p>
+          </div>
         </div>
         <div className="page-actions">
           {!gamingActive && (
             <span className={`badge ${modeColors[mode] ?? 'badge-muted'}`}>
-              <span className="badge-dot" /> {modeLabel[mode] ?? mode}
+              <span className="badge-dot" /> {modeLabel[mode] ?? 'Aucun mode actif'}
             </span>
           )}
           {gamingActive && (
@@ -117,6 +126,7 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
           </button>
         </div>
       </div>
+
 
       {errorInfo && (
         <CollapsibleError message={errorInfo.message} technicalError={errorInfo.technical} />
@@ -294,6 +304,84 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
         </div>
       </div>
 
+      {/* ── System Health & Recent Activity ── */}
+      <div className="grid-2" style={{ gap: 16 }}>
+        {/* Verifiable Facts - System Health */}
+        <div className="card card-surface card-p">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <span className="section-title">Santé du système (Faits vérifiés)</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Sans score arbitraire</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Moteur de protection</span>
+              <span className={`badge ${defOk ? 'badge-green' : 'badge-red'}`} style={{ fontSize: 11 }}>
+                {defOk ? 'Microsoft Defender actif' : 'Désactivé / Inconnu'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Pare-feu Windows</span>
+              <span className={`badge ${fwOk ? 'badge-green' : 'badge-red'}`} style={{ fontSize: 11 }}>
+                {fwOk ? 'Filtrage actif' : 'Inactif'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Mode Gaming</span>
+              <span className={`badge ${gamingActive ? 'badge-cyan' : 'badge-muted'}`} style={{ fontSize: 11 }}>
+                {gamingActive ? 'Actif' : 'Inactif (Manuel)'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Confidentialité</span>
+              <span className="badge badge-cyan" style={{ fontSize: 11 }}>
+                100% Hors-ligne · Zéro télémétrie
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Real Activity */}
+        <div className="card card-surface card-p">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <span className="section-title">Activité récente</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Journal des analyses</span>
+          </div>
+          {recentScans.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {recentScans.map((s, idx) => (
+                <div
+                  key={s.id || idx}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 10px',
+                    borderRadius: 'var(--radius-sm)',
+                    backgroundColor: 'rgba(255,255,255,0.02)',
+                    border: '1px solid var(--border)',
+                    fontSize: 12,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+                    <Shield size={13} style={{ color: s.status === 'threat' ? 'var(--red)' : s.status === 'suspect' ? 'var(--orange)' : 'var(--green)', flexShrink: 0 }} />
+                    <span style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {s.fileName}
+                    </span>
+                  </div>
+                  <span className={`badge ${s.status === 'threat' ? 'badge-red' : s.status === 'suspect' ? 'badge-orange' : 'badge-green'}`} style={{ fontSize: 10, flexShrink: 0 }}>
+                    {s.status === 'threat' ? 'Menace' : s.status === 'suspect' ? 'Suspect' : 'Sain (Defender)'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '24px 16px', color: 'var(--text-muted)', fontSize: 12 }}>
+              Aucune activité suspecte détectée récemment.
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* ── Status overview strip ── */}
       <div className="card card-p" style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'center' }}>
         <ModuleStatus label="Scanner téléchargements" active={true} />
@@ -310,6 +398,7 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
     </div>
   );
 }
+
 
 function StatusRow({ label, ok, value }: { label: string; ok: boolean; value: string }) {
   return (

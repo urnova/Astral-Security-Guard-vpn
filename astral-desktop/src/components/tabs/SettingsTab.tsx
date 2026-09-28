@@ -3,10 +3,11 @@ import {
   User, Palette, Sliders, Shield, Download, Gamepad2,
   Wifi, Bell, RefreshCw, Cpu, Info, Check, AlertCircle,
   ExternalLink, Save, FolderPlus, Trash2, Volume2, BellOff,
-  Zap, Keyboard, Monitor
+  Zap, Keyboard, Monitor, Sparkles
 } from 'lucide-react';
 import { CollapsibleError } from '../ui/CollapsibleError';
 import { playSound, setMasterVolume } from '../../lib/audioSynth';
+import VanguardLogo from '../common/VanguardLogo';
 
 const api = (window as any).vanguard;
 
@@ -14,7 +15,11 @@ export interface SettingsTabProps {
   dndEnabled?: boolean;
   onDndChange?: (val: boolean) => void;
   onProfileSaved?: () => void;
+  onRelaunchOnboarding?: () => void;
+  currentTheme?: string;
+  onThemeChange?: (theme: string) => void;
 }
+
 
 type SettingsSection =
   | 'profile'
@@ -50,7 +55,14 @@ const SECTIONS: NavSectionItem[] = [
   { id: 'about',         label: 'À propos',             icon: Info },
 ];
 
-export default function SettingsTab({ dndEnabled = false, onDndChange, onProfileSaved }: SettingsTabProps) {
+export default function SettingsTab({
+  dndEnabled = false,
+  onDndChange,
+  onProfileSaved,
+  onRelaunchOnboarding,
+  currentTheme = 'vanguard-dark',
+  onThemeChange,
+}: SettingsTabProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>('profile');
 
   // Profile State
@@ -393,6 +405,43 @@ export default function SettingsTab({ dndEnabled = false, onDndChange, onProfile
                     Met à jour immédiatement la salutation sur l'Accueil.
                   </span>
                 </div>
+
+                {/* Assistant Onboarding Launcher */}
+                <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc', marginBottom: 4 }}>
+                    Assistant de bienvenue & configuration initiale
+                  </div>
+                  <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 12px 0' }}>
+                    Relancez l'assistant pas-à-pas pour reconfigurer le démarrage, le thème, le tray et le scanner.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onRelaunchOnboarding) {
+                        onRelaunchOnboarding();
+                      } else {
+                        api?.saveUserProfile?.({ onboardingCompleted: false });
+                        window.location.reload();
+                      }
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 16px',
+                      borderRadius: 8,
+                      backgroundColor: 'rgba(139, 92, 246, 0.15)',
+                      border: '1px solid rgba(139, 92, 246, 0.35)',
+                      color: '#c084fc',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Sparkles size={14} style={{ color: '#00d4ff' }} />
+                    <span>Relancer la configuration initiale</span>
+                  </button>
+                </div>
               </form>
             </div>
           )}
@@ -401,25 +450,50 @@ export default function SettingsTab({ dndEnabled = false, onDndChange, onProfile
           {activeSection === 'appearance' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>Apparence & Thème</h2>
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>Apparence & Thème Visuel</h2>
                 <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#94a3b8' }}>
-                  Direction visuelle Cyber Vanguard : contrastes sombres profonds et accents néon violet & cyan.
+                  Quatre thèmes distincts conçus pour sublimer votre environnement de jeu et de sécurité.
                 </p>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-                <div style={{ padding: 16, borderRadius: 10, border: '2px solid #8b5cf6', backgroundColor: 'rgba(139, 92, 246, 0.1)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: '#ffffff' }}>Cyber Vanguard (Défaut)</span>
-                    <Check size={16} style={{ color: '#a78bfa' }} />
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <div style={{ width: 24, height: 24, borderRadius: 6, backgroundColor: '#07090e', border: '1px solid rgba(255, 255, 255, 0.2)' }} />
-                    <div style={{ width: 24, height: 24, borderRadius: 6, backgroundColor: '#8b5cf6' }} />
-                    <div style={{ width: 24, height: 24, borderRadius: 6, backgroundColor: '#06b6d4' }} />
-                  </div>
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>Thème haute fidélité optimisé pour écrans OLED et haute résolution.</span>
-                </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+                {[
+                  { id: 'vanguard-dark', name: 'Vanguard Void (Défaut)', sub: 'Cyan électrique & améthyste sombre', bg: '#060614', border: '#8b5cf6', c1: '#060614', c2: '#8b5cf6', c3: '#00d4ff' },
+                  { id: 'cyber-cyan', name: 'Cyber Neon', sub: 'Bleu cobalt & cyan haute intensité', bg: '#040914', border: '#00f5ff', c1: '#040914', c2: '#00f5ff', c3: '#38bdf8' },
+                  { id: 'midnight-purple', name: 'Midnight Purple', sub: 'Violet royal mystique & magenta', bg: '#0a0512', border: '#a855f7', c1: '#0a0512', c2: '#a855f7', c3: '#ec4899' },
+                  { id: 'stealth-oled', name: 'Stealth OLED', sub: 'Noir absolu & accent vert émeraude', bg: '#000000', border: '#10d9a0', c1: '#000000', c2: '#10d9a0', c3: '#ffffff' },
+                ].map((th) => {
+                  const isCurrent = (currentTheme || 'vanguard-dark') === th.id;
+                  return (
+                    <div
+                      key={th.id}
+                      onClick={() => onThemeChange?.(th.id)}
+                      style={{
+                        padding: 14,
+                        borderRadius: 10,
+                        border: `2px solid ${isCurrent ? th.border : 'rgba(255, 255, 255, 0.08)'}`,
+                        backgroundColor: th.bg,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 10,
+                        boxShadow: isCurrent ? `0 0 16px ${th.border}44` : 'none',
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#ffffff' }}>{th.name}</span>
+                        {isCurrent && <Check size={14} style={{ color: th.border }} />}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <div style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: th.c1, border: '1px solid rgba(255,255,255,0.2)' }} />
+                        <div style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: th.c2 }} />
+                        <div style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: th.c3 }} />
+                      </div>
+                      <span style={{ fontSize: 11, color: '#94a3b8' }}>{th.sub}</span>
+                    </div>
+                  );
+                })}
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
@@ -436,6 +510,7 @@ export default function SettingsTab({ dndEnabled = false, onDndChange, onProfile
               </div>
             </div>
           )}
+
 
           {/* SECTION 3: GENERAL */}
           {activeSection === 'general' && (
@@ -805,7 +880,7 @@ export default function SettingsTab({ dndEnabled = false, onDndChange, onProfile
           {activeSection === 'about' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <img src="/images/vanguard-logo.svg" alt="Vanguard Logo" style={{ width: 64, height: 64 }} onError={(e) => { (e.target as any).src = '/logo.png'; }} />
+                <VanguardLogo size={56} />
                 <div>
                   <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#f8fafc' }}>ASTRAL VANGUARD</h2>
                   <div style={{ fontSize: 13, color: '#a78bfa', fontFamily: 'monospace' }}>Version 2.3.0 (Production Release)</div>
@@ -814,7 +889,7 @@ export default function SettingsTab({ dndEnabled = false, onDndChange, onProfile
               </div>
 
               <div style={{ padding: 16, borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.05)', fontSize: 13, color: '#cbd5e1', lineHeight: 1.6 }}>
-                Développé par <strong>Urnova</strong>. Astral Vanguard intègre la supervision native Microsoft Defender, l'anti-bufferbloat temps réel et des profils gaming dédiés sans télémétrie invasive ni modification agressive du registre système.
+                Développé par <strong>Astral Security</strong>. Astral Vanguard intègre la supervision native Microsoft Defender, l'anti-bufferbloat temps réel et des profils gaming dédiés sans télémétrie invasive ni modification agressive du registre système.
               </div>
 
               <div style={{ display: 'flex', gap: 12 }}>
@@ -825,11 +900,12 @@ export default function SettingsTab({ dndEnabled = false, onDndChange, onProfile
                   style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#38bdf8', textDecoration: 'none' }}
                 >
                   <ExternalLink size={14} />
-                  <span>Dépôt GitHub Urnova</span>
+                  <span>Dépôt GitHub Astral Vanguard</span>
                 </a>
               </div>
             </div>
           )}
+
         </div>
       </div>
     </div>

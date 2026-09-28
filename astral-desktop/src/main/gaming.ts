@@ -15,22 +15,26 @@ let sessionPings: number[] = [];
 // Users can still toggle gaming mode MANUALLY at any time.
 let autoDetectEnabled = false;
 
-// Exclusions: browsers, IDEs, system tools, launchers, productivity tools, and the app itself
+// Exclusions: browsers, IDEs, system tools, launchers, productivity tools, media players, and this app
 const EXCLUDED_PROCESSES = new Set([
   // Browsers & Web tools
   'chrome', 'msedge', 'edge', 'firefox', 'brave', 'opera', 'vivaldi', 'perplexity', 'perplexity-app', 'chatgpt',
-  // System / OS
-  'explorer', 'powershell', 'cmd', 'taskmgr', 'mmc', 'regedit', 'svchost',
+  // System / OS / Shell
+  'explorer', 'powershell', 'cmd', 'taskmgr', 'mmc', 'regedit', 'svchost', 'dwm', 'csrss', 'lsass', 'runtimebroker',
   // Dev tools & Productivity
-  'code', 'devenv', 'rider', 'idea64', 'clion64', 'webstorm64', 'pycharm64', 'notion', 'obsidian',
+  'code', 'devenv', 'rider', 'idea64', 'clion64', 'webstorm64', 'pycharm64', 'notion', 'obsidian', 'antigravity',
+  'winword', 'excel', 'powerpnt', 'outlook', 'onenote', 'acrobat', 'acrord32',
+  // Media players & viewers
+  'vlc', 'mpc-hc', 'mpc-hc64', 'potplayer', 'wmplayer', 'spotify', 'foobar2000',
   // Game launchers (NOT games themselves)
-  'steam', 'epicgameslauncher', 'gog galaxy', 'riotclientservices', 'leagueoflegends',
+  'steam', 'steamservice', 'epicgameslauncher', 'gog galaxy', 'riotclientservices',
   'battlenet', 'origin', 'eadesktop', 'ubisoft connect', 'xboxapp', 'gamebarftserver',
-  // Communication
-  'discord', 'slack', 'teams', 'zoom', 'spotify',
+  // Communication & Streaming
+  'discord', 'slack', 'teams', 'zoom', 'obs64', 'streamlabs obs',
   // This app
-  'electron', 'astral vanguard',
+  'electron', 'astral vanguard', 'astral vanguard setup',
 ]);
+
 
 // Saved per-game profiles
 const gameProfiles: Record<string, {
@@ -98,7 +102,7 @@ export function setupGamingIPC(
   ipcMain.handle('gaming:get-auto-detect', () => ({ autoDetectEnabled }));
 
   // ── Scan Installed Game Libraries (Steam, Epic, Xbox, GOG, Riot) ─────────
-  ipcMain.handle('gaming:scan-libraries', async () => {
+  const scanLibraries = async () => {
     logger.info('Scan heuristique des bibliothèques de jeux installés...');
 
     const script = `
@@ -144,13 +148,20 @@ export function setupGamingIPC(
     if (!Array.isArray(list)) list = list ? [list] : [];
     logger.info(`Bibliothèques de jeux : ${list.length} jeux détectés`);
     return { success: true, games: list };
-  });
+  };
+
+  ipcMain.handle('gaming:scan-libraries', scanLibraries);
+  ipcMain.handle('gaming:scan-installed', scanLibraries);
 }
+
+// Gaming Session States: 'none' | 'proposed' | 'active' | 'background' | 'finished'
+let gamingSessionState: 'none' | 'proposed' | 'active' | 'background' | 'finished' = 'none';
 
 /**
  * Generic Smart Detection Loop:
  * Monitors foreground window without requiring DLL injection into game binaries.
- * Checks for fullscreen window dimensions + dedicated GPU activity.
+ * Guarded by autoDetectEnabled (OFF by default).
+ * Distinguishes active vs background state so Alt-Tab does not loop settings.
  */
 export function startGameDetection(
   win: BrowserWindow,
@@ -162,6 +173,36 @@ export function startGameDetection(
   gameDetectionInterval = setInterval(async () => {
     try {
       // AUTO-DETECT GUARD: loop runs but does nothing if autoDetect is disabled
+      if (!autoDetectEnabled && !gamingModeActive) return;
+
+      // If gaming mode is active with a tracked PID, check if the process is still running
+      if (currentGamePID !== null) {
+        const checkScript = `
+          $proc = Get-Process -Id ${currentGamePID} -ErrorAction SilentlyContinue
+          if ($proc) { [PSCustomObject]@{ alive = $true; name = $proc.ProcessName } | ConvertTo-Json -Compress }
+          else { [PSCustomObject]@{ alive = $false } | ConvertTo-Json -Compress }
+        `;
+        const checkRes = await runPowerShell(checkScript, { asJson: true, timeout: 2000 });
+        if (checkRes.success && checkRes.data && checkRes.data.alive === false) {
+          // Process terminated
+          logger.info(`Processus de jeu terminé (PID ${currentGamePID} : ${currentGameName})`);
+          gamingSessionState = 'finished';
+          sendSessionSummary(win);
+          currentGameName = null;
+          currentGamePID = null;
+          gamingModeActive = false;
+          sessionStartTime = 0;
+
+          win.webContents.send('gaming-event', {
+            type: 'mode-changed',
+            state: 'finished',
+            active: false,
+            game: null,
+          });
+          return;
+        }
+      }
+
       if (!autoDetectEnabled) return;
 
       const script = `
@@ -210,23 +251,55 @@ export function startGameDetection(
       const res = await runPowerShell(script, { asJson: true, timeout: 3000 });
       if (res.success && res.data) {
         const { pid, name, width, height } = res.data;
+        const procName = String(name || '').toLowerCase();
 
-        // Is it fullscreen (e.g. 1920x1080, 2560x1440, 3840x2160, etc.)?
+        // Safety: Strict Exclusions Check
+        if (EXCLUDED_PROCESSES.has(procName)) {
+          // If a game is active and user Alt-Tabs to an excluded app, don't tear down immediately
+          if (gamingSessionState === 'active' && currentGamePID !== null && currentGamePID !== pid) {
+            gamingSessionState = 'background';
+            win.webContents.send('gaming-event', {
+              type: 'state-changed',
+              state: 'background',
+              active: true,
+              game: currentGameName,
+            });
+          }
+          return;
+        }
+
+        // Fullscreen check
         const isFullscreen = width >= 1280 && height >= 720;
-        const isExcluded = EXCLUDED_PROCESSES.has(name?.toLowerCase());
 
-        if (isFullscreen && !isExcluded && name) {
+        if (isFullscreen && name) {
+          if (currentGamePID === pid) {
+            // Returned to the game from background
+            if (gamingSessionState === 'background') {
+              gamingSessionState = 'active';
+              win.webContents.send('gaming-event', {
+                type: 'state-changed',
+                state: 'active',
+                active: true,
+                game: currentGameName,
+              });
+            }
+            return;
+          }
+
+          // New game candidate
           if (currentGameName !== name) {
             currentGameName = name;
             currentGamePID = pid;
             gamingModeActive = true;
+            gamingSessionState = 'active';
             sessionStartTime = Date.now();
             sessionPings = [];
 
-            logger.info(`🎮 Nouveau jeu détecté automatiquement : ${name} (PID ${pid})`);
+            logger.info(`🎮 Nouveau jeu détecté : ${name} (PID ${pid})`);
 
             win.webContents.send('gaming-event', {
               type: 'mode-changed',
+              state: 'active',
               active: true,
               game: name,
             });
@@ -234,23 +307,9 @@ export function startGameDetection(
             win.webContents.send('notification:trigger', {
               type: 'gaming',
               title: `Jeu Détecté : ${name}`,
-              message: 'Mode Gaming Extrême activé. Priorité CPU et optimisation réseau appliquées.',
+              message: 'Mode Gaming Vanguard actif. Priorité CPU et optimisation réseau appliquées.',
             });
           }
-        } else if (currentGameName && !isFullscreen && isExcluded) {
-          // Exited game
-          logger.info(`Fin de session de jeu : ${currentGameName}`);
-          sendSessionSummary(win);
-          currentGameName = null;
-          currentGamePID = null;
-          gamingModeActive = false;
-          sessionStartTime = 0;
-
-          win.webContents.send('gaming-event', {
-            type: 'mode-changed',
-            active: false,
-            game: null,
-          });
         }
       }
     } catch {}
@@ -269,3 +328,4 @@ function sendSessionSummary(win: BrowserWindow) {
     });
   }
 }
+

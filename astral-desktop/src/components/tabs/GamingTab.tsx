@@ -140,14 +140,15 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
             </div>
             <div>
               <h3 className="text-lg font-bold text-white">
-                {gamingActive ? 'Optimisation Gaming Maximale' : 'Mode Gaming en Veille'}
+                {gamingActive ? 'Optimisation Gaming Maximale' : 'Mode Gaming inactif — activation manuelle uniquement'}
               </h3>
               <p className="text-xs text-zinc-400 mt-0.5">
                 {gamingActive
                   ? 'Plan d’alimentation haute performance, processus d’arrière-plan bridés et QoS paquets active.'
-                  : 'Activation manuelle en un clic. Détection auto désactivée par défaut pour éviter tout faux positif.'}
+                  : 'Activation manuelle en un clic. Détection auto désactivée par défaut pour éviter tout faux positif (Edge, Chrome, Perplexity exclus).'}
               </p>
             </div>
+
           </div>
 
           <button

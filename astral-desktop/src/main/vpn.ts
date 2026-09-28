@@ -179,6 +179,12 @@ export function setupVpnIPC(win: BrowserWindow) {
   });
 
   // ── Toggle Kill Switch ────────────────────────────────────────────────────
+  ipcMain.handle('vpn:get-killswitch', () => ({
+    success: true,
+    enabled: killSwitchActive,
+    killSwitch: killSwitchActive,
+  }));
+
   ipcMain.handle('vpn:set-killswitch', async (_, enabled: boolean) => {
     killSwitchActive = enabled;
     logger.info(`Kill Switch configuré à : ${enabled}`);
@@ -189,9 +195,10 @@ export function setupVpnIPC(win: BrowserWindow) {
       await disableKillSwitchFirewall();
     }
 
-    return { success: true, killSwitch: killSwitchActive };
+    return { success: true, enabled: killSwitchActive, killSwitch: killSwitchActive };
   });
 }
+
 
 function fetchVpnGateCsv(): Promise<string> {
   return new Promise((resolve, reject) => {

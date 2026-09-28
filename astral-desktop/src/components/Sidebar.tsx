@@ -1,10 +1,8 @@
-import { useState, useEffect } from 'react';
-import { Shield, Zap, Cpu, Gamepad2, Wifi, Lock, Settings, Minus } from 'lucide-react';
-
-const api = (window as any).vanguard;
+import { Shield, LayoutDashboard, Cpu, Gamepad2, Wifi, Lock, Settings, User } from 'lucide-react';
+import VanguardLogo from './common/VanguardLogo';
 
 const NAV_ITEMS = [
-  { id: 'dashboard',   label: 'Accueil',      icon: Zap },
+  { id: 'dashboard',   label: 'Accueil',      icon: LayoutDashboard },
   { id: 'security',    label: 'Sécurité',     icon: Shield },
   { id: 'performance', label: 'Performance',  icon: Cpu },
   { id: 'gaming',      label: 'Gaming',       icon: Gamepad2 },
@@ -35,12 +33,7 @@ export default function Sidebar({ activeTab, onTabChange, gamingActive, currentG
       {/* Brand header */}
       <div className="sidebar-header">
         <div className="sidebar-brand">
-          <img
-            src="/images/vanguard-logo.svg"
-            alt="Vanguard Logo"
-            style={{ width: 28, height: 28, filter: 'drop-shadow(0 0 8px rgba(6, 182, 212, 0.5))' }}
-            onError={(e) => { (e.target as any).src = '/logo.png'; }}
-          />
+          <VanguardLogo size={28} />
           <div>
             <div className="sidebar-brand-name">Vanguard</div>
             <div className="sidebar-brand-sub">Astral Security</div>
@@ -72,22 +65,22 @@ export default function Sidebar({ activeTab, onTabChange, gamingActive, currentG
         })}
       </nav>
 
-      {/* Footer */}
+      {/* Simplified Footer: Compte & Paramètres */}
       <div className="sidebar-footer">
-        {/* User card */}
         <button
-          className="sidebar-user"
+          className={`sidebar-user ${activeTab === 'settings' ? 'active' : ''}`}
           onClick={() => onTabChange('settings')}
-          title="Mon profil & paramètres"
+          title="Mon compte & profil"
+          aria-label="Mon compte"
         >
           <div className="sidebar-avatar" aria-hidden="true">
             {getInitials(firstName, lastName)}
           </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
             <div className="sidebar-user-name">
               {firstName || lastName ? `${firstName} ${lastName}`.trim() : 'Mon compte'}
             </div>
-            <div className="sidebar-user-role">Paramètres</div>
+            <div className="sidebar-user-role">Profil joueur</div>
           </div>
         </button>
 
@@ -99,16 +92,8 @@ export default function Sidebar({ activeTab, onTabChange, gamingActive, currentG
           <Settings size={16} strokeWidth={1.8} />
           <span>Paramètres</span>
         </button>
-
-        <button
-          className="sidebar-item"
-          onClick={() => api?.minimize()}
-          aria-label="Réduire dans la barre des tâches"
-        >
-          <Minus size={16} strokeWidth={1.8} />
-          <span>Réduire</span>
-        </button>
       </div>
     </aside>
   );
 }
+

@@ -107,7 +107,10 @@ export function setupPerformanceIPC(win: BrowserWindow) {
   });
 
   // ── Toggle Startup Item ───────────────────────────────────────────────────
-  ipcMain.handle('perf:disable-startup', async (_, { name, location }: { name: string; location: string }) => {
+  ipcMain.handle('perf:disable-startup', async (_, arg1: any, arg2?: any) => {
+    const name = typeof arg1 === 'object' && arg1 !== null ? arg1.name : String(arg1 || '');
+    const location = typeof arg1 === 'object' && arg1 !== null ? arg1.location : String(arg2 || 'HKCU');
+
     logger.info(`Désactivation du programme de démarrage : ${name} (${location})`);
     const regPath = location === 'HKLM'
       ? 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run'
@@ -121,6 +124,7 @@ export function setupPerformanceIPC(win: BrowserWindow) {
     const res = await runPowerShell(script, { asJson: true });
     return { success: res.success };
   });
+
 
   // ── Analyze Cleanable Disk Categories (Pre-Calculation) ───────────────────
   ipcMain.handle('perf:analyze-disk-cleanup', async () => {

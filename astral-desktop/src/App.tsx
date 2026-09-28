@@ -8,6 +8,8 @@ import VpnTab from './components/tabs/VpnTab';
 import SettingsTab from './components/tabs/SettingsTab';
 import Sidebar from './components/Sidebar';
 import SplashScreen from './components/SplashScreen';
+import AppTitlebar from './components/AppTitlebar';
+import OnboardingWizard, { OnboardingData } from './components/OnboardingWizard';
 import UpdateModal from './components/UpdateModal';
 import DownloadScanModal from './components/DownloadScanModal';
 import { NotificationSystem } from './components/NotificationSystem';
@@ -24,13 +26,21 @@ export default function App() {
   const [dndEnabled, setDndEnabled]       = useState(false);
   const [firstName, setFirstName]         = useState('');
   const [lastName, setLastName]           = useState('');
+  const [theme, setTheme]                 = useState<'vanguard-dark' | 'cyber-cyan' | 'midnight-purple' | 'stealth-oled'>('vanguard-dark');
   const [splashDone, setSplashDone]       = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
-  // Refresh profile from main (called by SettingsTab after save)
+  // Refresh profile & preferences from main
   const refreshProfile = useCallback(() => {
     api?.getProfile?.().then((p: any) => {
-      if (p?.firstName !== undefined) setFirstName(p.firstName);
-      if (p?.lastName  !== undefined) setLastName(p.lastName);
+      if (p) {
+        if (p.firstName !== undefined) setFirstName(p.firstName);
+        if (p.lastName  !== undefined) setLastName(p.lastName);
+        if (p.theme) setTheme(p.theme);
+        if (typeof p.onboardingCompleted === 'boolean') {
+          setShowOnboarding(!p.onboardingCompleted);
+        }
+      }
     }).catch(() => {});
   }, []);
 
@@ -59,13 +69,71 @@ export default function App() {
     });
     const cleanupProfile = api.on('profile:updated', () => refreshProfile());
 
-    return () => { cleanupAdmin?.(); cleanupStart?.(); cleanupStop?.(); cleanupUpdate?.(); cleanupProfile?.(); };
+    // Tray listeners
+    const cleanupNav = api.on('navigation:go-to', (targetTab: string) => {
+      if (targetTab) setActiveTab(targetTab);
+    });
+    const cleanupScanTrigger = api.on('action:trigger-scan', () => {
+      setActiveTab('security');
+    });
+    const cleanupGamingToggle = api.on('gaming:toggle-manual', () => {
+      setGaming((prev) => {
+        const next = !prev;
+        api?.toggleGaming?.(next);
+        return next;
+      });
+    });
+
+    return () => {
+      cleanupAdmin?.();
+      cleanupStart?.();
+      cleanupStop?.();
+      cleanupUpdate?.();
+      cleanupProfile?.();
+      cleanupNav?.();
+      cleanupScanTrigger?.();
+      cleanupGamingToggle?.();
+    };
   }, [refreshProfile]);
 
+  const handleFinishOnboarding = async (data: OnboardingData) => {
+    setFirstName(data.firstName);
+    setLastName(data.lastName);
+    setTheme(data.theme);
+    setShowOnboarding(false);
+
+    // Save full preferences
+    if (api) {
+      await api.saveUserProfile?.({
+        ...data,
+        onboardingCompleted: true,
+      });
+      await api.setAutostart?.(data.openAtLogin);
+      await api.setMinimizeToTray?.(data.minimizeToTray);
+    }
+  };
+
+  const handleThemeChange = (newTheme: string) => {
+    const valid = ['vanguard-dark', 'cyber-cyan', 'midnight-purple', 'stealth-oled'] as const;
+    if (valid.includes(newTheme as any)) {
+      setTheme(newTheme as any);
+      api?.saveUserProfile?.({ theme: newTheme });
+    }
+  };
+
   return (
-    <div className="app-root" data-gaming={gamingModeActive}>
+    <div className="app-root" data-gaming={gamingModeActive} data-theme={theme}>
       {/* Integrated Splash Transition */}
       {!splashDone && <SplashScreen onFinish={() => setSplashDone(true)} />}
+
+      {/* Onboarding Initial Setup Wizard */}
+      {splashDone && showOnboarding && (
+        <OnboardingWizard
+          initialFirstName={firstName}
+          initialLastName={lastName}
+          onFinish={handleFinishOnboarding}
+        />
+      )}
 
       {/* Gaming ambient glow */}
       {gamingModeActive && (
@@ -88,6 +156,9 @@ export default function App() {
       />
 
       <div className="app-main">
+        {/* Dedicated Window Drag & Titlebar Strip (with 140px reserved area on right) */}
+        <AppTitlebar gamingActive={gamingModeActive} currentGame={currentGame} />
+
         {/* Admin banner */}
         {!isAdmin && (
           <div className="admin-banner">
@@ -131,6 +202,9 @@ export default function App() {
               dndEnabled={dndEnabled}
               onDndChange={setDndEnabled}
               onProfileSaved={refreshProfile}
+              onRelaunchOnboarding={() => setShowOnboarding(true)}
+              currentTheme={theme}
+              onThemeChange={handleThemeChange}
             />
           )}
         </main>
@@ -142,3 +216,4 @@ export default function App() {
     </div>
   );
 }
+

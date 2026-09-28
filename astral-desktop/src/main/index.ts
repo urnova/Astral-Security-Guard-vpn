@@ -11,7 +11,18 @@ import { setupGamingIPC, startGameDetection } from './gaming';
 import { setupRollbackIPC } from './rollback';
 import { setupDoctorIPC, executeSosPing } from './doctor';
 import { setupDownloadScannerIPC } from './downloadScanner';
-import { setupProfileIPC } from './profile';
+import { setupProfileIPC, loadPreferences, savePreferences } from './profile';
+
+// ── Single Instance Lock ───────────────────────────────────────────────────────
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  logger.info('[App] Another instance of Astral Vanguard is already running. Quitting duplicate instance.');
+  app.quit();
+  process.exit(0);
+}
+
+// Set Application User Model ID for Windows toast notifications & taskbar grouping
+app.setAppUserModelId('com.astral.vanguard');
 
 process.env.DIST = path.join(__dirname, '../..');
 process.env.PUBLIC = app.isPackaged
@@ -21,9 +32,10 @@ process.env.PUBLIC = app.isPackaged
 let mainWin: BrowserWindow | null = null;
 let overlayWin: BrowserWindow | null = null;
 let tray: Tray | null = null;
-let minimizeToTray = true;
+let minimizeToTray = loadPreferences().minimizeToTray;
 
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
+
 
 // ── Native Windows Notification Dispatcher ────────────────────────────────────
 export function notifyUser(title: string, body: string, isCritical = false) {
@@ -181,71 +193,50 @@ function createTray() {
     const icon = nativeImage.createFromPath(iconPath);
     tray = new Tray(icon.resize({ width: 16, height: 16 }));
 
-    const updateMenu = (activeMode = 'gaming') => {
+    const updateMenu = (gamingActive = false) => {
       const menu = Menu.buildFromTemplate([
         {
           label: 'Ouvrir Astral Vanguard',
           click: () => {
-            mainWin?.show();
-            mainWin?.focus();
+            if (mainWin) {
+              if (mainWin.isMinimized()) mainWin.restore();
+              mainWin.show();
+              mainWin.focus();
+            }
           },
         },
         { type: 'separator' },
         {
-          label: 'Mode Système',
-          submenu: [
-            {
-              label: 'Mode Gaming (Faible Latence)',
-              type: 'radio',
-              checked: activeMode === 'gaming',
-              click: () => {
-                mainWin?.webContents.send('doctor:set-mode', 'gaming');
-                updateMenu('gaming');
-              },
-            },
-            {
-              label: 'Mode Bureau / Standard',
-              type: 'radio',
-              checked: activeMode === 'office',
-              click: () => {
-                mainWin?.webContents.send('doctor:set-mode', 'office');
-                updateMenu('office');
-              },
-            },
-            {
-              label: 'Mode Cyber-Shield (Sécurité Max)',
-              type: 'radio',
-              checked: activeMode === 'shield',
-              click: () => {
-                mainWin?.webContents.send('doctor:set-mode', 'shield');
-                updateMenu('shield');
-              },
-            },
-            {
-              label: 'Mode Éco / Silencieux',
-              type: 'radio',
-              checked: activeMode === 'eco',
-              click: () => {
-                mainWin?.webContents.send('doctor:set-mode', 'eco');
-                updateMenu('eco');
-              },
-            },
-          ],
-        },
-        { type: 'separator' },
-        {
-          label: '⚡ SOS Déblocage Ping (1002ms)',
-          click: async () => {
-            logger.info('[Tray] User triggered SOS Déblocage Ping from tray');
-            const res = await executeSosPing();
-            mainWin?.webContents.send('doctor:lag-alert', {
-              message: res.success ? res.message : `Erreur SOS: ${res.error}`,
-            });
+          label: '🛡️ Lancer une analyse rapide Defender',
+          click: () => {
+            if (mainWin) {
+              if (mainWin.isMinimized()) mainWin.restore();
+              mainWin.show();
+              mainWin.focus();
+              mainWin.webContents.send('action:trigger-scan');
+            }
           },
         },
         {
-          label: 'Afficher / Masquer l\'Overlay HUD (Ctrl+Shift+O)',
+          label: gamingActive ? '🎮 Désactiver le mode Gaming' : '🎮 Activer le mode Gaming manuel',
+          click: () => {
+            mainWin?.webContents.send('gaming:toggle-manual');
+          },
+        },
+        {
+          label: '🖥️ Afficher / Masquer HUD (Ctrl+Shift+O)',
           click: () => toggleOverlay(),
+        },
+        {
+          label: '⚙️ Paramètres',
+          click: () => {
+            if (mainWin) {
+              if (mainWin.isMinimized()) mainWin.restore();
+              mainWin.show();
+              mainWin.focus();
+              mainWin.webContents.send('navigation:go-to', 'settings');
+            }
+          },
         },
         { type: 'separator' },
         {
@@ -258,26 +249,42 @@ function createTray() {
       ]);
 
       tray?.setContextMenu(menu);
+      tray?.setToolTip(`Astral Vanguard — ${gamingActive ? 'Mode Gaming Actif' : 'Protection résidente active'}`);
     };
 
-    updateMenu('gaming');
-    tray.setToolTip('Astral Vanguard - Protection & Optimisation active');
+    updateMenu(false);
+
     tray.on('double-click', () => {
-      mainWin?.show();
-      mainWin?.focus();
+      if (mainWin) {
+        if (mainWin.isMinimized()) mainWin.restore();
+        mainWin.show();
+        mainWin.focus();
+      }
     });
   } catch (err: any) {
     logger.warn('[Tray] Could not initialize system tray:', err.message);
   }
 }
 
+// ── Second Instance Handler ──────────────────────────────────────────────────
+app.on('second-instance', () => {
+  logger.info('[App] Second instance attempted. Focusing existing window.');
+  if (mainWin) {
+    if (mainWin.isMinimized()) mainWin.restore();
+    if (!mainWin.isVisible()) mainWin.show();
+    mainWin.focus();
+  }
+});
+
 // ── Boot Sequence ─────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   createMainWindow();
   createTray();
 
-  // Auto-start with Windows
-  app.setLoginItemSettings({ openAtLogin: true, path: app.getPath('exe') });
+  const prefs = loadPreferences();
+
+  // Auto-start with Windows (per saved preferences)
+  app.setLoginItemSettings({ openAtLogin: prefs.openAtLogin, path: app.getPath('exe') });
 
   // Register Global Shortcut for HUD toggle (Ctrl+Shift+O)
   try {
@@ -299,7 +306,10 @@ app.on('will-quit', () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    // Keep running in system tray on Windows
+    // Keep running in system tray on Windows if minimizeToTray is enabled
+    if (!minimizeToTray) {
+      app.quit();
+    }
   }
 });
 
@@ -327,26 +337,31 @@ ipcMain.handle('app:quit', () => {
   app.exit(0);
 });
 ipcMain.handle('app:minimize', () => mainWin?.minimize());
+ipcMain.handle('app:hide-to-tray', () => mainWin?.hide());
 
 // Settings IPC
 ipcMain.handle('settings:get', () => {
-  const loginSettings = app.getLoginItemSettings();
+  const prefs = loadPreferences();
   return {
-    openAtLogin: loginSettings.openAtLogin,
-    minimizeToTray,
+    ...prefs,
+    openAtLogin: prefs.openAtLogin,
+    minimizeToTray: prefs.minimizeToTray,
     overlayActive: Boolean(overlayWin),
   };
 });
 
 ipcMain.handle('settings:set-autostart', (_, enabled: boolean) => {
   app.setLoginItemSettings({ openAtLogin: enabled, path: app.getPath('exe') });
+  savePreferences({ openAtLogin: enabled });
   return { success: true, openAtLogin: enabled };
 });
 
 ipcMain.handle('settings:set-minimize-tray', (_, enabled: boolean) => {
   minimizeToTray = enabled;
+  savePreferences({ minimizeToTray: enabled });
   return { success: true, minimizeToTray };
 });
+
 
 // Native Notification IPC
 ipcMain.handle('notification:test', (_, { title, body }: { title: string; body: string }) => {

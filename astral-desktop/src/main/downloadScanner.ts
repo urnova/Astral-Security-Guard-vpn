@@ -28,12 +28,14 @@ export interface ScanResult {
   fileName: string;
   sizeBytes: number;
   ext: string;
-  status: 'safe' | 'suspect' | 'threat';
+  status: 'safe' | 'suspect' | 'threat' | 'error' | 'unavailable';
   threatName?: string;
+  errorReason?: string;
   isUnsigned?: boolean;
   scanDurationMs: number;
   timestamp: string;
 }
+
 
 const TEMP_DOWNLOAD_EXTS = new Set([
   '.crdownload', // Chrome, Edge, Brave, Opera
@@ -434,18 +436,26 @@ export async function scanSingleFile(filePath: string): Promise<ScanResult> {
     proc.on('error', (err) => {
       clearTimeout(timeout);
       logger.warn('[DownloadScanner] Error spawning MpCmdRun:', err.message);
-      resolve({
+      const isNotFound = err.message.includes('ENOENT');
+      const res: ScanResult = {
         id,
         filePath,
         fileName,
         sizeBytes,
         ext,
-        status: 'safe',
+        status: isNotFound ? 'unavailable' : 'error',
+        errorReason: isNotFound
+          ? 'Moteur Microsoft Defender (MpCmdRun.exe) introuvable sur cette machine Windows.'
+          : `Erreur d'accès au service antivirus : ${err.message}`,
         scanDurationMs: Date.now() - startTime,
         timestamp: new Date().toISOString(),
-      });
+      };
+      recentScans.unshift(res);
+      if (recentScans.length > 50) recentScans.pop();
+      resolve(res);
     });
   });
+
 }
 
 /**

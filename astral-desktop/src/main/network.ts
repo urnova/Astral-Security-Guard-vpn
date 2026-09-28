@@ -128,7 +128,7 @@ export function setupNetworkIPC(win: BrowserWindow) {
   });
 
   // ── Real Wi-Fi Diagnostics (Signal, Channel, Interference & Optimal Channel) ─
-  ipcMain.handle('network:get-wifi-diag', async () => {
+  const handleWifiDiag = async () => {
     logger.info('Analyse du diagnostic Wi-Fi réel...');
     const script = `
       $current = netsh wlan show interfaces
@@ -184,29 +184,40 @@ export function setupNetworkIPC(win: BrowserWindow) {
       }
     }
 
+    const diagData = {
+      ssid,
+      signalPercent,
+      channel: currentChannel,
+      currentChannel,
+      radioType,
+      interferenceCount: Math.max(0, interferenceCount - 1),
+      recommendedChannel,
+      isOptimal: currentChannel === recommendedChannel,
+      isInterfering: interferenceCount > 3,
+      recommendation: currentChannel === recommendedChannel
+        ? 'Canal optimal détecté'
+        : `Basculez sur le canal ${recommendedChannel} pour réduire les interférences`,
+    };
+
     return {
       success: true,
-      diag: {
-        ssid,
-        signalPercent,
-        radioType,
-        currentChannel,
-        interferenceCount: Math.max(0, interferenceCount - 1),
-        recommendedChannel,
-        isOptimal: currentChannel === recommendedChannel,
-      },
+      diag: diagData,
+      data: diagData,
     };
-  });
+  };
+
+  ipcMain.handle('network:get-wifi-diag', handleWifiDiag);
+  ipcMain.handle('network:wifi-interference', handleWifiDiag);
 
   // ── Live DNS Benchmark & Selector (Cloudflare, Google, Quad9, OpenDNS) ─────
-  ipcMain.handle('network:test-dns-latencies', async () => {
+  const handleDnsBenchmark = async () => {
     logger.info('Test comparatif de latence DNS en direct...');
 
     const providers = [
-      { id: 'cloudflare', name: 'Cloudflare Gaming', primary: '1.1.1.1', secondary: '1.0.0.1' },
-      { id: 'google', name: 'Google DNS', primary: '8.8.8.8', secondary: '8.8.4.4' },
-      { id: 'quad9', name: 'Quad9 Security (Malware Block)', primary: '9.9.9.9', secondary: '149.112.112.112' },
-      { id: 'opendns', name: 'Cisco OpenDNS', primary: '208.67.222.222', secondary: '208.67.220.220' },
+      { id: 'cloudflare', name: 'Cloudflare Gaming', provider: 'Cloudflare', ip: '1.1.1.1', primary: '1.1.1.1', secondary: '1.0.0.1' },
+      { id: 'google', name: 'Google DNS', provider: 'Google', ip: '8.8.8.8', primary: '8.8.8.8', secondary: '8.8.4.4' },
+      { id: 'quad9', name: 'Quad9 Security (Malware Block)', provider: 'Quad9', ip: '9.9.9.9', primary: '9.9.9.9', secondary: '149.112.112.112' },
+      { id: 'opendns', name: 'Cisco OpenDNS', provider: 'OpenDNS', ip: '208.67.222.222', primary: '208.67.222.222', secondary: '208.67.220.220' },
     ];
 
     const results = [];
@@ -216,13 +227,18 @@ export function setupNetworkIPC(win: BrowserWindow) {
         { timeout: 4000 }
       );
       const avgPing = Math.round(parseFloat(pingTest.stdout || '0')) || 35;
-      results.push({ ...p, latencyMs: avgPing });
+      const status: 'fastest' | 'good' | 'slow' = avgPing < 25 ? 'fastest' : avgPing < 60 ? 'good' : 'slow';
+      results.push({ ...p, latencyMs: avgPing, status });
     }
 
-    // Sort by lowest latency
     results.sort((a, b) => a.latencyMs - b.latencyMs);
-    return { success: true, results };
-  });
+
+    return { success: true, results, data: results };
+  };
+
+  ipcMain.handle('network:test-dns-latencies', handleDnsBenchmark);
+  ipcMain.handle('network:dns-benchmark', handleDnsBenchmark);
+
 
   // ── Apply DNS ─────────────────────────────────────────────────────────────
   ipcMain.handle('network:set-dns', async (_, dnsType: string) => {
