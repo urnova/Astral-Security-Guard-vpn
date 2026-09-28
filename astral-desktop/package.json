@@ -1,6 +1,8 @@
 {
-  "name": "@workspace/mockup-sandbox",
-  "version": "2.0.0",
+  "name": "astral-vanguard",
+  "version": "2.1.0",
+  "description": "Astral Vanguard - Gaming, Security & Anti-Lag Suite",
+  "author": "urnova",
   "private": true,
   "main": "dist-electron/main/index.js",
   "scripts": {
@@ -10,8 +12,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "build": {
-    "appId": "com.astral.securityguard",
-    "productName": "Astral Security Guard",
+    "appId": "com.astral.vanguard",
+    "productName": "Astral Vanguard",
     "directories": {
       "output": "dist-electron/release"
     },
