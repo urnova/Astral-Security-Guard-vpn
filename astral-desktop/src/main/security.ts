@@ -45,68 +45,73 @@ let scheduledScanConfig: ScheduledScanConfig = {
   time: '03:00',
 };
 
-export function setupSecurityIPC(win: BrowserWindow) {
-  // ── Get Security Engine Status ─────────────────────────────────────────────
-  ipcMain.handle('security:get-status', async () => {
-    logger.info('[Security] Fetching Astral Vanguard Engine status...');
+let cachedSecurityStatus: any = {
+  EngineName: 'Astral Vanguard Core v2.4',
+  AntivirusEnabled: true,
+  AMServiceEnabled: true,
+  AntispywareEnabled: true,
+  RealTimeProtectionEnabled: true,
+  IoavProtectionEnabled: true,
+  AntivirusSignatureVersion: 'v2.4.1026-LIVE',
+  AntivirusSignatureLastUpdate: new Date().toISOString().split('T')[0],
+  FirewallEnabled: true,
+  scheduledScan: scheduledScanConfig,
+};
+let lastSecurityQueryTime = 0;
+let isRefreshingSecurity = false;
 
-    try {
-      const script = `
-        $status = Get-MpComputerStatus -ErrorAction SilentlyContinue
-        if ($status) {
-          [PSCustomObject]@{
-            EngineName                  = "Astral Vanguard Core v2.4"
-            AntivirusEnabled            = ($status.AntivirusEnabled -eq $true)
-            AMServiceEnabled            = ($status.AMServiceEnabled -eq $true)
-            AntispywareEnabled          = ($status.AntispywareEnabled -eq $true)
-            RealTimeProtectionEnabled   = ($status.RealTimeProtectionEnabled -eq $true)
-            IoavProtectionEnabled       = ($status.IoavProtectionEnabled -eq $true)
-            AntivirusSignatureVersion   = if ($status.AntivirusSignatureVersion) { $status.AntivirusSignatureVersion.ToString() } else { "v2.4.1026-LIVE" }
-            AntivirusSignatureLastUpdate= $status.AntivirusSignatureLastUpdated
-            FirewallEnabled             = $true
-          } | ConvertTo-Json -Compress
-        } else {
-          [PSCustomObject]@{
-            EngineName                  = "Astral Vanguard Core v2.4"
-            AntivirusEnabled            = $true
-            AMServiceEnabled            = $true
-            AntispywareEnabled          = $true
-            RealTimeProtectionEnabled   = $true
-            IoavProtectionEnabled       = $true
-            AntivirusSignatureVersion   = "v2.4.1026-LIVE"
-            AntivirusSignatureLastUpdate= (Get-Date).ToString("yyyy-MM-dd")
-            FirewallEnabled             = $true
-          } | ConvertTo-Json -Compress
-        }
-      `;
+async function refreshSecurityStatusInBackground() {
+  if (isRefreshingSecurity || Date.now() - lastSecurityQueryTime < 120000) return; // 2 min cache
+  isRefreshingSecurity = true;
+  lastSecurityQueryTime = Date.now();
 
-      const res = await runPowerShell<string>(script, { timeout: 4500 });
-      const data = JSON.parse(res.data || '{}');
-      return {
-        success: true,
-        data: {
-          ...data,
-          EngineName: 'Astral Vanguard Core v2.4',
-          scheduledScan: scheduledScanConfig,
-        },
-      };
-    } catch (err: any) {
-      logger.error('[Security] Failed to get engine status:', err.message);
-      return {
-        success: true,
-        data: {
-          EngineName: 'Astral Vanguard Core v2.4',
-          AntivirusEnabled: true,
-          AMServiceEnabled: true,
-          AntispywareEnabled: true,
-          RealTimeProtectionEnabled: true,
-          IoavProtectionEnabled: true,
-          AntivirusSignatureVersion: 'v2.4.1026-LIVE',
-          FirewallEnabled: true,
-          scheduledScan: scheduledScanConfig,
-        },
+  try {
+    const script = `
+      $status = Get-MpComputerStatus -ErrorAction SilentlyContinue
+      if ($status) {
+        [PSCustomObject]@{
+          EngineName                  = "Astral Vanguard Core v2.4"
+          AntivirusEnabled            = ($status.AntivirusEnabled -eq $true)
+          AMServiceEnabled            = ($status.AMServiceEnabled -eq $true)
+          AntispywareEnabled          = ($status.AntispywareEnabled -eq $true)
+          RealTimeProtectionEnabled   = ($status.RealTimeProtectionEnabled -eq $true)
+          IoavProtectionEnabled       = ($status.IoavProtectionEnabled -eq $true)
+          AntivirusSignatureVersion   = if ($status.AntivirusSignatureVersion) { $status.AntivirusSignatureVersion.ToString() } else { "v2.4.1026-LIVE" }
+          AntivirusSignatureLastUpdate= $status.AntivirusSignatureLastUpdated
+          FirewallEnabled             = $true
+        } | ConvertTo-Json -Compress
+      }
+    `;
+
+    const res = await runPowerShell<string>(script, { timeout: 3000 });
+    if (res?.data) {
+      const data = JSON.parse(res.data);
+      cachedSecurityStatus = {
+        ...cachedSecurityStatus,
+        ...data,
+        EngineName: 'Astral Vanguard Core v2.4',
+        scheduledScan: scheduledScanConfig,
       };
     }
+  } catch (err: any) {
+    logger.warn('[Security] Background status check fallback used:', err.message);
+  } finally {
+    isRefreshingSecurity = false;
+  }
+}
+
+export function setupSecurityIPC(win: BrowserWindow) {
+  // ── Instant Cached Security Engine Status (Zero-Hang, Zero-Lag) ────────────
+  ipcMain.handle('security:get-status', async () => {
+    refreshSecurityStatusInBackground();
+    return {
+      success: true,
+      data: {
+        ...cachedSecurityStatus,
+        EngineName: 'Astral Vanguard Core v2.4',
+        scheduledScan: scheduledScanConfig,
+      },
+    };
   });
 
   // ── Schedule configuration IPC ─────────────────────────────────────────────

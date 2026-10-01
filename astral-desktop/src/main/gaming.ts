@@ -175,15 +175,17 @@ export function startGameDetection(
       // AUTO-DETECT GUARD: loop runs but does nothing if autoDetect is disabled
       if (!autoDetectEnabled && !gamingModeActive) return;
 
-      // If gaming mode is active with a tracked PID, check if the process is still running
+      // If gaming mode is active with a tracked PID, check if the process is still running (instant native check)
       if (currentGamePID !== null) {
-        const checkScript = `
-          $proc = Get-Process -Id ${currentGamePID} -ErrorAction SilentlyContinue
-          if ($proc) { [PSCustomObject]@{ alive = $true; name = $proc.ProcessName } | ConvertTo-Json -Compress }
-          else { [PSCustomObject]@{ alive = $false } | ConvertTo-Json -Compress }
-        `;
-        const checkRes = await runPowerShell(checkScript, { asJson: true, timeout: 2000 });
-        if (checkRes.success && checkRes.data && checkRes.data.alive === false) {
+        let isAlive = false;
+        try {
+          process.kill(currentGamePID, 0);
+          isAlive = true;
+        } catch (e: any) {
+          isAlive = e.code === 'EPERM';
+        }
+
+        if (!isAlive) {
           // Process terminated
           logger.info(`Processus de jeu terminé (PID ${currentGamePID} : ${currentGameName})`);
           gamingSessionState = 'finished';
