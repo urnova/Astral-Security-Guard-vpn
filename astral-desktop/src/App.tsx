@@ -14,6 +14,7 @@ import UpdateModal from './components/UpdateModal';
 import DownloadScanModal from './components/DownloadScanModal';
 import { NotificationSystem } from './components/NotificationSystem';
 import { ShieldAlert } from 'lucide-react';
+import { SystemProvider } from './context/SystemContext';
 
 const api = (window as any).vanguard;
 
@@ -122,6 +123,7 @@ export default function App() {
   };
 
   return (
+    <SystemProvider>
       <div className="app-root" data-gaming={gamingModeActive} data-theme={theme}>
         {/* Integrated Splash Transition */}
         {!splashDone && <SplashScreen onFinish={() => setSplashDone(true)} />}
@@ -177,59 +179,51 @@ export default function App() {
               </div>
             )}
 
-            {/* Main content with Lazy Loaded Tab Panes to prevent background CPU freezes & fan spin */}
+            {/* Main content: Persistent Tab Panes with zero state-reset when switching */}
             <main className="app-content">
-              {activeTab === 'dashboard' && (
-                <div className="tab-pane" style={{ height: '100%' }}>
-                  <Dashboard
-                    gamingActive={gamingModeActive}
-                    currentGame={currentGame}
-                    onTabChange={setActiveTab}
-                    firstName={firstName}
-                  />
-                </div>
-              )}
-              {activeTab === 'security' && (
-                <div className="tab-pane" style={{ height: '100%' }}>
-                  <SecurityTab />
-                </div>
-              )}
-              {activeTab === 'performance' && (
-                <div className="tab-pane" style={{ height: '100%' }}>
-                  <PerformanceTab gamingActive={gamingModeActive} />
-                </div>
-              )}
-              {activeTab === 'network' && (
-                <div className="tab-pane" style={{ height: '100%' }}>
-                  <NetworkTab gamingActive={gamingModeActive} />
-                </div>
-              )}
-              {activeTab === 'gaming' && (
-                <div className="tab-pane" style={{ height: '100%' }}>
-                  <GamingTab
-                    gamingActive={gamingModeActive}
-                    currentGame={currentGame}
-                    onGamingToggle={setGaming}
-                  />
-                </div>
-              )}
-              {activeTab === 'vpn' && (
-                <div className="tab-pane" style={{ height: '100%' }}>
-                  <VpnTab />
-                </div>
-              )}
-              {activeTab === 'settings' && (
-                <div className="tab-pane" style={{ height: '100%' }}>
-                  <SettingsTab
-                    dndEnabled={dndEnabled}
-                    onDndChange={setDndEnabled}
-                    onProfileSaved={refreshProfile}
-                    onRelaunchOnboarding={() => setShowOnboarding(true)}
-                    currentTheme={theme}
-                    onThemeChange={handleThemeChange}
-                  />
-                </div>
-              )}
+              <div className="tab-pane" style={{ height: '100%', display: activeTab === 'dashboard' ? 'block' : 'none' }}>
+                <Dashboard
+                  gamingActive={gamingModeActive}
+                  currentGame={currentGame}
+                  onTabChange={setActiveTab}
+                  firstName={firstName}
+                />
+              </div>
+
+              <div className="tab-pane" style={{ height: '100%', display: activeTab === 'security' ? 'block' : 'none' }}>
+                <SecurityTab />
+              </div>
+
+              <div className="tab-pane" style={{ height: '100%', display: activeTab === 'performance' ? 'block' : 'none' }}>
+                <PerformanceTab gamingActive={gamingModeActive} />
+              </div>
+
+              <div className="tab-pane" style={{ height: '100%', display: activeTab === 'network' ? 'block' : 'none' }}>
+                <NetworkTab gamingActive={gamingModeActive} />
+              </div>
+
+              <div className="tab-pane" style={{ height: '100%', display: activeTab === 'gaming' ? 'block' : 'none' }}>
+                <GamingTab
+                  gamingActive={gamingModeActive}
+                  currentGame={currentGame}
+                  onGamingToggle={setGaming}
+                />
+              </div>
+
+              <div className="tab-pane" style={{ height: '100%', display: activeTab === 'vpn' ? 'block' : 'none' }}>
+                <VpnTab />
+              </div>
+
+              <div className="tab-pane" style={{ height: '100%', display: activeTab === 'settings' ? 'block' : 'none' }}>
+                <SettingsTab
+                  dndEnabled={dndEnabled}
+                  onDndChange={setDndEnabled}
+                  onProfileSaved={refreshProfile}
+                  onRelaunchOnboarding={() => setShowOnboarding(true)}
+                  currentTheme={theme}
+                  onThemeChange={handleThemeChange}
+                />
+              </div>
             </main>
           </div>
         </div>
@@ -238,6 +232,7 @@ export default function App() {
         <DownloadScanModal />
         {updateInfo && <UpdateModal info={updateInfo} onClose={() => setUpdateInfo(null)} />}
       </div>
-    );
-  }
+    </SystemProvider>
+  );
+}
 

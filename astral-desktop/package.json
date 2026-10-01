@@ -33,7 +33,8 @@
       "installerIcon": "public/installer.ico",
       "uninstallerIcon": "public/uninstaller.ico",
       "installerHeaderIcon": "public/installer.ico",
-      "deleteAppDataOnUninstall": true
+      "deleteAppDataOnUninstall": true,
+      "include": "build/installer.nsh"
     },
     "extraResources": [
       {

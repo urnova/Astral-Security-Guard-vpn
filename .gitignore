@@ -5,6 +5,7 @@ dist
 dist-electron
 release
 build
+!astral-desktop/build/
 tmp
 out-tsc
 *.tsbuildinfo

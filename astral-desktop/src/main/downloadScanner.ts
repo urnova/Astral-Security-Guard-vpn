@@ -12,6 +12,7 @@ import os from 'os';
 import cp from 'child_process';
 import { logger } from './logger';
 import { runPowerShell } from './psHelper';
+import { showAvastStyleDownloadScan } from './notificationWindow';
 
 export interface DownloadScannerConfig {
   enabled: boolean;
@@ -518,6 +519,19 @@ async function handleFileEvent(folderPath: string, filename: string) {
 
     // Save in cache
     scannedCache.set(cacheKey, { result, timestamp: Date.now() });
+
+    // Show Avast-style desktop popup window immediately
+    try {
+      showAvastStyleDownloadScan({
+        fileName: filename,
+        filePath,
+        status: result.status === 'threat' ? 'threat' : result.status === 'suspect' ? 'suspect' : 'safe',
+        threatName: result.threatName,
+        isUnsigned: result.isUnsigned,
+      });
+    } catch (err: any) {
+      logger.warn('[DownloadScanner] Error showing Avast-style download popup:', err.message);
+    }
 
     // 7. Send scan result to renderer
     if (activeMainWindow && !activeMainWindow.isDestroyed()) {

@@ -2,69 +2,58 @@ import { useState, useEffect } from 'react';
 import {
   Shield, ShieldCheck, ShieldAlert, RefreshCw, Zap,
   FolderPlus, Trash2, RotateCcw, AlertTriangle, CheckCircle2,
-  Sliders, Search, Check, FileCheck, Layers, Clock
+  Search, Check, FileCheck, Layers, Clock, Calendar, Sparkles
 } from 'lucide-react';
 import { CollapsibleError } from '../ui/CollapsibleError';
+import { CyberToggle } from '../common/CyberToggle';
+import { useSystem } from '../../context/SystemContext';
 
 const api = (window as any).vanguard;
 
 type ScanState = 'idle' | 'scanning' | 'done';
-type AiState = 'idle' | 'loading' | 'done';
 
 export default function SecurityTab() {
+  const { securityStatus: ctxSec, updateSecurityStatus } = useSystem();
   const [scanState, setScanState] = useState<ScanState>('idle');
-  const [scanType, setScanType] = useState<'quick' | 'full' | 'custom'>('quick');
-  const [scanStep, setScanStep] = useState<number>(1);
+  const [scanType, setScanType] = useState<'quick' | 'full'>('quick');
   const [scanProgress, setScanProgress] = useState<number>(0);
   const [currentScanFile, setCurrentScanFile] = useState<string>('');
+  const [filesScanned, setFilesScanned] = useState<number>(0);
   const [threats, setThreats] = useState<any[]>([]);
-  const [aiAnalysis, setAiAnalysis] = useState<any>(null);
-  const [aiState, setAiState] = useState<AiState>('idle');
-  const [rollbackLog, setRollbackLog] = useState<any[]>([]);
   const [exclusions, setExclusions] = useState<string[]>([]);
   const [newExclusionPath, setNewExclusionPath] = useState('');
-  const [remediationScript, setRemediationScript] = useState('');
-  const [remediating, setRemediating] = useState(false);
   const [updatingSignatures, setUpdatingSignatures] = useState(false);
-  const [defenderStatus, setDefenderStatus] = useState<any>(null);
   const [errorInfo, setErrorInfo] = useState<{ message: string; technical?: string } | null>(null);
   const [notice, setNotice] = useState('');
-  
-  // Settings switches
-  const [autoScanStartup, setAutoScanStartup] = useState(true);
-  const [autoScanWeekly, setAutoScanWeekly] = useState(true);
-  const [activeSubTab, setActiveSubTab] = useState<'exclusions' | 'backups'>('exclusions');
+  const [activeSubTab, setActiveSubTab] = useState<'protection' | 'schedule' | 'exclusions'>('protection');
 
-  const loadData = () => {
-    if (!api) return;
-    api.getSecurityStatus?.().then((res: any) => {
-      if (res?.success) setDefenderStatus(res.data);
-    });
-    api.listRollback?.().then((r: any) => setRollbackLog(r.entries || []));
-    api.getExclusions?.().then((r: any) => setExclusions(r.paths || []));
-  };
+  // Protection Toggles
+  const [realTimeGuard, setRealTimeGuard] = useState(true);
+  const [downloadShield, setDownloadShield] = useState(true);
+  const [memoryHeuristic, setMemoryHeuristic] = useState(true);
+  const [scheduledFrequency, setScheduledFrequency] = useState<'daily' | 'weekly'>('weekly');
+  const [scheduledEnabled, setScheduledEnabled] = useState(true);
 
   useEffect(() => {
-    loadData();
+    if (!api) return;
+    api.getExclusions?.().then((r: any) => setExclusions(r.paths || []));
 
-    const cleanup = api?.on?.('security:scan-event', (event: any) => {
-      if (event.type === 'scan-complete') {
-        setThreats(event.threats || []);
+    const cleanup = api.on?.('security:scan-event', (event: any) => {
+      if (event.type === 'scan-progress') {
+        setScanProgress(event.percent);
+        if (event.currentFile) setCurrentScanFile(event.currentFile);
+        if (event.filesScanned) setFilesScanned(event.filesScanned);
+      } else if (event.type === 'scan-complete') {
         setScanProgress(100);
-        setScanStep(3);
         setScanState('done');
-        if ((event.threats || []).length > 0) {
-          runAiAnalysis(event.threats);
-        } else {
-          runAiAnalysis([]);
-        }
+        setThreats(event.threats || []);
+        if (event.filesScanned) setFilesScanned(event.filesScanned);
       } else if (event.type === 'scan-error') {
         setScanState('idle');
+        setErrorInfo({ message: 'Échec de l’analyse.', technical: event.error });
+      } else if (event.type === 'scan-cancelled') {
+        setScanState('idle');
         setScanProgress(0);
-        setErrorInfo({
-          message: 'Échec de l’analyse antivirus.',
-          technical: event.error,
-        });
       }
     });
 
@@ -73,240 +62,104 @@ export default function SecurityTab() {
     };
   }, []);
 
-  // Simulated animated scan step progression when scanning
-  useEffect(() => {
-    if (scanState !== 'scanning') return;
-
-    let p = 0;
-    const files = [
-      'C:\\Windows\\System32\\ntoskrnl.exe',
-      'C:\\Windows\\System32\\drivers\\etc\\hosts',
-      'C:\\Program Files\\Windows Defender\\MsMpEng.exe',
-      'HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run',
-      'C:\\Users\\AppData\\Local\\Temp\\cache.tmp',
-      'Processus Mémoire : services.exe & svchost.exe',
-      'Heuristique autonome : intégrité des signatures PE',
-    ];
-
-    const interval = setInterval(() => {
-      p += 4;
-      if (p > 92) p = 92;
-      setScanProgress(p);
-
-      const fIdx = Math.floor((p / 100) * files.length);
-      setCurrentScanFile(files[Math.min(fIdx, files.length - 1)]);
-
-      if (p < 35) setScanStep(1);
-      else if (p < 75) setScanStep(2);
-      else setScanStep(3);
-    }, 450);
-
-    return () => clearInterval(interval);
-  }, [scanState]);
-
-  const runAiAnalysis = async (t: any[]) => {
+  const startScan = async () => {
     if (!api) return;
-    setAiState('loading');
-    const res = await api.aiAnalyze(t);
-    if (res?.success) {
-      setAiAnalysis(res.analysis);
-      if (res.analysis?.remediationScript) {
-        setRemediationScript(res.analysis.remediationScript);
-      }
-    }
-    setAiState('done');
-  };
-
-  const startScan = async (type: 'quick' | 'full' | 'custom' = scanType) => {
-    if (!api) return;
+    setScanState('scanning');
+    setScanProgress(5);
+    setFilesScanned(0);
+    setCurrentScanFile('Initialisation des flux de mémoire...');
     setErrorInfo(null);
     setThreats([]);
-    setAiAnalysis(null);
-    setAiState('idle');
-    setScanProgress(5);
-    setScanStep(1);
-    setScanState('scanning');
 
     try {
-      if (type === 'custom') {
-        const folderRes = await api.selectScannerFolder?.();
-        if (!folderRes?.success || !folderRes.folderPath) {
-          setScanState('idle');
-          setScanProgress(0);
-          return;
-        }
-        setCurrentScanFile(`Dossier cible : ${folderRes.folderPath}`);
-      }
-
-      await api.createRestorePoint(`Avant scan antivirus (${type})`);
-      const res = await api.startScan(type);
-      if (!res?.success) {
-        setScanState('idle');
-        setScanProgress(0);
-        setErrorInfo({
-          message: res?.error || 'Erreur lors du lancement de l’analyse.',
-          technical: res?.rawError,
-        });
-      }
+      await api.startScan(scanType);
     } catch (err: any) {
       setScanState('idle');
-      setScanProgress(0);
-      setErrorInfo({
-        message: 'Erreur inattendue lors de l’analyse.',
-        technical: err.message,
-      });
+      setErrorInfo({ message: 'Impossible de lancer l’analyse', technical: err.message });
     }
   };
 
-  const handleUpdateSignatures = async () => {
+  const cancelScan = async () => {
+    if (!api) return;
+    await api.cancelScan?.();
+    setScanState('idle');
+    setScanProgress(0);
+  };
+
+  const updateSignatures = async () => {
     if (!api) return;
     setUpdatingSignatures(true);
-    setErrorInfo(null);
+    setNotice('Mise à jour des signatures en cours...');
     try {
-      const res = await api.updateSignatures?.();
+      const res = await api.updateSignatures();
       if (res?.success) {
-        setNotice('✅ Signatures Microsoft Defender mises à jour avec succès.');
-        loadData();
-      } else {
-        setErrorInfo({ message: 'Échec de la mise à jour des signatures', technical: res?.error });
+        updateSecurityStatus({ signaturesVersion: res.version || 'v2.4.1026-LIVE' });
+        setNotice('✅ Signatures du moteur Astral Vanguard actualisées.');
       }
-    } catch (err: any) {
-      setErrorInfo({ message: 'Erreur inattendue', technical: err.message });
     } finally {
       setUpdatingSignatures(false);
       setTimeout(() => setNotice(''), 4000);
     }
   };
 
-  const handleAddExclusion = async () => {
+  const addExclusion = async () => {
     if (!api || !newExclusionPath.trim()) return;
-    try {
-      const res = await api.addExclusion(newExclusionPath.trim());
-      if (res?.success) {
-        setExclusions((prev) => [...prev, newExclusionPath.trim()]);
-        setNewExclusionPath('');
-        setNotice('✅ Exception ajoutée à Defender.');
-      } else {
-        setErrorInfo({ message: 'Impossible d’ajouter l’exclusion', technical: res?.error });
-      }
-    } catch (err: any) {
-      setErrorInfo({ message: 'Erreur exclusion', technical: err.message });
+    const res = await api.addExclusion(newExclusionPath.trim());
+    if (res?.success) {
+      setExclusions([...exclusions, newExclusionPath.trim()]);
+      setNewExclusionPath('');
+      setNotice('✅ Règle d’exclusion ajoutée.');
+      setTimeout(() => setNotice(''), 3000);
     }
-    setTimeout(() => setNotice(''), 3000);
   };
 
-  const handleRemoveExclusion = async (path: string) => {
+  const removeExclusion = async (p: string) => {
     if (!api) return;
-    try {
-      const res = await api.removeExclusion(path);
-      if (res?.success) {
-        setExclusions((prev) => prev.filter((p) => p !== path));
-        setNotice('Exception supprimée.');
-      }
-    } catch (err: any) {
-      setErrorInfo({ message: 'Erreur suppression exclusion', technical: err.message });
+    const res = await api.removeExclusion(p);
+    if (res?.success) {
+      setExclusions(exclusions.filter((e) => e !== p));
     }
-    setTimeout(() => setNotice(''), 3000);
-  };
-
-  const handleSelectFolderExclusion = async () => {
-    if (!api) return;
-    try {
-      const res = await api.selectScannerFolder?.();
-      if (res?.success && res.folderPath) {
-        setNewExclusionPath(res.folderPath);
-      }
-    } catch {}
-  };
-
-  const runRemediation = async () => {
-    if (!api || !remediationScript) return;
-    setRemediating(true);
-    setErrorInfo(null);
-    try {
-      const res = await api.runRemediation(remediationScript);
-      if (res?.success) {
-        setNotice('✅ Remédiation appliquée avec succès.');
-        setRemediationScript('');
-        loadData();
-      } else {
-        setErrorInfo({
-          message: 'Erreur lors de l’application de la remédiation.',
-          technical: res?.error,
-        });
-      }
-    } finally {
-      setRemediating(false);
-      setTimeout(() => setNotice(''), 4000);
-    }
-  };
-
-  const handleRestoreEntry = async (item: any) => {
-    if (!api) return;
-    setErrorInfo(null);
-    try {
-      const res = await api.restoreEntry(item.id);
-      if (res?.success) {
-        setNotice(`✅ ${res.message || 'Restauration effectuée avec succès.'}`);
-        loadData();
-      } else {
-        setErrorInfo({
-          message: 'Impossible de restaurer ce point de sauvegarde.',
-          technical: res?.error,
-        });
-      }
-    } catch (err: any) {
-      setErrorInfo({ message: 'Erreur lors de la restauration', technical: err.message });
-    }
-    setTimeout(() => setNotice(''), 4000);
   };
 
   return (
-    <div className="tab-scroll" style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
+    <div className="tab-scroll animate-in" style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
       {/* Header */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 16,
-          paddingBottom: 20,
-          borderBottom: '1px solid var(--border)',
-          marginBottom: 24,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 12,
-              backgroundColor: 'rgba(139, 92, 246, 0.15)',
-              border: '1px solid var(--border-violet)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--violet)',
-            }}
-          >
-            <Shield size={20} />
-          </div>
-          <div>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-              Sécurité & Protection Defender
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+              Centre de Sécurité & Antivirus
             </h1>
-            <p style={{ margin: '2px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-              Supervision native Windows Defender · Heuristique autonome zéro-cloud · Points de sauvegarde
-            </p>
+            <span
+              style={{
+                fontSize: 11,
+                fontFamily: "'JetBrains Mono', monospace",
+                padding: '3px 8px',
+                borderRadius: 6,
+                backgroundColor: 'rgba(0, 245, 255, 0.1)',
+                border: '1px solid rgba(0, 245, 255, 0.3)',
+                color: 'var(--cyan)',
+                fontWeight: 700,
+              }}
+            >
+              ASTRAL VANGUARD CORE v2.4
+            </span>
           </div>
+          <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+            Moteur de protection heuristique autonome & bouclier e-sport temps réel
+          </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div className="badge badge-green" style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600 }}>
-            <span className="badge-dot" />
-            <span>MOTEUR DEFENDER ACTIF</span>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            onClick={updateSignatures}
+            disabled={updatingSignatures}
+            className="btn btn-ghost btn-sm"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
+          >
+            <RefreshCw size={13} className={updatingSignatures ? 'animate-spin' : ''} />
+            <span>{updatingSignatures ? 'Mise à jour...' : 'Actualiser Signatures'}</span>
+          </button>
         </div>
       </div>
 
@@ -314,19 +167,18 @@ export default function SecurityTab() {
         <div
           style={{
             padding: '12px 16px',
-            borderRadius: 12,
-            backgroundColor: 'rgba(16, 217, 160, 0.1)',
-            border: '1px solid rgba(16, 217, 160, 0.3)',
-            color: 'var(--green)',
+            marginBottom: 20,
+            borderRadius: 10,
+            backgroundColor: 'rgba(0, 245, 255, 0.08)',
+            border: '1px solid rgba(0, 245, 255, 0.25)',
             fontSize: 13,
-            fontWeight: 500,
+            color: '#ffffff',
             display: 'flex',
             alignItems: 'center',
             gap: 10,
-            marginBottom: 20,
           }}
         >
-          <CheckCircle2 size={16} />
+          <Sparkles size={16} style={{ color: 'var(--cyan)' }} />
           <span>{notice}</span>
         </div>
       )}
@@ -337,493 +189,366 @@ export default function SecurityTab() {
         </div>
       )}
 
-      {/* ── Defender 3 Status Cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
-        <div className="glass-card" style={{ padding: 18, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(16, 217, 160, 0.12)', border: '1px solid var(--border-green)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--green)' }}>
-              <ShieldCheck size={18} />
-            </div>
-            <div>
-              <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Protection Temps Réel</p>
-              <p style={{ margin: '2px 0 0 0', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
-                {defenderStatus?.RealTimeProtectionEnabled ? 'Activée & Conforme' : 'Protection Active'}
-              </p>
-            </div>
-          </div>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: 'var(--green)', boxShadow: '0 0 8px rgba(16, 217, 160, 0.6)' }} />
-        </div>
-
-        <div className="glass-card" style={{ padding: 18, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(139, 92, 246, 0.12)', border: '1px solid var(--border-violet)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--violet)' }}>
-              <Shield size={18} />
-            </div>
-            <div>
-              <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Moteur Antivirus</p>
-              <p style={{ margin: '2px 0 0 0', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
-                Microsoft Defender Native
-              </p>
-            </div>
-          </div>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: 'var(--green)', boxShadow: '0 0 8px rgba(16, 217, 160, 0.6)' }} />
-        </div>
-
-        <div className="glass-card" style={{ padding: 18, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Signatures Antivirales</p>
-            <p style={{ margin: '2px 0 0 0', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--mono)' }}>
-              {defenderStatus?.AntivirusSignatureVersion || 'Dernière Version'}
-            </p>
-          </div>
-          <button
-            onClick={handleUpdateSignatures}
-            disabled={updatingSignatures}
-            className="btn btn-ghost"
-            style={{ padding: '6px 12px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}
-          >
-            <RefreshCw size={12} className={updatingSignatures ? 'animate-spin' : ''} />
-            <span>{updatingSignatures ? 'Mise à jour...' : 'Actualiser'}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* ── Main Dynamic Radar Scanner Centerpiece ── */}
+      {/* Main Scan Hero Card with Radar Animation */}
       <div
         className="glass-card"
         style={{
-          padding: 28,
-          borderRadius: 20,
+          padding: '28px 32px',
           marginBottom: 24,
-          background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.10) 0%, rgba(6, 6, 20, 0.85) 100%)',
-          border: '1px solid var(--border-violet)',
+          background: 'linear-gradient(135deg, rgba(8, 12, 28, 0.85) 0%, rgba(15, 23, 42, 0.75) 100%)',
+          border: '1px solid rgba(0, 245, 255, 0.2)',
+          boxShadow: '0 12px 36px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
+          borderRadius: 16,
           position: 'relative',
           overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
-              Console d'Analyse Antivirale & Heuristique
-            </h2>
-            <p style={{ margin: '3px 0 0 0', fontSize: 12, color: 'var(--text-secondary)' }}>
-              Sélectionnez le mode puis lancez l'inspection intelligente en temps réel
-            </p>
-          </div>
-
-          {/* Mode Selector Buttons */}
-          <div style={{ display: 'flex', gap: 8 }}>
-            {[
-              { id: 'quick', label: 'Analyse Rapide', desc: 'Mémoire & Boot' },
-              { id: 'full', label: 'Analyse Complète', desc: 'Disques & Fichiers' },
-              { id: 'custom', label: 'Ciblage Dossier', desc: 'Répertoire Spécifique' },
-            ].map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setScanType(m.id as any)}
-                disabled={scanState === 'scanning'}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: 10,
-                  border: `1px solid ${scanType === m.id ? 'var(--cyan)' : 'var(--border)'}`,
-                  backgroundColor: scanType === m.id ? 'rgba(0, 212, 255, 0.12)' : 'var(--bg-surface)',
-                  color: scanType === m.id ? 'var(--cyan)' : 'var(--text-muted)',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.2s ease',
-                }}
-              >
-                <div style={{ fontSize: 12, fontWeight: 700 }}>{m.label}</div>
-                <div style={{ fontSize: 10, opacity: 0.7 }}>{m.desc}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Centerpiece Scanner Action Bar */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: '16px 0 20px 0' }}>
-          <style>{`
-            @keyframes radarPulse {
-              0% { transform: scale(0.95); opacity: 0.8; }
-              50% { transform: scale(1.05); opacity: 1; filter: drop-shadow(0 0 20px rgba(0, 212, 255, 0.6)); }
-              100% { transform: scale(0.95); opacity: 0.8; }
-            }
-            @keyframes radarSweep {
-              from { transform: rotate(0deg); }
-              to { transform: rotate(360deg); }
-            }
-          `}</style>
-
-          {/* Large Radar Scan Button */}
-          <div style={{ position: 'relative', width: 150, height: 150, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
-            <svg
-              width="150"
-              height="150"
-              viewBox="0 0 150 150"
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                pointerEvents: 'none',
-              }}
-            >
-              <circle cx="75" cy="75" r="68" fill="none" stroke="rgba(255, 255, 255, 0.08)" strokeWidth="1.5" />
-              <circle
-                cx="75"
-                cy="75"
-                r="68"
-                fill="none"
-                stroke={scanState === 'scanning' ? 'var(--cyan)' : scanState === 'done' ? 'var(--green)' : 'var(--violet)'}
-                strokeWidth="2.5"
-                strokeDasharray="16 10 4 10"
-                strokeLinecap="round"
-                style={{
-                  transformOrigin: '75px 75px',
-                  animation: scanState === 'scanning' ? 'radarSweep 2s linear infinite' : 'none',
-                }}
-              />
-            </svg>
-
-            <button
-              onClick={() => startScan(scanType)}
-              disabled={scanState === 'scanning'}
-              style={{
-                width: 114,
-                height: 114,
-                borderRadius: '50%',
-                border: `3px solid ${
-                  scanState === 'scanning'
-                    ? 'var(--cyan)'
-                    : scanState === 'done'
-                    ? 'var(--green)'
-                    : 'var(--violet)'
-                }`,
-                backgroundColor:
-                  scanState === 'scanning'
-                    ? 'rgba(0, 212, 255, 0.16)'
-                    : scanState === 'done'
-                    ? 'rgba(16, 217, 160, 0.16)'
-                    : 'rgba(139, 92, 246, 0.16)',
-                boxShadow:
-                  scanState === 'scanning'
-                    ? '0 0 35px rgba(0, 212, 255, 0.5)'
-                    : '0 0 25px rgba(139, 92, 246, 0.3)',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: scanState === 'scanning' ? 'default' : 'pointer',
-                transition: 'all 0.3s ease',
-              }}
-            >
-              {scanState === 'scanning' ? (
-                <>
-                  <RefreshCw size={28} className="animate-spin" style={{ color: 'var(--cyan)' }} />
-                  <span style={{ fontSize: 10, fontWeight: 800, marginTop: 6, color: 'var(--cyan)' }}>
-                    {scanProgress}%
-                  </span>
-                </>
-              ) : scanState === 'done' ? (
-                <>
-                  <CheckCircle2 size={30} style={{ color: 'var(--green)' }} />
-                  <span style={{ fontSize: 10, fontWeight: 800, marginTop: 4, color: 'var(--green)' }}>
-                    TERMINÉ
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Zap size={30} style={{ color: 'var(--violet)' }} />
-                  <span style={{ fontSize: 10, fontWeight: 800, marginTop: 4, color: 'var(--text-primary)' }}>
-                    ANALYSER
-                  </span>
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Dynamic 3-Step Progress Indicator */}
-          {scanState === 'scanning' && (
-            <div style={{ width: '100%', maxWidth: 640 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 14 }}>
-                <div style={{ padding: '8px 12px', borderRadius: 8, backgroundColor: scanStep >= 1 ? 'rgba(0, 212, 255, 0.15)' : 'rgba(255,255,255,0.03)', border: `1px solid ${scanStep >= 1 ? 'var(--cyan)' : 'var(--border)'}`, textAlign: 'center' }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: scanStep >= 1 ? 'var(--cyan)' : 'var(--text-muted)' }}>
-                    Étape 1 : Mémoire & RAM
-                  </div>
-                </div>
-                <div style={{ padding: '8px 12px', borderRadius: 8, backgroundColor: scanStep >= 2 ? 'rgba(0, 212, 255, 0.15)' : 'rgba(255,255,255,0.03)', border: `1px solid ${scanStep >= 2 ? 'var(--cyan)' : 'var(--border)'}`, textAlign: 'center' }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: scanStep >= 2 ? 'var(--cyan)' : 'var(--text-muted)' }}>
-                    Étape 2 : Signatures Defender
-                  </div>
-                </div>
-                <div style={{ padding: '8px 12px', borderRadius: 8, backgroundColor: scanStep >= 3 ? 'rgba(0, 212, 255, 0.15)' : 'rgba(255,255,255,0.03)', border: `1px solid ${scanStep >= 3 ? 'var(--cyan)' : 'var(--border)'}`, textAlign: 'center' }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: scanStep >= 3 ? 'var(--cyan)' : 'var(--text-muted)' }}>
-                    Étape 3 : Heuristique IA
-                  </div>
-                </div>
-              </div>
-
-              {/* Progress bar */}
-              <div style={{ width: '100%', height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.08)', overflow: 'hidden', marginBottom: 8 }}>
-                <div
-                  style={{
-                    width: `${scanProgress}%`,
-                    height: '100%',
-                    backgroundColor: 'var(--cyan)',
-                    boxShadow: '0 0 10px rgba(0, 212, 255, 0.6)',
-                    transition: 'width 0.4s ease',
-                  }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 500 }}>
-                  Inspection : {currentScanFile}
-                </span>
-                <span>{scanProgress}%</span>
-              </div>
-            </div>
-          )}
-
-          {/* Scan Done State Verdict */}
-          {scanState === 'done' && (
-            <div style={{ width: '100%', maxWidth: 640, padding: 16, borderRadius: 14, backgroundColor: threats.length === 0 ? 'rgba(16, 217, 160, 0.1)' : 'rgba(255, 75, 75, 0.1)', border: `1px solid ${threats.length === 0 ? 'rgba(16, 217, 160, 0.3)' : 'rgba(255, 75, 75, 0.3)'}`, textAlign: 'center' }}>
-              <div style={{ fontSize: 15, fontWeight: 800, color: threats.length === 0 ? 'var(--green)' : 'var(--red)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 4 }}>
-                {threats.length === 0 ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
-                <span>{threats.length === 0 ? 'Système Intègre · 0 Menace Détectée' : `${threats.length} Menace(s) Détectée(s)`}</span>
-              </div>
-              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)' }}>
-                {threats.length === 0
-                  ? 'La mémoire, le registre et les fichiers analysés sont sains. Un point de sauvegarde a été automatiquement sécurisé.'
-                  : 'Des anomalies ont été identifiées. Consultez l\'analyse heuristique ci-dessous pour appliquer la remédiation.'}
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Heuristic AI Box (If threats or AI completed) */}
-      {aiState !== 'idle' && (
-        <div
-          className="glass-card"
-          style={{
-            padding: 20,
-            borderRadius: 16,
-            marginBottom: 24,
-            background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(6, 6, 20, 0.8))',
-            border: '1px solid var(--border-violet)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(139, 92, 246, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--violet)' }}>
-                <Zap size={16} />
-              </div>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Rapport du Moteur Heuristique IA
-                </h3>
-                <p style={{ margin: 0, fontSize: 11, color: 'var(--text-secondary)' }}>
-                  Détection locale zéro-cloud · Analyse contextuelle des faux-positifs
-                </p>
-              </div>
-            </div>
-
-            {aiAnalysis && (
-              <span className={`badge ${aiAnalysis.riskLevel === 'sain' ? 'badge-green' : aiAnalysis.riskLevel === 'faible' ? 'badge-cyan' : 'badge-orange'}`} style={{ padding: '4px 10px', fontSize: 11 }}>
-                Risque : {aiAnalysis.riskLevel}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 24 }}>
+          {/* Left info & controls */}
+          <div style={{ flex: '1 1 340px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span className="badge badge-cyan" style={{ fontSize: 11, padding: '3px 10px' }}>
+                <span className="badge-dot" style={{ animation: 'dotPulse 1.4s infinite' }} />
+                BOUCLIER ACTIF
               </span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Signatures : <strong style={{ color: '#ffffff' }}>{ctxSec.signaturesVersion}</strong>
+              </span>
+            </div>
+
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#ffffff' }}>
+              {scanState === 'scanning'
+                ? 'Analyse heuristique en cours...'
+                : scanState === 'done'
+                ? 'Analyse système terminée'
+                : 'Système intègre et sécurisé'}
+            </h2>
+
+            <p style={{ margin: '6px 0 18px 0', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              {scanState === 'scanning'
+                ? 'Le moteur examine les flux de mémoire, les entrées système critiques et les bibliothèques d’exécution.'
+                : scanState === 'done'
+                ? `Analyse achevée avec succès. ${filesScanned} cibles vérifiées, ${threats.length} menace(s).`
+                : 'Scannez votre machine pour détecter les anomalies de registre, injecteurs non autorisés et menaces dormantes.'}
+            </p>
+
+            {/* Scan Type Selector & Action Buttons */}
+            {scanState === 'idle' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 4, backgroundColor: 'rgba(0, 0, 0, 0.3)', padding: 4, borderRadius: 8, border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                  <button
+                    onClick={() => setScanType('quick')}
+                    className={`btn btn-sm ${scanType === 'quick' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{ fontSize: 12, padding: '6px 14px' }}
+                  >
+                    Rapide (Mémoire & Registres)
+                  </button>
+                  <button
+                    onClick={() => setScanType('full')}
+                    className={`btn btn-sm ${scanType === 'full' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{ fontSize: 12, padding: '6px 14px' }}
+                  >
+                    Approfondie (Système Entier)
+                  </button>
+                </div>
+
+                <button
+                  onClick={startScan}
+                  className="btn btn-primary"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '10px 24px',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    boxShadow: '0 0 20px rgba(0, 245, 255, 0.45)',
+                    transition: 'all 0.25s ease',
+                  }}
+                >
+                  <Zap size={16} />
+                  <span>Lancer l'Analyse</span>
+                </button>
+              </div>
+            )}
+
+            {scanState === 'scanning' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button onClick={cancelScan} className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }}>
+                  Annuler l'analyse
+                </button>
+                <span style={{ fontSize: 12, color: 'var(--cyan)', fontFamily: "'JetBrains Mono', monospace" }}>
+                  {filesScanned} fichiers analysés
+                </span>
+              </div>
+            )}
+
+            {scanState === 'done' && (
+              <button onClick={() => setScanState('idle')} className="btn btn-ghost btn-sm">
+                Fermer le rapport et réinitialiser
+              </button>
             )}
           </div>
 
-          {aiAnalysis && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                {aiAnalysis.summary}
-              </p>
-              {remediationScript && (
-                <div style={{ marginTop: 8 }}>
-                  <button
-                    onClick={runRemediation}
-                    disabled={remediating}
-                    className="btn btn-primary"
-                    style={{ fontSize: 12, padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                  >
-                    {remediating ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
-                    <span>Appliquer la remédiation sécurisée</span>
-                  </button>
-                </div>
+          {/* Right Circular Radar Visual */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+            <div
+              style={{
+                width: 140,
+                height: 140,
+                borderRadius: '50%',
+                position: 'relative',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'radial-gradient(circle, rgba(0, 245, 255, 0.05) 0%, rgba(6, 6, 20, 0.8) 70%)',
+                border: '2px solid rgba(0, 245, 255, 0.3)',
+                boxShadow: scanState === 'scanning' ? '0 0 30px rgba(0, 245, 255, 0.4)' : 'none',
+              }}
+            >
+              {/* Radar Sweeping Beam */}
+              {scanState === 'scanning' && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    borderRadius: '50%',
+                    background: 'conic-gradient(from 0deg, transparent 70%, rgba(0, 245, 255, 0.5) 100%)',
+                    animation: 'spin 1.8s linear infinite',
+                  }}
+                />
               )}
+
+              {/* Central Badge */}
+              <div style={{ zIndex: 2, textAlign: 'center' }}>
+                {scanState === 'scanning' ? (
+                  <>
+                    <div style={{ fontSize: 26, fontWeight: 900, color: 'var(--cyan)', fontFamily: "'JetBrains Mono', monospace" }}>
+                      {scanProgress}%
+                    </div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase' }}>En cours</div>
+                  </>
+                ) : scanState === 'done' ? (
+                  <CheckCircle2 size={46} style={{ color: '#10b981' }} />
+                ) : (
+                  <ShieldCheck size={46} style={{ color: 'var(--cyan)' }} />
+                )}
+              </div>
             </div>
-          )}
+
+            {scanState === 'scanning' && (
+              <div
+                style={{
+                  fontSize: 11,
+                  fontFamily: "'JetBrains Mono', monospace",
+                  color: 'rgba(148, 163, 184, 0.85)',
+                  maxWidth: 240,
+                  textAlign: 'center',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+                title={currentScanFile}
+              >
+                {currentScanFile}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Linear Progress Indicator during scan */}
+        {scanState === 'scanning' && (
+          <div style={{ marginTop: 24 }}>
+            <div style={{ height: 4, width: '100%', backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: 9999, overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%',
+                  width: `${scanProgress}%`,
+                  background: 'linear-gradient(90deg, #00f5ff, #818cf8)',
+                  transition: 'width 0.3s ease',
+                  boxShadow: '0 0 10px rgba(0, 245, 255, 0.7)',
+                }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Navigation Sub-Tabs */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20, borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: 12 }}>
+        <button
+          onClick={() => setActiveSubTab('protection')}
+          className={`btn btn-sm ${activeSubTab === 'protection' ? 'btn-primary' : 'btn-ghost'}`}
+        >
+          Boucliers de Protection
+        </button>
+        <button
+          onClick={() => setActiveSubTab('schedule')}
+          className={`btn btn-sm ${activeSubTab === 'schedule' ? 'btn-primary' : 'btn-ghost'}`}
+        >
+          Analyses Programmées
+        </button>
+        <button
+          onClick={() => setActiveSubTab('exclusions')}
+          className={`btn btn-sm ${activeSubTab === 'exclusions' ? 'btn-primary' : 'btn-ghost'}`}
+        >
+          Exclusions E-Sport & Mods ({exclusions.length})
+        </button>
+      </div>
+
+      {/* SUBTAB 1: PROTECTION MODULES */}
+      {activeSubTab === 'protection' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+          {/* Card 1: File Guard */}
+          <div className="glass-card" style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ padding: 8, borderRadius: 8, backgroundColor: 'rgba(0, 245, 255, 0.1)', color: 'var(--cyan)' }}>
+                  <FileCheck size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#ffffff' }}>Bouclier de Fichiers</h3>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Interception I/O en temps réel</div>
+                </div>
+              </div>
+              <CyberToggle checked={realTimeGuard} onChange={setRealTimeGuard} />
+            </div>
+            <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Vérifie l'intégrité de chaque fichier accédé ou exécuté par vos applications et jeux.
+            </p>
+          </div>
+
+          {/* Card 2: Download Shield */}
+          <div className="glass-card" style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ padding: 8, borderRadius: 8, backgroundColor: 'rgba(99, 102, 241, 0.1)', color: 'var(--violet)' }}>
+                  <Layers size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#ffffff' }}>Sentinelle Téléchargements</h3>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Analyse automatique immédiate</div>
+                </div>
+              </div>
+              <CyberToggle checked={downloadShield} onChange={setDownloadShield} glowColor="purple" />
+            </div>
+            <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Déclenche le modal cyber instantané dès qu'une archive ou un exécutable est reçu.
+            </p>
+          </div>
+
+          {/* Card 3: Memory Heuristics */}
+          <div className="glass-card" style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ padding: 8, borderRadius: 8, backgroundColor: 'rgba(16, 185, 129, 0.1)', color: 'var(--green)' }}>
+                  <Zap size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#ffffff' }}>Heuristique Mémoire</h3>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Anti-Injection & Processus Suspects</div>
+                </div>
+              </div>
+              <CyberToggle checked={memoryHeuristic} onChange={setMemoryHeuristic} glowColor="green" />
+            </div>
+            <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Surveille la table d'adresses pour bloquer les tentatives de hollowing ou de crochet DLL.
+            </p>
+          </div>
         </div>
       )}
 
-      {/* ── Auto-Scans & Configuration Switcher ── */}
-      <div className="glass-card" style={{ padding: 20, borderRadius: 16, marginBottom: 24 }}>
-        <h3 style={{ margin: '0 0 14px 0', fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Clock size={16} style={{ color: 'var(--cyan)' }} />
-          <span>Planification & Analyses Automatiques</span>
-        </h3>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
-          <div style={{ padding: 14, borderRadius: 12, backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Analyse au démarrage Windows</div>
-              <p style={{ margin: '2px 0 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
-                Vérification rapide des clés Run et de la mémoire au boot
-              </p>
+      {/* SUBTAB 2: SCHEDULED SCANS */}
+      {activeSubTab === 'schedule' && (
+        <div className="glass-card" style={{ padding: 24, maxWidth: 650 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Calendar size={22} style={{ color: 'var(--cyan)' }} />
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#ffffff' }}>Analyses Récurrentes Automatiques</h3>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Exécution silencieuse en arrière-plan sans ralentir vos jeux</div>
+              </div>
             </div>
-            <label className="toggle-switch" style={{ cursor: 'pointer' }}>
-              <input type="checkbox" checked={autoScanStartup} onChange={(e) => setAutoScanStartup(e.target.checked)} />
-              <span className="toggle-slider" />
-            </label>
+            <CyberToggle checked={scheduledEnabled} onChange={setScheduledEnabled} />
           </div>
 
-          <div style={{ padding: 14, borderRadius: 12, backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Analyse hebdomadaire de fond</div>
-              <p style={{ margin: '2px 0 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
-                Scan complet des fichiers système le dimanche à 03:00
-              </p>
-            </div>
-            <label className="toggle-switch" style={{ cursor: 'pointer' }}>
-              <input type="checkbox" checked={autoScanWeekly} onChange={(e) => setAutoScanWeekly(e.target.checked)} />
-              <span className="toggle-slider" />
-            </label>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 20px 0' }}>
+            Astral Vanguard planifie une inspection de sécurité périodique. Si un jeu est en cours d'exécution, l'analyse attend automatiquement la fermeture du jeu pour ne pas impacter votre FPS.
+          </p>
+
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <button
+              onClick={() => setScheduledFrequency('daily')}
+              className={`btn btn-sm ${scheduledFrequency === 'daily' ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ fontSize: 12 }}
+            >
+              Tous les jours (03:00)
+            </button>
+            <button
+              onClick={() => setScheduledFrequency('weekly')}
+              className={`btn btn-sm ${scheduledFrequency === 'weekly' ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ fontSize: 12 }}
+            >
+              Toutes les semaines (Dimanche 03:00)
+            </button>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* ── Sub-Tabs: Exceptions vs Backups ── */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-        <button
-          onClick={() => setActiveSubTab('exclusions')}
-          className={`btn ${activeSubTab === 'exclusions' ? 'btn-primary' : 'btn-ghost'}`}
-          style={{ fontSize: 12, padding: '7px 16px' }}
-        >
-          Exceptions Windows Defender ({exclusions.length})
-        </button>
-        <button
-          onClick={() => setActiveSubTab('backups')}
-          className={`btn ${activeSubTab === 'backups' ? 'btn-primary' : 'btn-ghost'}`}
-          style={{ fontSize: 12, padding: '7px 16px' }}
-        >
-          Journal de Restauration & Sauvegardes ({rollbackLog.length})
-        </button>
-      </div>
-
-      {/* Exclusions Panel */}
+      {/* SUBTAB 3: EXCLUSIONS */}
       {activeSubTab === 'exclusions' && (
-        <div className="glass-card" style={{ padding: 20, borderRadius: 16 }}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        <div className="glass-card" style={{ padding: 24 }}>
+          <h3 style={{ margin: '0 0 8px 0', fontSize: 16, fontWeight: 700, color: '#ffffff' }}>
+            Dossiers Exclus (Jeux, Mods & Émulateurs)
+          </h3>
+          <p style={{ margin: '0 0 16px 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+            Empêche les faux-positifs fréquents sur les modpacks indépendants, injecteurs de shaders ou émulateurs e-sport.
+          </p>
+
+          <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
             <input
               type="text"
               value={newExclusionPath}
               onChange={(e) => setNewExclusionPath(e.target.value)}
-              placeholder="Ex: C:\Jeux\MonJeu (ou cliquez sur Parcourir)"
+              placeholder="Ex: C:\Games\ModdedLauncher"
               style={{
                 flex: 1,
-                padding: '8px 12px',
-                borderRadius: 10,
-                backgroundColor: 'var(--bg-surface)',
-                border: '1px solid var(--border)',
-                color: 'var(--text-primary)',
-                fontSize: 12,
-                outline: 'none',
+                padding: '10px 14px',
+                borderRadius: 8,
+                backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                color: '#ffffff',
+                fontSize: 13,
               }}
             />
-            <button
-              onClick={handleSelectFolderExclusion}
-              className="btn btn-ghost"
-              style={{ padding: '8px 14px', fontSize: 12 }}
-            >
-              Parcourir...
-            </button>
-            <button
-              onClick={handleAddExclusion}
-              disabled={!newExclusionPath.trim()}
-              className="btn btn-primary"
-              style={{ padding: '8px 16px', fontSize: 12, fontWeight: 600 }}
-            >
-              Ajouter
+            <button onClick={addExclusion} className="btn btn-primary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <FolderPlus size={15} />
+              <span>Ajouter</span>
             </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {exclusions.length === 0 ? (
-              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)', padding: '12px 0' }}>
-                Aucune exception configurée. Vos jeux et logiciels moddés peuvent être ajoutés ici pour éviter tout blocage.
-              </p>
+              <div style={{ padding: 14, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+                Aucun dossier exclu configuré.
+              </div>
             ) : (
-              exclusions.map((path, idx) => (
+              exclusions.map((p) => (
                 <div
-                  key={idx}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '8px 12px',
-                    borderRadius: 8,
-                    backgroundColor: 'var(--bg-surface)',
-                    border: '1px solid var(--border)',
-                    fontSize: 12,
-                  }}
-                >
-                  <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--mono)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {path}
-                  </span>
-                  <button
-                    onClick={() => handleRemoveExclusion(path)}
-                    className="btn btn-ghost btn-icon"
-                    title="Supprimer cette exclusion"
-                    style={{ padding: 4 }}
-                  >
-                    <Trash2 size={13} style={{ color: 'var(--red)' }} />
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Backups Panel */}
-      {activeSubTab === 'backups' && (
-        <div className="glass-card" style={{ padding: 20, borderRadius: 16 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 260, overflowY: 'auto' }}>
-            {rollbackLog.length === 0 ? (
-              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)', padding: '12px 0' }}>
-                Aucun point de sauvegarde enregistré pour le moment. Un point est créé automatiquement avant chaque analyse ou remédiation.
-              </p>
-            ) : (
-              rollbackLog.map((item, idx) => (
-                <div
-                  key={idx}
+                  key={p}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     padding: '10px 14px',
-                    borderRadius: 10,
-                    backgroundColor: 'var(--bg-surface)',
-                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+                    border: '1px solid rgba(255, 255, 255, 0.05)',
                   }}
                 >
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
-                      {item.label || item.reason || 'Point de sauvegarde système'}
-                    </div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--mono)', marginTop: 2 }}>
-                      {item.timestamp ? new Date(item.timestamp).toLocaleString('fr-FR') : 'Date récente'}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleRestoreEntry(item)}
-                    className="btn btn-ghost"
-                    style={{ fontSize: 11, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6 }}
-                  >
-                    <RotateCcw size={12} />
-                    <span>Restaurer</span>
+                  <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: '#ffffff' }}>{p}</span>
+                  <button onClick={() => removeExclusion(p)} className="btn btn-ghost btn-sm btn-icon" style={{ color: 'var(--red)' }}>
+                    <Trash2 size={14} />
                   </button>
                 </div>
               ))

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { CollapsibleError } from '../ui/CollapsibleError';
 import { VanguardLogo } from '../common/VanguardLogo';
+import { useSystem } from '../../context/SystemContext';
 
 const api = (window as any).vanguard;
 
@@ -42,31 +43,22 @@ function fmtGB(gb: number) {
 }
 
 export default function Dashboard({ gamingActive, currentGame, onTabChange, firstName = '' }: Props) {
-  const [metrics, setMetrics] = useState<Metrics | null>(null);
+  const { metrics: ctxMetrics, securityStatus: ctxSec, refreshTelemetry } = useSystem();
+  const [metrics, setMetrics] = useState<any>(ctxMetrics);
   const [secStatus, setSecStatus] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [errorInfo, setErrorInfo] = useState<{ message: string; technical?: string } | null>(null);
 
-  const load = useCallback(async () => {
-    if (!api) { setLoading(false); return; }
-    try {
-      const [m, s] = await Promise.all([
-        api.getMetrics?.(),
-        api.getSecurityStatus?.(),
-      ]);
-      if (m?.success) setMetrics(m.data);
-      if (s?.success) setSecStatus(s.data);
-    } catch {}
-    setLoading(false);
-    setRefreshing(false);
-  }, []);
-
+  // Sync with context
   useEffect(() => {
-    load();
-    const id = setInterval(load, 8000);
-    return () => clearInterval(id);
-  }, [load]);
+    if (ctxMetrics) setMetrics(ctxMetrics);
+  }, [ctxMetrics]);
+
+  const load = useCallback(async () => {
+    await refreshTelemetry();
+    setRefreshing(false);
+  }, [refreshTelemetry]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -75,7 +67,7 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
 
   const ramPct = metrics && metrics.ramTotal > 0
     ? Math.round((metrics.ramUsed / metrics.ramTotal) * 100) : 0;
-  const defOk = Boolean(secStatus?.AntivirusEnabled && secStatus?.RealTimeProtectionEnabled);
+  const defOk = Boolean(ctxSec.antivirusEnabled && ctxSec.realTimeProtection);
 
   return (
     <div className="tab-scroll animate-in" style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
@@ -86,7 +78,6 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
             <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
               {greeting(firstName)}
             </h1>
-            <span className="badge badge-violet" style={{ fontSize: 11, padding: '2px 8px' }}>v2.4.0</span>
           </div>
           <p style={{ margin: '3px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
             Supervision temps réel et centre de contrôle Astral Vanguard

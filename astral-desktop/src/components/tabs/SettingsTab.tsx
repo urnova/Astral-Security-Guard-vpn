@@ -8,6 +8,7 @@ import {
 import { CollapsibleError } from '../ui/CollapsibleError';
 import { playSound, setMasterVolume } from '../../lib/audioSynth';
 import VanguardLogo from '../common/VanguardLogo';
+import { CyberToggle } from '../common/CyberToggle';
 
 const api = (window as any).vanguard;
 
@@ -501,12 +502,7 @@ export default function SettingsTab({
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Réduire les animations</div>
                   <div style={{ fontSize: 12, color: '#64748b' }}>Désactive les transitions pour privilégier la réactivité maximale.</div>
                 </div>
-                <input
-                  type="checkbox"
-                  checked={reduceAnimations}
-                  onChange={(e) => setReduceAnimations(e.target.checked)}
-                  style={{ width: 18, height: 18, accentColor: '#8b5cf6', cursor: 'pointer' }}
-                />
+                <CyberToggle checked={reduceAnimations} onChange={setReduceAnimations} />
               </div>
             </div>
           )}
@@ -528,12 +524,7 @@ export default function SettingsTab({
                     <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Lancer avec Windows</div>
                     <div style={{ fontSize: 12, color: '#64748b' }}>Démarre automatiquement Vanguard au démarrage de session en arrière-plan.</div>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={autostart}
-                    onChange={(e) => handleToggleAutostart(e.target.checked)}
-                    style={{ width: 18, height: 18, accentColor: '#8b5cf6', cursor: 'pointer' }}
-                  />
+                  <CyberToggle checked={autostart} onChange={handleToggleAutostart} />
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
@@ -541,12 +532,7 @@ export default function SettingsTab({
                     <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Réduire dans la zone de notification (Tray)</div>
                     <div style={{ fontSize: 12, color: '#64748b' }}>La fermeture de la fenêtre garde l'application active dans la zone système.</div>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={minimizeToTray}
-                    onChange={(e) => handleToggleMinimize(e.target.checked)}
-                    style={{ width: 18, height: 18, accentColor: '#8b5cf6', cursor: 'pointer' }}
-                  />
+                  <CyberToggle checked={minimizeToTray} onChange={handleToggleMinimize} glowColor="purple" />
                 </div>
               </div>
             </div>
@@ -607,15 +593,14 @@ export default function SettingsTab({
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Activer le scanner de fichiers</div>
                   <div style={{ fontSize: 12, color: '#64748b' }}>Surveille les répertoires configurés et déclenche une analyse ciblée.</div>
                 </div>
-                <input
-                  type="checkbox"
+                <CyberToggle
                   checked={scannerConfig.enabled}
-                  onChange={(e) => {
-                    const next = { ...scannerConfig, enabled: e.target.checked };
+                  onChange={(checked) => {
+                    const next = { ...scannerConfig, enabled: checked };
                     setScannerConfig(next);
                     api?.saveScannerConfig?.(next);
                   }}
-                  style={{ width: 18, height: 18, accentColor: '#8b5cf6', cursor: 'pointer' }}
+                  color="purple"
                 />
               </div>
 
@@ -624,15 +609,14 @@ export default function SettingsTab({
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Surveiller les clés USB (Sentinelle)</div>
                   <div style={{ fontSize: 12, color: '#64748b' }}>Propose l'analyse des périphériques de stockage amovibles connectés.</div>
                 </div>
-                <input
-                  type="checkbox"
+                <CyberToggle
                   checked={scannerConfig.usbScanEnabled}
-                  onChange={(e) => {
-                    const next = { ...scannerConfig, usbScanEnabled: e.target.checked };
+                  onChange={(checked) => {
+                    const next = { ...scannerConfig, usbScanEnabled: checked };
                     setScannerConfig(next);
                     api?.saveScannerConfig?.(next);
                   }}
-                  style={{ width: 18, height: 18, accentColor: '#8b5cf6', cursor: 'pointer' }}
+                  color="purple"
                 />
               </div>
             </div>
@@ -653,11 +637,10 @@ export default function SettingsTab({
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Afficher l'Overlay HUD en jeu</div>
                   <div style={{ fontSize: 12, color: '#64748b' }}>Raccourci global : <kbd style={{ padding: '2px 6px', borderRadius: 4, backgroundColor: 'rgba(255, 255, 255, 0.1)', fontFamily: 'monospace' }}>Ctrl + Shift + O</kbd></div>
                 </div>
-                <input
-                  type="checkbox"
+                <CyberToggle
                   checked={overlayActive}
-                  onChange={(e) => handleToggleOverlay(e.target.checked)}
-                  style={{ width: 18, height: 18, accentColor: '#8b5cf6', cursor: 'pointer' }}
+                  onChange={(checked) => handleToggleOverlay(checked)}
+                  color="purple"
                 />
               </div>
 
@@ -666,16 +649,14 @@ export default function SettingsTab({
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Détection automatique des jeux (Expérimental)</div>
                   <div style={{ fontSize: 12, color: '#64748b' }}>Désactivé par défaut. Les navigateurs (Edge, Chrome, Perplexity) et outils de bureau sont strictement exclus.</div>
                 </div>
-                <input
-                  type="checkbox"
+                <CyberToggle
                   checked={autoDetectGames}
-                  onChange={async (e) => {
-                    const val = e.target.checked;
-                    setAutoDetectGames(val);
-                    await api?.saveGamingAutoDetect?.(val);
-                    showNotification(val ? 'Détection auto activée' : 'Détection auto désactivée');
+                  onChange={async (checked) => {
+                    setAutoDetectGames(checked);
+                    await api?.saveGamingAutoDetect?.(checked);
+                    showNotification(checked ? 'Détection auto activée' : 'Détection auto désactivée');
                   }}
-                  style={{ width: 18, height: 18, accentColor: '#8b5cf6', cursor: 'pointer' }}
+                  color="purple"
                 />
               </div>
             </div>
@@ -728,15 +709,13 @@ export default function SettingsTab({
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Surveillance Watchdog Latence</div>
                   <div style={{ fontSize: 12, color: '#64748b' }}>Alerte lorsque la latence TCP dépasse le seuil configuré.</div>
                 </div>
-                <input
-                  type="checkbox"
+                <CyberToggle
                   checked={watchdogEnabled}
-                  onChange={async (e) => {
-                    const val = e.target.checked;
-                    setWatchdogEnabled(val);
-                    await api?.setPingWatchdog?.({ enabled: val, threshold: watchdogThreshold });
+                  onChange={async (checked) => {
+                    setWatchdogEnabled(checked);
+                    await api?.setPingWatchdog?.({ enabled: checked, threshold: watchdogThreshold });
                   }}
-                  style={{ width: 18, height: 18, accentColor: '#8b5cf6', cursor: 'pointer' }}
+                  color="purple"
                 />
               </div>
             </div>
@@ -757,11 +736,10 @@ export default function SettingsTab({
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Mode Ne Pas Déranger (DND)</div>
                   <div style={{ fontSize: 12, color: '#64748b' }}>Désactive les notifications non critiques durant vos parties.</div>
                 </div>
-                <input
-                  type="checkbox"
+                <CyberToggle
                   checked={dndEnabled}
-                  onChange={(e) => onDndChange?.(e.target.checked)}
-                  style={{ width: 18, height: 18, accentColor: '#8b5cf6', cursor: 'pointer' }}
+                  onChange={(checked) => onDndChange?.(checked)}
+                  color="purple"
                 />
               </div>
 

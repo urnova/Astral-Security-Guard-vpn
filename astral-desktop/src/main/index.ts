@@ -37,7 +37,9 @@ let minimizeToTray = loadPreferences().minimizeToTray;
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 
 
-// ── Native Windows Notification Dispatcher ────────────────────────────────────
+import { showAvastStyleToast } from './notificationWindow';
+
+// ── Avast-Style & Native Windows Notification Dispatcher ─────────────────────
 export function notifyUser(title: string, body: string, isCritical = false) {
   if (mainWin && !mainWin.isDestroyed()) {
     mainWin.webContents.send('notification:trigger', {
@@ -48,27 +50,22 @@ export function notifyUser(title: string, body: string, isCritical = false) {
     });
   }
 
-  // Windows native notification - always dispatch to Windows Action Center
-  if (Notification.isSupported()) {
-    try {
-      const iconPath = process.env.PUBLIC ? path.join(process.env.PUBLIC, 'icon.ico') : undefined;
-      const n = new Notification({
-        title,
-        body,
-        icon: iconPath,
-        urgency: isCritical ? 'critical' : 'normal',
-      });
-      n.on('click', () => {
+  // Always show Avast-style custom desktop popup window
+  try {
+    showAvastStyleToast({
+      title,
+      message: body,
+      type: isCritical ? 'threat' : 'info',
+      onClickFocus: () => {
         if (mainWin && !mainWin.isDestroyed()) {
           if (mainWin.isMinimized()) mainWin.restore();
           mainWin.show();
           mainWin.focus();
         }
-      });
-      n.show();
-    } catch (err: any) {
-      logger.warn('[Notification] Failed to show native notification:', err.message);
-    }
+      },
+    });
+  } catch (err: any) {
+    logger.warn('[Notification] Error showing Avast-style popup:', err.message);
   }
 }
 
@@ -308,11 +305,19 @@ app.whenReady().then(async () => {
 });
 
 app.on('before-quit', () => {
+  try {
+    tray?.destroy();
+    tray = null;
+  } catch {}
   cleanupAstralFirewallRules();
 });
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  try {
+    tray?.destroy();
+    tray = null;
+  } catch {}
   cleanupAstralFirewallRules();
 });
 
@@ -320,6 +325,10 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     // Keep running in system tray on Windows if minimizeToTray is enabled
     if (!minimizeToTray) {
+      try {
+        tray?.destroy();
+        tray = null;
+      } catch {}
       app.quit();
     }
   }
@@ -346,6 +355,10 @@ ipcMain.handle('overlay:toggle', () => toggleOverlay());
 ipcMain.handle('overlay:status', () => Boolean(overlayWin));
 ipcMain.handle('app:quit', () => {
   minimizeToTray = false;
+  try {
+    tray?.destroy();
+    tray = null;
+  } catch {}
   app.exit(0);
 });
 ipcMain.handle('app:minimize', () => mainWin?.minimize());
