@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Cpu, HardDrive, Trash2, Zap, RefreshCw, XCircle, Activity, CheckCircle } from 'lucide-react';
+import { Cpu, HardDrive, Trash2, Zap, RefreshCw, XCircle, Activity, CheckCircle, Clock } from 'lucide-react';
 import { CollapsibleError } from '../ui/CollapsibleError';
 
 const api = (window as any).vanguard;
@@ -26,8 +26,6 @@ export default function PerformanceTab({ gamingActive }: { gamingActive: boolean
   const [startup, setStartup] = useState<any[]>([]);
   const [loadingStartup, setLoadingStartup] = useState(false);
   const [diskHealth, setDiskHealth] = useState<DiskHealth[]>([]);
-  const [processes, setProcesses] = useState<ProcessItem[]>([]);
-  const [loadingProcs, setLoadingProcs] = useState(false);
   const [errorInfo, setErrorInfo] = useState<{ message: string; technical?: string } | null>(null);
   const [notice, setNotice] = useState('');
 
@@ -65,15 +63,15 @@ export default function PerformanceTab({ gamingActive }: { gamingActive: boolean
         await api.gamingModeOn();
         await api.networkGamingOn();
         setGamingOn(true);
-        setNotice('🎮 Mode Gaming appliqué (Plan Haute Performance & Priorité processus).');
+        setNotice('🎮 Plan Haute Performance Windows activé.');
       } else {
         await api.gamingModeOff();
         await api.networkGamingOff();
         setGamingOn(false);
-        setNotice('Mode standard restauré.');
+        setNotice('Plan d\'alimentation standard restauré.');
       }
     } catch (err: any) {
-      setErrorInfo({ message: 'Erreur lors du basculement du mode gaming', technical: err.message });
+      setErrorInfo({ message: 'Erreur lors du basculement du mode performance', technical: err.message });
     }
     setTimeout(() => setNotice(''), 3000);
   };
@@ -114,7 +112,7 @@ export default function PerformanceTab({ gamingActive }: { gamingActive: boolean
     try {
       await api.disableStartup(item.Name, item.Location);
       setStartup((prev) => prev.filter((i) => i.Name !== item.Name));
-      setNotice(`✅ Entrée de démarrage "${item.Name}" désactivée.`);
+      setNotice(`✅ Entrée "${item.Name}" désactivée au démarrage.`);
       setTimeout(() => setNotice(''), 3000);
     } catch (err: any) {
       setErrorInfo({ message: 'Impossible de désactiver cette entrée', technical: err.message });
@@ -126,185 +124,261 @@ export default function PerformanceTab({ gamingActive }: { gamingActive: boolean
   const diskPct = diskTotal ? Math.round((metrics.diskUsedGB / diskTotal) * 100) : 0;
 
   return (
-    <div className="tab-scroll space-y-6 max-w-6xl mx-auto">
+    <div className="tab-scroll" style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
-            <Cpu className="w-6 h-6 text-purple-400" />
-            Performance & Maintenance Système
-          </h1>
-          <p className="text-sm text-zinc-400 mt-1">
-            Gestionnaire de démarrage · Purge RAM & Disque · Santé SMART matérielle
-          </p>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 16,
+          paddingBottom: 20,
+          borderBottom: '1px solid var(--border)',
+          marginBottom: 24,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              backgroundColor: 'rgba(0, 212, 255, 0.15)',
+              border: '1px solid var(--border-cyan)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--cyan)',
+            }}
+          >
+            <Cpu size={18} />
+          </div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+              Performance & Maintenance Système
+            </h1>
+            <p style={{ margin: '2px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+              Gestionnaire de démarrage · Purge RAM & Disque · Santé SMART matérielle
+            </p>
+          </div>
         </div>
 
         {gamingOn && (
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-semibold">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-            HAUTE PERFORMANCE ACTIVE
+          <div
+            className="badge badge-cyan"
+            style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <span className="badge-dot" style={{ backgroundColor: 'var(--cyan)' }} />
+            <span>HAUTE PERFORMANCE ACTIVE</span>
           </div>
         )}
       </div>
 
       {notice && (
-        <div className="p-3 rounded-xl bg-purple-950/40 border border-purple-500/30 text-purple-300 text-xs font-medium">
+        <div
+          style={{
+            padding: '12px 16px',
+            borderRadius: 12,
+            backgroundColor: 'rgba(139, 92, 246, 0.1)',
+            border: '1px solid var(--border-violet)',
+            color: 'var(--violet)',
+            fontSize: 13,
+            fontWeight: 500,
+            marginBottom: 20,
+          }}
+        >
           {notice}
         </div>
       )}
 
       {cleanResult && (
-        <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs font-medium flex items-center gap-2">
-          <CheckCircle className="w-4 h-4 text-emerald-400" />
+        <div
+          style={{
+            padding: '12px 16px',
+            borderRadius: 12,
+            backgroundColor: 'rgba(16, 217, 160, 0.1)',
+            border: '1px solid var(--border-green)',
+            color: 'var(--green)',
+            fontSize: 13,
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            marginBottom: 20,
+          }}
+        >
+          <CheckCircle size={16} />
           <span>{cleanResult}</span>
         </div>
       )}
 
       {errorInfo && (
-        <CollapsibleError
-          message={errorInfo.message}
-          technicalError={errorInfo.technical}
-        />
+        <div style={{ marginBottom: 20 }}>
+          <CollapsibleError message={errorInfo.message} technicalError={errorInfo.technical} />
+        </div>
       )}
 
-      {/* Metrics Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="p-4 rounded-2xl bg-[#0c0c24]/90 border border-white/5">
-          <span className="text-xs text-zinc-400 font-medium">Charge Processeur (CPU)</span>
-          <p className="text-2xl font-black text-cyan-400 mt-1">
+      {/* Metrics Row (4 Gauges) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+        <div className="glass-card" style={{ padding: 18, borderRadius: 14 }}>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Charge Processeur (CPU)</span>
+          <p style={{ margin: '8px 0 0 0', fontSize: 28, fontWeight: 800, color: 'var(--cyan)', fontFamily: 'var(--mono)' }}>
             {metrics?.cpuPercent ?? 0}%
           </p>
-          <div className="w-full h-1.5 rounded-full bg-white/5 mt-3 overflow-hidden">
+          <div style={{ width: '100%', height: 5, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.06)', marginTop: 12, overflow: 'hidden' }}>
             <div
-              className="h-full bg-cyan-400 transition-all duration-300"
-              style={{ width: `${Math.min(100, metrics?.cpuPercent ?? 0)}%` }}
+              style={{
+                width: `${Math.min(100, metrics?.cpuPercent ?? 0)}%`,
+                height: '100%',
+                backgroundColor: 'var(--cyan)',
+                boxShadow: '0 0 8px rgba(0, 212, 255, 0.5)',
+                transition: 'width 0.3s ease',
+              }}
             />
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-[#0c0c24]/90 border border-white/5">
-          <span className="text-xs text-zinc-400 font-medium">Mémoire Vive (RAM)</span>
-          <p className="text-2xl font-black text-purple-400 mt-1">
+        <div className="glass-card" style={{ padding: 18, borderRadius: 14 }}>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Mémoire Vive (RAM)</span>
+          <p style={{ margin: '8px 0 0 0', fontSize: 28, fontWeight: 800, color: 'var(--violet)', fontFamily: 'var(--mono)' }}>
             {ramPct}%
           </p>
-          <div className="w-full h-1.5 rounded-full bg-white/5 mt-3 overflow-hidden">
+          <div style={{ width: '100%', height: 5, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.06)', marginTop: 12, overflow: 'hidden' }}>
             <div
-              className="h-full bg-purple-500 transition-all duration-300"
-              style={{ width: `${Math.min(100, ramPct)}%` }}
+              style={{
+                width: `${Math.min(100, ramPct)}%`,
+                height: '100%',
+                backgroundColor: 'var(--violet)',
+                boxShadow: '0 0 8px rgba(139, 92, 246, 0.5)',
+                transition: 'width 0.3s ease',
+              }}
             />
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-[#0c0c24]/90 border border-white/5">
-          <span className="text-xs text-zinc-400 font-medium">Espace Disque (C:)</span>
-          <p className="text-2xl font-black text-amber-400 mt-1">
+        <div className="glass-card" style={{ padding: 18, borderRadius: 14 }}>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Espace Disque Système (C:)</span>
+          <p style={{ margin: '8px 0 0 0', fontSize: 28, fontWeight: 800, color: 'var(--orange)', fontFamily: 'var(--mono)' }}>
             {diskPct}%
           </p>
-          <p className="text-[10px] text-zinc-500 mt-2 font-mono">
-            {metrics?.diskFreeGB ?? 0} Go libres
+          <p style={{ margin: '6px 0 0 0', fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>
+            {metrics?.diskFreeGB ?? 0} Go disponibles
           </p>
         </div>
 
-        <div className="p-4 rounded-2xl bg-[#0c0c24]/90 border border-white/5">
-          <span className="text-xs text-zinc-400 font-medium">Temps d'activité (Uptime)</span>
-          <p className="text-2xl font-black text-emerald-400 mt-1">
+        <div className="glass-card" style={{ padding: 18, borderRadius: 14 }}>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Temps de Fonctionnement</span>
+          <p style={{ margin: '8px 0 0 0', fontSize: 28, fontWeight: 800, color: 'var(--green)', fontFamily: 'var(--mono)' }}>
             {metrics?.uptimeHours ?? 0}h
           </p>
-          <p className="text-[10px] text-zinc-500 mt-2">Depuis le dernier démarrage</p>
+          <p style={{ margin: '6px 0 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+            Session système continue
+          </p>
         </div>
       </div>
 
       {/* Action Row: Cleaner & High Perf Plan */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Cleaner */}
-        <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-white/5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-              <Trash2 className="w-4 h-4 text-purple-400" />
-              Nettoyeur de Résidus & Mémoire
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20, marginBottom: 24 }}>
+        <div className="glass-card" style={{ padding: 20, borderRadius: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Trash2 size={16} style={{ color: 'var(--violet)' }} />
+              <span>Nettoyeur de Résidus & Cache RAM</span>
             </h3>
             <button
               onClick={runCleanup}
               disabled={cleaning}
-              className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-semibold transition-colors flex items-center gap-1.5"
+              className="btn btn-primary"
+              style={{ fontSize: 12, padding: '7px 14px', display: 'flex', alignItems: 'center', gap: 6 }}
             >
-              {cleaning ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+              {cleaning ? <RefreshCw size={13} className="animate-spin" /> : <Trash2 size={13} />}
               <span>{cleaning ? 'Nettoyage en cours...' : 'Nettoyer maintenant'}</span>
             </button>
           </div>
-          <p className="text-xs text-zinc-400 leading-relaxed">
-            Exécute le ramasse-miettes système (.NET GC), purge les fichiers temporaires de <code className="text-purple-300">%TEMP%</code> et vide la corbeille en toute sécurité.
+          <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+            Purge sécurisée du cache de travail des applications, libération des fichiers temporaires dans <code style={{ color: 'var(--cyan)', fontFamily: 'var(--mono)' }}>%TEMP%</code> et vidage de la corbeille.
           </p>
         </div>
 
-        {/* High Perf Toggle */}
-        <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-white/5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-              <Zap className="w-4 h-4 text-cyan-400" />
-              Plan d'Alimentation Haute Performance
+        <div className="glass-card" style={{ padding: 20, borderRadius: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Zap size={16} style={{ color: 'var(--cyan)' }} />
+              <span>Plan d'Alimentation Haute Performance</span>
             </h3>
             <button
               onClick={toggleGamingMode}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
-                gamingOn ? 'bg-cyan-500 text-black' : 'bg-white/10 text-zinc-300 hover:bg-white/15'
-              }`}
+              className={`btn ${gamingOn ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ fontSize: 12, padding: '6px 14px' }}
             >
-              {gamingOn ? 'Actif' : 'Standard'}
+              {gamingOn ? 'Plan Actif' : 'Standard'}
             </button>
           </div>
-          <p className="text-xs text-zinc-400 leading-relaxed">
-            Active le plan d'alimentation Windows Performance Maximale (GUID 8c5e7fda), éliminant le bridage des cœurs CPU et maintenant les fréquences Turbo au maximum.
+          <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+            Bascule Windows sur le profil d'énergie maximal, débloquant les fréquences CPU pour éliminer tout throttling lors de sessions intensives.
           </p>
         </div>
       </div>
 
-      {/* Disk Health SMART & Startup Apps Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Startup Apps & Disk Health Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20 }}>
         {/* Startup Programs */}
-        <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-white/5 space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="glass-card" style={{ padding: 20, borderRadius: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <div>
-              <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-                <Activity className="w-4 h-4 text-purple-400" />
-                Applications au Démarrage ({startup.length})
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Activity size={16} style={{ color: 'var(--violet)' }} />
+                <span>Applications au Démarrage ({startup.length})</span>
               </h3>
-              <p className="text-xs text-zinc-500 mt-0.5">Registre Windows (Run & RunOnce)</p>
+              <p style={{ margin: '2px 0 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                Clés de démarrage Windows (Run & RunOnce)
+              </p>
             </div>
-
             <button
               onClick={loadStartup}
               disabled={loadingStartup}
-              className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 font-medium"
+              className="btn btn-ghost"
+              style={{ fontSize: 11, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6 }}
             >
-              <RefreshCw className={`w-3 h-3 ${loadingStartup ? 'animate-spin' : ''}`} />
-              <span>{startup.length === 0 ? 'Charger la liste' : 'Actualiser'}</span>
+              <RefreshCw size={12} className={loadingStartup ? 'animate-spin' : ''} />
+              <span>{startup.length === 0 ? 'Charger' : 'Actualiser'}</span>
             </button>
           </div>
 
-          <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 240, overflowY: 'auto' }}>
             {startup.length === 0 && !loadingStartup ? (
-              <p className="text-xs text-zinc-500 py-4 text-center">
-                Cliquez sur « Charger la liste » pour analyser les logiciels lancés au boot.
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '20px 0' }}>
+                Cliquez sur « Charger » pour analyser les programmes exécutés au boot.
               </p>
             ) : (
               startup.map((item, idx) => (
                 <div
                   key={idx}
-                  className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.02] border border-white/5 text-xs"
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: 10,
+                    backgroundColor: 'var(--bg-surface)',
+                    border: '1px solid var(--border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
                 >
-                  <div className="min-w-0 pr-2">
-                    <p className="font-semibold text-zinc-200 truncate">{item.Name}</p>
-                    <p className="text-[10px] text-zinc-500 font-mono truncate mt-0.5">
+                  <div style={{ minWidth: 0, paddingRight: 8 }}>
+                    <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {item.Name}
+                    </p>
+                    <p style={{ margin: '2px 0 0 0', fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--mono)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {item.Command}
                     </p>
                   </div>
                   <button
                     onClick={() => handleDisableStartup(item)}
-                    className="p-1 rounded-md text-zinc-500 hover:text-red-400 transition-colors shrink-0"
+                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
                     title="Désactiver ce programme au démarrage"
                   >
-                    <XCircle className="w-4 h-4" />
+                    <XCircle size={15} style={{ color: 'var(--red)' }} />
                   </button>
                 </div>
               ))
@@ -312,35 +386,55 @@ export default function PerformanceTab({ gamingActive }: { gamingActive: boolean
           </div>
         </div>
 
-        {/* Disk SMART Health */}
-        <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-white/5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-              <HardDrive className="w-4 h-4 text-emerald-400" />
-              État de Santé des Disques (SMART)
+        {/* Disk Health SMART */}
+        <div className="glass-card" style={{ padding: 20, borderRadius: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <HardDrive size={16} style={{ color: 'var(--green)' }} />
+              <span>Santé Matérielle des Disques (SMART)</span>
             </h3>
-            <span className="text-xs text-zinc-500">{diskHealth.length} disque(s)</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{diskHealth.length} unité(s)</span>
           </div>
 
-          <div className="space-y-2.5">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {diskHealth.length === 0 ? (
-              <p className="text-xs text-zinc-500 py-3">Inspection matérielle en cours...</p>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)', padding: '16px 0' }}>
+                Inspection matérielle en cours...
+              </p>
             ) : (
               diskHealth.map((d, idx) => (
                 <div
                   key={idx}
-                  className="p-3 rounded-xl bg-black/40 border border-white/5 text-xs flex items-center justify-between"
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: 10,
+                    backgroundColor: 'var(--bg-surface)',
+                    border: '1px solid var(--border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
                 >
                   <div>
-                    <p className="font-semibold text-zinc-200">{d.model || `Disque physique #${idx}`}</p>
-                    <p className="text-[11px] text-zinc-500 mt-0.5">
-                      Type : {d.mediaType || 'Disque NVMe / SSD'}
+                    <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {d.model || `Disque physique #${idx + 1}`}
+                    </p>
+                    <p style={{ margin: '2px 0 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                      Technologie : {d.mediaType || 'Disque SSD / NVMe'}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#10b981]" />
-                    <span className="font-bold text-emerald-400 text-xs">
-                      {d.status === 'OK' || d.health === 'Bon' ? 'Sain (OK)' : d.status}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        backgroundColor: 'var(--green)',
+                        boxShadow: '0 0 8px rgba(16, 217, 160, 0.6)',
+                      }}
+                    />
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--green)' }}>
+                      {d.status === 'OK' || d.health === 'Bon' ? 'Sain (SMART OK)' : d.status}
                     </span>
                   </div>
                 </div>

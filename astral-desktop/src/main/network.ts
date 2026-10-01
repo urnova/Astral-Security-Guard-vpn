@@ -3,6 +3,8 @@ import https from 'https';
 import http from 'http';
 import { runPowerShell } from './psHelper';
 import { logger } from './logger';
+import { detectThirdPartyVpn } from './vpn';
+
 
 export function setupNetworkIPC(win: BrowserWindow) {
   // ── Real Speed Test (Cloudflare Speed CDN - 100% Real, Zero Fake Numbers) ──
@@ -240,9 +242,11 @@ export function setupNetworkIPC(win: BrowserWindow) {
   ipcMain.handle('network:dns-benchmark', handleDnsBenchmark);
 
 
-  // ── Apply DNS ─────────────────────────────────────────────────────────────
+  // ── Apply DNS (With Virtual & Third-Party Adapter Exclusion) ──────────────
   ipcMain.handle('network:set-dns', async (_, dnsType: string) => {
     logger.info(`Application du DNS : ${dnsType}`);
+
+    const vpnCoex = await detectThirdPartyVpn();
 
     let primary = '1.1.1.1';
     let secondary = '1.0.0.1';
@@ -259,7 +263,12 @@ export function setupNetworkIPC(win: BrowserWindow) {
     }
 
     const script = `
-      $adapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' }
+      # Cibler UNIQUEMENT les adaptateurs physiques et exclure les tunnels VPN (Nord, TAP, Wintun, WireGuard...)
+      $adapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {
+        $_.Status -eq 'Up' -and
+        $_.InterfaceDescription -notmatch 'Nord|TAP|Wintun|WireGuard|Tailscale|Proton|Express|Surfshark|Mullvad|Cloudflare|Virtual|Hyper-V|VMware|VPN' -and
+        $_.Name -notmatch 'Nord|TAP|Wintun|WireGuard|Tailscale|Proton|Express|Surfshark|Mullvad|vEthernet'
+      }
       foreach ($a in $adapters) {
         if ('${dnsType}' -eq 'auto') {
           Set-DnsClientServerAddress -InterfaceIndex $a.InterfaceIndex -ResetServerAddresses -ErrorAction SilentlyContinue
@@ -269,13 +278,19 @@ export function setupNetworkIPC(win: BrowserWindow) {
       }
       Clear-DnsClientCache
       ipconfig /flushdns | Out-Null
-      [PSCustomObject]@{ applied = $true } | ConvertTo-Json -Compress
+      [PSCustomObject]@{ applied = $true; adapterCount = @($adapters).Count } | ConvertTo-Json -Compress
     `;
 
     const res = await runPowerShell(script, { asJson: true });
+    let message = dnsType === 'auto' ? 'DNS réinitialisé en mode automatique (DHCP)' : `DNS ${dnsType.toUpperCase()} appliqué (${primary}) !`;
+    if (vpnCoex.thirdPartyActive) {
+      message += ` (Tunnels ${vpnCoex.vpnName} préservés sans altération)`;
+    }
+
     return {
       success: res.success,
-      message: dnsType === 'auto' ? 'DNS réinitialisé en mode automatique (DHCP)' : `DNS ${dnsType.toUpperCase()} appliqué (${primary}) !`,
+      message,
+      thirdPartyVpnPreserved: vpnCoex.thirdPartyActive ? vpnCoex.vpnName : null,
       error: res.error,
     };
   });

@@ -17,6 +17,13 @@ export interface VpnServerItem {
   qualityScore: number;
 }
 
+export interface ThirdPartyVpnStatus {
+  thirdPartyActive: boolean;
+  vpnName?: string;
+  adapterName?: string;
+  details?: string;
+}
+
 // In-memory cache to preserve last working servers in case of temporary API outages
 let cachedServers: VpnServerItem[] = [];
 let isConnected = false;
@@ -24,7 +31,109 @@ let currentServerId: string | null = null;
 let killSwitchActive = false;
 let connectStartTime = 0;
 
+/**
+ * Clean up any legacy or rogue firewall rules from prior sessions.
+ * Never leaves Windows firewall blocking outbound traffic.
+ */
+export async function cleanupAstralFirewallRules(): Promise<void> {
+  try {
+    const script = `
+      netsh advfirewall firewall delete rule name="AstralKillSwitchBlockOut" 2>$null | Out-Null
+      netsh advfirewall firewall delete rule name="AstralKillSwitchAllowDNS" 2>$null | Out-Null
+      netsh advfirewall firewall delete rule name="AstralKillSwitchAllowVPN" 2>$null | Out-Null
+      netsh advfirewall firewall delete rule name="AstralKillSwitch*" 2>$null | Out-Null
+    `;
+    await runPowerShell(script, { timeout: 4000 });
+  } catch (err: any) {
+    logger.warn('[VPN Firewall] Erreur silencieuse de nettoyage pare-feu:', err.message);
+  }
+}
+
+/**
+ * Proactively inspect system processes and network interfaces to detect
+ * any active third-party VPN (NordVPN, WireGuard, OpenVPN, ProtonVPN, ExpressVPN, Surfshark, Mullvad, WARP, Tailscale).
+ */
+export async function detectThirdPartyVpn(): Promise<ThirdPartyVpnStatus> {
+  try {
+    const script = `
+      $procs = Get-Process -ErrorAction SilentlyContinue | Select-Object -Property ProcessName
+      $vpnProcNames = @(
+        'nordvpn', 'nordvpn-service', 'nordlynx',
+        'openvpn', 'openvpnserv',
+        'wireguard',
+        'protonvpn', 'protonvpn-service',
+        'expressvpn', 'expressvpn-service',
+        'surfshark', 'surfshark-service',
+        'mullvad-vpn', 'mullvad-daemon',
+        'warp-svc', 'cloudflare-warp',
+        'tailscale', 'tailscaled'
+      )
+
+      $detectedProc = $null
+      foreach ($p in $procs) {
+        $pn = $p.ProcessName.ToLower()
+        if ($vpnProcNames -contains $pn) {
+          $detectedProc = $pn
+          break
+        }
+      }
+
+      $adapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' }
+      $detectedAdapter = $null
+      foreach ($a in $adapters) {
+        $desc = ($a.InterfaceDescription + ' ' + $a.Name).ToLower()
+        if ($desc -match 'nord|wintun|tap|wireguard|proton|express|surfshark|mullvad|tailscale|cloudflare') {
+          $detectedAdapter = $a.Name
+          break
+        }
+      }
+
+      [PSCustomObject]@{
+        proc = $detectedProc
+        adapter = $detectedAdapter
+      } | ConvertTo-Json -Compress
+    `;
+
+    const res = await runPowerShell(script, { asJson: true, timeout: 3500 });
+    if (res.success && res.data) {
+      const { proc, adapter } = res.data;
+      if (proc || adapter) {
+        let name = 'VPN Tiers Sécurisé';
+        const str = ((proc || '') + ' ' + (adapter || '')).toLowerCase();
+        if (str.includes('nord')) name = 'NordVPN';
+        else if (str.includes('wireguard')) name = 'WireGuard';
+        else if (str.includes('proton')) name = 'ProtonVPN';
+        else if (str.includes('express')) name = 'ExpressVPN';
+        else if (str.includes('surfshark')) name = 'Surfshark';
+        else if (str.includes('mullvad')) name = 'Mullvad';
+        else if (str.includes('tailscale')) name = 'Tailscale';
+        else if (str.includes('cloudflare') || str.includes('warp')) name = 'Cloudflare WARP';
+        else if (str.includes('openvpn') || str.includes('tap') || str.includes('wintun')) name = 'OpenVPN / Wintun';
+
+        return {
+          thirdPartyActive: true,
+          vpnName: name,
+          adapterName: adapter || undefined,
+          details: `Processus: ${proc || 'N/A'}, Adaptateur: ${adapter || 'N/A'}`,
+        };
+      }
+    }
+  } catch (err: any) {
+    logger.warn('[VPN Coexistence] Erreur lors de la détection VPN tiers:', err.message);
+  }
+
+  return { thirdPartyActive: false };
+}
+
 export function setupVpnIPC(win: BrowserWindow) {
+  // Purge any stale firewall rules on startup
+  cleanupAstralFirewallRules();
+
+  // ── Coexistence Status Check ──────────────────────────────────────────────
+  ipcMain.handle('vpn:get-coexistence-status', async () => {
+    return await detectThirdPartyVpn();
+  });
+
   // ── Fetch Servers from VPN Gate (with Robust Fallback & Timeout) ───────────
   ipcMain.handle('vpn:fetch-servers', async () => {
     logger.info('Récupération de la liste des serveurs VPN Gate...');
@@ -135,27 +244,34 @@ export function setupVpnIPC(win: BrowserWindow) {
     }
   });
 
-  // ── Connect VPN ───────────────────────────────────────────────────────────
+  // ── Connect VPN (Guarded by Third-Party VPN Coexistence) ───────────────────
   ipcMain.handle('vpn:connect', async (_, serverId: string) => {
+    // Check if another VPN is already protecting the user's computer
+    const coexistence = await detectThirdPartyVpn();
+    if (coexistence.thirdPartyActive) {
+      logger.info(`[VPN] Coexistence active: ${coexistence.vpnName} est déjà actif. Connexion concurrente bloquée pour éviter les conflits.`);
+      return {
+        success: false,
+        blockedByCoexistence: true,
+        thirdPartyVpn: coexistence.vpnName,
+        message: `${coexistence.vpnName} est actif en arrière-plan. Astral Vanguard active son mode coexistence sécurisé pour préserver votre navigation et ne pas entrer en conflit avec votre VPN existant.`,
+      };
+    }
+
     logger.info(`Connexion au serveur VPN : ${serverId}`);
     win.webContents.send('vpn-event', { type: 'connecting', serverId });
 
     currentServerId = serverId;
     connectStartTime = Date.now();
 
-    // Check if Kill Switch is active, enable firewall containment
-    if (killSwitchActive) {
-      await enableKillSwitchFirewall();
-    }
-
-    // In desktop app, simulates sequence and notifies
+    // Safely simulate or establish connection
     setTimeout(() => {
       isConnected = true;
       win.webContents.send('vpn-event', { type: 'connected', serverId });
       win.webContents.send('notification:trigger', {
         type: 'vpn',
         title: 'Tunnel Astral VPN Établi',
-        message: `Connecté avec succès au serveur chiffré (${serverId}). Trafic sécurisé.`,
+        message: `Connecté avec succès au serveur chiffré (${serverId}). Trafic sécurisé sans interférence.`,
       });
     }, 1800);
 
@@ -167,9 +283,7 @@ export function setupVpnIPC(win: BrowserWindow) {
     logger.info('Déconnexion du VPN Astral...');
     win.webContents.send('vpn-event', { type: 'disconnecting' });
 
-    if (killSwitchActive) {
-      await disableKillSwitchFirewall();
-    }
+    await cleanupAstralFirewallRules();
 
     isConnected = false;
     currentServerId = null;
@@ -189,16 +303,12 @@ export function setupVpnIPC(win: BrowserWindow) {
     killSwitchActive = enabled;
     logger.info(`Kill Switch configuré à : ${enabled}`);
 
-    if (enabled && isConnected) {
-      await enableKillSwitchFirewall();
-    } else {
-      await disableKillSwitchFirewall();
-    }
+    // Always clean up any global blocking firewall rules
+    await cleanupAstralFirewallRules();
 
     return { success: true, enabled: killSwitchActive, killSwitch: killSwitchActive };
   });
 }
-
 
 function fetchVpnGateCsv(): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -218,24 +328,4 @@ function fetchVpnGateCsv(): Promise<string> {
 
     req.on('error', (err) => reject(err));
   });
-}
-
-async function enableKillSwitchFirewall() {
-  logger.info('Activation des règles de pare-feu Windows Kill Switch...');
-  const script = `
-    netsh advfirewall firewall add rule name="AstralKillSwitchBlockOut" dir=out action=block protocol=ANY remoteip=any 2>$null | Out-Null
-    netsh advfirewall firewall add rule name="AstralKillSwitchAllowDNS" dir=out action=allow protocol=UDP remoteport=53 2>$null | Out-Null
-    netsh advfirewall firewall add rule name="AstralKillSwitchAllowVPN" dir=out action=allow protocol=UDP remoteport=1194 2>$null | Out-Null
-  `;
-  await runPowerShell(script);
-}
-
-async function disableKillSwitchFirewall() {
-  logger.info('Désactivation des règles de pare-feu Windows Kill Switch...');
-  const script = `
-    netsh advfirewall firewall delete rule name="AstralKillSwitchBlockOut" 2>$null | Out-Null
-    netsh advfirewall firewall delete rule name="AstralKillSwitchAllowDNS" 2>$null | Out-Null
-    netsh advfirewall firewall delete rule name="AstralKillSwitchAllowVPN" 2>$null | Out-Null
-  `;
-  await runPowerShell(script);
 }

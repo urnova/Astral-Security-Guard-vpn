@@ -4,7 +4,7 @@ import { logger } from './logger';
 import { isAdmin, getWindowsBuildInfo, relaunchElevated } from './adminHelper';
 import { setupAutoUpdater } from './updater';
 import { setupSecurityIPC } from './security';
-import { setupVpnIPC } from './vpn';
+import { setupVpnIPC, cleanupAstralFirewallRules } from './vpn';
 import { setupPerformanceIPC } from './performance';
 import { setupNetworkIPC } from './network';
 import { setupGamingIPC, startGameDetection } from './gaming';
@@ -269,15 +269,20 @@ function createTray() {
 // ── Second Instance Handler ──────────────────────────────────────────────────
 app.on('second-instance', () => {
   logger.info('[App] Second instance attempted. Focusing existing window.');
-  if (mainWin) {
+  if (mainWin && !mainWin.isDestroyed()) {
     if (mainWin.isMinimized()) mainWin.restore();
     if (!mainWin.isVisible()) mainWin.show();
+    mainWin.setAlwaysOnTop(true);
     mainWin.focus();
+    mainWin.setAlwaysOnTop(false);
   }
 });
 
 // ── Boot Sequence ─────────────────────────────────────────────────────────────
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Purge any stale firewall rules left by prior sessions or crashes
+  await cleanupAstralFirewallRules();
+
   createMainWindow();
   createTray();
 
@@ -300,8 +305,13 @@ app.whenReady().then(() => {
   });
 });
 
+app.on('before-quit', () => {
+  cleanupAstralFirewallRules();
+});
+
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  cleanupAstralFirewallRules();
 });
 
 app.on('window-all-closed', () => {

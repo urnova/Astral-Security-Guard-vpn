@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Gamepad2, Zap, RefreshCw, Sliders, Shield, Monitor, Layers } from 'lucide-react';
+import { Gamepad2, Zap, RefreshCw, Sliders, Shield, Monitor, Layers, CheckCircle2 } from 'lucide-react';
 import { CollapsibleError } from '../ui/CollapsibleError';
 
 const api = (window as any).vanguard;
@@ -31,7 +31,6 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
     api.getProfiles?.().then((r: any) => setProfiles(r?.profiles || {}));
     api.getOverlayStatus?.().then((active: boolean) => setOverlayEnabled(Boolean(active)));
 
-    // Initial scan
     scanGames();
   }, []);
 
@@ -69,9 +68,9 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
         await api.networkGamingOff();
       }
       onGamingToggle(next);
-      showNotice(next ? '🎮 Mode Gaming activé — Priorité CPU, GPU & Anti-Lag appliqués' : 'Mode Gaming désactivé');
+      showNotice(next ? '🎮 Mode Gaming activé — Priorité CPU & Anti-Lag appliqués' : 'Mode Gaming désactivé');
     } catch (err: any) {
-      setErrorInfo({ message: 'Impossible d’activer le mode gaming', technical: err.message });
+      setErrorInfo({ message: 'Impossible de basculer le mode gaming', technical: err.message });
     }
   };
 
@@ -83,247 +82,281 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
     showNotice(next ? '🖥️ Overlay HUD activé (Ctrl+Shift+O)' : 'Overlay HUD masqué');
   };
 
-  const saveProfileSetting = async (gameKey: string, settingKey: string, value: any) => {
-    if (!api) return;
-    const current = profiles[gameKey] || {};
-    const updated = { ...current, [settingKey]: value };
-    await api.saveProfile(gameKey, updated);
-    setProfiles((prev) => ({ ...prev, [gameKey]: updated }));
-    showNotice('Profil sauvegardé.');
-  };
-
   return (
-    <div className="tab-scroll space-y-6 max-w-6xl mx-auto">
+    <div className="tab-scroll" style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
-            <Gamepad2 className="w-6 h-6 text-purple-400" />
-            Mode Gaming & Détection Intelligente
-          </h1>
-          <p className="text-sm text-zinc-400 mt-1">
-            Détection heuristique plein écran (Win32) · Profils par jeu · Overlay HUD transparent
-          </p>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 16,
+          paddingBottom: 20,
+          borderBottom: '1px solid var(--border)',
+          marginBottom: 24,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              backgroundColor: 'rgba(139, 92, 246, 0.15)',
+              border: '1px solid var(--border-violet)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--violet)',
+            }}
+          >
+            <Gamepad2 size={18} />
+          </div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+              Mode Gaming & Détection Intelligente
+            </h1>
+            <p style={{ margin: '2px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+              Optimisation basse latence · Détection plein écran non-intrusive · Overlay HUD
+            </p>
+          </div>
         </div>
 
         {gamingActive && (
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-semibold">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-            {currentGame ? `EN JEU : ${currentGame}` : 'BOOST GAMING ACTIF'}
+          <div className="badge badge-cyan" style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600 }}>
+            <span className="badge-dot" style={{ backgroundColor: 'var(--cyan)' }} />
+            <span>{currentGame ? `EN JEU : ${currentGame}` : 'BOOST GAMING ACTIF'}</span>
           </div>
         )}
       </div>
 
       {notice && (
-        <div className="p-3 rounded-xl bg-purple-950/40 border border-purple-500/30 text-purple-300 text-xs font-medium">
-          {notice}
+        <div
+          style={{
+            padding: '12px 16px',
+            borderRadius: 12,
+            backgroundColor: 'rgba(139, 92, 246, 0.1)',
+            border: '1px solid var(--border-violet)',
+            color: 'var(--violet)',
+            fontSize: 13,
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            marginBottom: 20,
+          }}
+        >
+          <CheckCircle2 size={16} />
+          <span>{notice}</span>
         </div>
       )}
 
       {errorInfo && (
-        <CollapsibleError
-          message={errorInfo.message}
-          technicalError={errorInfo.technical}
-        />
+        <div style={{ marginBottom: 20 }}>
+          <CollapsibleError message={errorInfo.message} technicalError={errorInfo.technical} />
+        </div>
       )}
 
       {/* Main Switch Card */}
-      <div className="p-6 rounded-2xl bg-gradient-to-r from-[#120d2b] to-[#0c0c24] border border-purple-500/30 shadow-xl space-y-5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${
-              gamingActive
-                ? 'bg-cyan-500/20 border border-cyan-500/50 shadow-[0_0_20px_rgba(6,182,212,0.3)]'
-                : 'bg-white/5 border border-white/10'
-            }`}>
-              <Zap className={`w-7 h-7 ${gamingActive ? 'text-cyan-400' : 'text-zinc-500'}`} />
+      <div
+        className="glass-card"
+        style={{
+          padding: 24,
+          borderRadius: 16,
+          marginBottom: 24,
+          background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(6, 6, 20, 0.8))',
+          border: '1px solid var(--border-violet)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 14,
+                backgroundColor: gamingActive ? 'rgba(0, 212, 255, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                border: `1px solid ${gamingActive ? 'var(--border-cyan)' : 'var(--border)'}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: gamingActive ? 'var(--cyan)' : 'var(--text-muted)',
+                boxShadow: gamingActive ? '0 0 20px rgba(0, 212, 255, 0.3)' : 'none',
+              }}
+            >
+              <Zap size={26} />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white">
-                {gamingActive ? 'Optimisation Gaming Maximale' : 'Mode Gaming inactif — activation manuelle uniquement'}
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
+                {gamingActive ? 'Optimisation Gaming Maximale Active' : 'Mode Gaming inactif — activation manuelle uniquement'}
               </h3>
-              <p className="text-xs text-zinc-400 mt-0.5">
+              <p style={{ margin: '4px 0 0 0', fontSize: 12, color: 'var(--text-secondary)', maxWidth: 650, lineHeight: 1.5 }}>
                 {gamingActive
-                  ? 'Plan d’alimentation haute performance, processus d’arrière-plan bridés et QoS paquets active.'
-                  : 'Activation manuelle en un clic. Détection auto désactivée par défaut pour éviter tout faux positif (Edge, Chrome, Perplexity exclus).'}
+                  ? 'Plan haute performance actif, priorité temps-réel sur le jeu et optimisation des paquets réseau engagée.'
+                  : 'Activation manuelle en un clic. Détection auto désactivée par défaut pour éviter tout faux positif (Edge, Chrome, Antigravity exclus).'}
               </p>
             </div>
-
           </div>
 
           <button
             onClick={toggleMode}
-            className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md ${
-              gamingActive
-                ? 'bg-cyan-500 text-black hover:bg-cyan-400 shadow-cyan-500/30'
-                : 'bg-purple-600 text-white hover:bg-purple-500 shadow-purple-900/30'
-            }`}
+            className={`btn ${gamingActive ? 'btn-primary' : 'btn-ghost'}`}
+            style={{ fontSize: 12, padding: '10px 20px', fontWeight: 700 }}
           >
-            {gamingActive ? 'Désactiver le Boost' : 'Forcer l’activation'}
+            {gamingActive ? 'Désactiver le Boost' : 'Activer le Boost Gaming'}
           </button>
         </div>
 
         {gamingActive && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-3 border-t border-purple-500/10">
-            <div className="p-3 rounded-xl bg-black/40 border border-white/5 flex items-center gap-2.5">
-              <Zap className="w-4 h-4 text-cyan-400" />
-              <span className="text-xs text-zinc-300 font-medium">Alimentation Maximale</span>
+          <div
+            style={{
+              marginTop: 18,
+              paddingTop: 16,
+              borderTop: '1px solid var(--border)',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4, 1fr)',
+              gap: 12,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+              <Zap size={14} style={{ color: 'var(--cyan)' }} />
+              <span>Alimentation Maximale</span>
             </div>
-            <div className="p-3 rounded-xl bg-black/40 border border-white/5 flex items-center gap-2.5">
-              <Layers className="w-4 h-4 text-purple-400" />
-              <span className="text-xs text-zinc-300 font-medium">Priorité CPU Haute</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+              <Layers size={14} style={{ color: 'var(--violet)' }} />
+              <span>Priorité Processus Haute</span>
             </div>
-            <div className="p-3 rounded-xl bg-black/40 border border-white/5 flex items-center gap-2.5">
-              <Monitor className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs text-zinc-300 font-medium">Anti-Nagle TCP Actif</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+              <Monitor size={14} style={{ color: 'var(--green)' }} />
+              <span>Anti-Nagle TCP Engagé</span>
             </div>
-            <div className="p-3 rounded-xl bg-black/40 border border-white/5 flex items-center gap-2.5">
-              <Shield className="w-4 h-4 text-amber-400" />
-              <span className="text-xs text-zinc-300 font-medium">Télémétrie Suspendue</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+              <Shield size={14} style={{ color: 'var(--orange)' }} />
+              <span>Coexistence Tiers Préservée</span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Overlay & Fullscreen Detection Settings */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Overlay HUD Control */}
-        <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-white/5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-              <Monitor className="w-4 h-4 text-purple-400" />
-              Overlay HUD In-Game (Transparent)
+      {/* Overlay & HUD Control Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20, marginBottom: 24 }}>
+        <div className="glass-card" style={{ padding: 20, borderRadius: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Monitor size={16} style={{ color: 'var(--violet)' }} />
+              <span>Overlay HUD In-Game (Transparent)</span>
             </h3>
             <button
               onClick={toggleOverlay}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
-                overlayEnabled ? 'bg-cyan-500 text-black' : 'bg-white/10 text-zinc-300 hover:bg-white/15'
-              }`}
+              className={`btn ${overlayEnabled ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ fontSize: 11, padding: '5px 12px' }}
             >
               {overlayEnabled ? 'Affiché' : 'Masqué'}
             </button>
           </div>
-          <p className="text-xs text-zinc-400 leading-relaxed">
-            Affiche un mini-widget transparent au-dessus de vos jeux affichant le CPU, la RAM, le ping et le profil actif.
+          <p style={{ margin: '0 0 14px 0', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+            Affiche un mini-widget discret transparent affichant le CPU, la RAM et la latence sans injecter de DLL dans vos jeux.
           </p>
-          <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-center justify-between text-xs">
-            <span className="text-zinc-400">Raccourci global clavier :</span>
-            <kbd className="px-2 py-1 rounded bg-white/10 font-mono text-purple-300 text-[11px]">
+          <div
+            style={{
+              padding: '10px 14px',
+              borderRadius: 10,
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: 12,
+            }}
+          >
+            <span style={{ color: 'var(--text-muted)' }}>Raccourci global clavier :</span>
+            <kbd style={{ padding: '3px 8px', borderRadius: 6, backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--violet)', fontFamily: 'var(--mono)', fontSize: 11 }}>
               Ctrl + Shift + O
             </kbd>
           </div>
         </div>
 
-        {/* Generic Fullscreen Detection */}
-        <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-white/5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-              <Zap className="w-4 h-4 text-cyan-400" />
-              Détecteur Générique Plein Écran
+        <div className="glass-card" style={{ padding: 20, borderRadius: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Shield size={16} style={{ color: 'var(--cyan)' }} />
+              <span>Protection Anti-Faux-Positifs</span>
             </h3>
-            <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-semibold">
-              Actif (Win32)
-            </span>
+            <span className="badge badge-green" style={{ fontSize: 11 }}>Strictement Exclus</span>
           </div>
-          <p className="text-xs text-zinc-400 leading-relaxed">
-            Ne dépend d'aucune liste fermée : Vanguard interroge <code className="text-cyan-300">GetForegroundWindow()</code> pour détecter n'importe quel jeu ou simulateur 3D et appliquer les optimisations en temps réel.
+          <p style={{ margin: '0 0 14px 0', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+            Les navigateurs Web, IDE et outils bureautiques ne peuvent jamais être confondus avec des jeux vidéo :
           </p>
-          {currentGame && (
-            <div className="p-2.5 rounded-xl bg-purple-950/40 border border-purple-500/20 text-xs text-purple-300 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
-              <span>Fenêtre active : <strong>{currentGame}</strong></span>
-            </div>
-          )}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {['msedge.exe', 'chrome.exe', 'brave.exe', 'firefox.exe', 'code.exe', 'antigravity.exe'].map((app) => (
+              <span key={app} className="badge badge-gray" style={{ fontSize: 11, padding: '2px 8px', fontFamily: 'var(--mono)' }}>
+                {app}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Installed Games Library Scanner */}
-      <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-white/5 space-y-4">
-        <div className="flex items-center justify-between">
+      <div className="glass-card" style={{ padding: 20, borderRadius: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <div>
-            <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-              <Gamepad2 className="w-4 h-4 text-purple-400" />
-              Bibliothèque de Jeux Détectés ({installedGames.length})
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Gamepad2 size={16} style={{ color: 'var(--violet)' }} />
+              <span>Bibliothèque de Jeux Détectés ({installedGames.length})</span>
             </h3>
-            <p className="text-xs text-zinc-500 mt-0.5">
-              Scanne automatiquement vos répertoires Steam, Epic Games, GOG Galaxy & Riot
+            <p style={{ margin: '2px 0 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+              Steam, Epic Games, GOG Galaxy & Riot Games
             </p>
           </div>
 
           <button
             onClick={scanGames}
             disabled={scanningGames}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-zinc-200 transition-colors"
+            className="btn btn-ghost"
+            style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 6 }}
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${scanningGames ? 'animate-spin text-purple-400' : ''}`} />
-            <span>Re-scanner</span>
+            <RefreshCw size={12} className={scanningGames ? 'animate-spin' : ''} />
+            <span>{scanningGames ? 'Recherche...' : 'Scanner les jeux'}</span>
           </button>
         </div>
 
-        {installedGames.length === 0 ? (
-          <p className="text-xs text-zinc-500 py-4 text-center">
-            {scanningGames ? 'Analyse du système en cours...' : 'Aucun jeu détecté dans les dossiers par défaut.'}
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-72 overflow-y-auto pr-1">
-            {installedGames.map((game, idx) => {
-              const profile = profiles[game.name] || {};
-              const isSelected = selectedGameForProfile === game.name;
-
-              return (
-                <div
-                  key={idx}
-                  className={`p-3 rounded-xl border text-xs transition-all ${
-                    isSelected
-                      ? 'bg-purple-950/40 border-purple-500/50'
-                      : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.04]'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-semibold text-zinc-200 truncate">{game.name}</p>
-                      <span className="text-[10px] uppercase font-bold tracking-wider text-purple-400 mt-0.5 inline-block">
-                        {game.platform}
-                      </span>
-                    </div>
-
-                    <button
-                      onClick={() => setSelectedGameForProfile(isSelected ? null : game.name)}
-                      className="p-1 rounded-md text-zinc-400 hover:text-white"
-                      title="Configurer le profil de ce jeu"
-                    >
-                      <Sliders className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  {isSelected && (
-                    <div className="mt-3 pt-3 border-t border-white/5 space-y-2">
-                      <label className="flex items-center justify-between text-[11px] text-zinc-300">
-                        <span>Ne Pas Déranger (DND)</span>
-                        <input
-                          type="checkbox"
-                          checked={Boolean(profile.dnd)}
-                          onChange={(e) => saveProfileSetting(game.name, 'dnd', e.target.checked)}
-                          className="accent-purple-500"
-                        />
-                      </label>
-
-                      <label className="flex items-center justify-between text-[11px] text-zinc-300">
-                        <span>Priorité CPU Haute</span>
-                        <input
-                          type="checkbox"
-                          checked={profile.highPriority ?? true}
-                          onChange={(e) => saveProfileSetting(game.name, 'highPriority', e.target.checked)}
-                          className="accent-purple-500"
-                        />
-                      </label>
-                    </div>
-                  )}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
+          {installedGames.length === 0 && !scanningGames ? (
+            <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)', padding: '20px 0' }}>
+              Aucun jeu détecté automatiquement. Cliquez sur « Scanner les jeux » pour analyser vos bibliothèques.
+            </p>
+          ) : (
+            installedGames.map((game, idx) => (
+              <div
+                key={idx}
+                style={{
+                  padding: 14,
+                  borderRadius: 12,
+                  backgroundColor: 'var(--bg-surface)',
+                  border: '1px solid var(--border)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {game.name}
+                  </p>
+                  <p style={{ margin: '2px 0 0 0', fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--mono)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {game.executable}
+                  </p>
                 </div>
-              );
-            })}
-          </div>
-        )}
+                <span className="badge badge-violet" style={{ fontSize: 10, padding: '2px 6px', textTransform: 'uppercase' }}>
+                  {game.platform}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );

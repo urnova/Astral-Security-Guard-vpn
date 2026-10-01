@@ -47,20 +47,23 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
   const [errorInfo,  setErrorInfo]  = useState<{ message: string; technical?: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [recentScans, setRecentScans] = useState<any[]>([]);
+  const [vpnCoex, setVpnCoex] = useState<any>(null);
 
   const load = useCallback(async () => {
     if (!api) { setLoading(false); return; }
     try {
-      const [m, s, modeRes, historyRes] = await Promise.all([
+      const [m, s, modeRes, historyRes, vpnRes] = await Promise.all([
         api.getMetrics?.(),
         api.getSecurityStatus?.(),
         api.getSystemMode?.(),
         api.getScannerHistory?.(),
+        api.vpnGetCoexistenceStatus?.(),
       ]);
       if (m?.success)  setMetrics(m.data);
       if (s?.success)  setSecStatus(s.data);
       if (modeRes)     setMode(modeRes);
       if (Array.isArray(historyRes)) setRecentScans(historyRes.slice(0, 5));
+      if (vpnRes)      setVpnCoex(vpnRes);
     } catch { /* IPC failure is non-fatal */ }
     setLoading(false);
     setRefreshing(false);
@@ -329,6 +332,12 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
               <span style={{ color: 'var(--text-secondary)' }}>Mode Gaming</span>
               <span className={`badge ${gamingActive ? 'badge-cyan' : 'badge-muted'}`} style={{ fontSize: 11 }}>
                 {gamingActive ? 'Actif' : 'Inactif (Manuel)'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>VPN & Réseau</span>
+              <span className={`badge ${vpnCoex?.thirdPartyActive ? 'badge-green' : 'badge-cyan'}`} style={{ fontSize: 11 }}>
+                {vpnCoex?.thirdPartyActive ? `🛡️ ${vpnCoex.vpnName} Détecté (Coexistence)` : 'Mode standard autonome'}
               </span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>

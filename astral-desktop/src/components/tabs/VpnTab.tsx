@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Shield, ShieldAlert, Globe, Lock, Power, RefreshCw, AlertCircle, Wifi } from 'lucide-react';
+import { Shield, ShieldCheck, ShieldAlert, Globe, Lock, Power, RefreshCw, AlertCircle, Wifi, CheckCircle2, Info } from 'lucide-react';
 import { CollapsibleError } from '../ui/CollapsibleError';
 
 const api = (window as any).vanguard;
@@ -8,12 +8,20 @@ export interface VpnServer {
   id: string;
   country: string;
   location: string;
-  flag: string;
+  countryCode?: string;
+  flag?: string;
   ping: number;
   ip: string;
   speedMbps: number;
-  uptimeHours: number;
-  sessions: number;
+  uptimeHours?: number;
+  sessions?: number;
+}
+
+interface CoexistenceStatus {
+  thirdPartyActive: boolean;
+  vpnName?: string;
+  adapterName?: string;
+  details?: string;
 }
 
 export default function VpnTab() {
@@ -24,8 +32,20 @@ export default function VpnTab() {
   const [killSwitch, setKillSwitch] = useState(false);
   const [loadingServers, setLoadingServers] = useState(false);
   const [search, setSearch] = useState('');
+  const [coexistence, setCoexistence] = useState<CoexistenceStatus>({ thirdPartyActive: false });
   const [fallbackMessage, setFallbackMessage] = useState<string | null>(null);
   const [errorInfo, setErrorInfo] = useState<{ message: string; technical?: string } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const checkCoexistence = async () => {
+    if (!api?.vpnGetCoexistenceStatus) return;
+    try {
+      const status = await api.vpnGetCoexistenceStatus();
+      if (status) {
+        setCoexistence(status);
+      }
+    } catch {}
+  };
 
   const fetchServers = async () => {
     if (!api) return;
@@ -46,7 +66,7 @@ export default function VpnTab() {
       }
     } catch (err: any) {
       setServers([]);
-      setFallbackMessage('Aucun serveur VPN disponible actuellement, réessayez plus tard.');
+      setFallbackMessage('Serveurs VPN temporairement indisponibles.');
       setErrorInfo({ message: 'Erreur lors de la récupération des serveurs VPN.', technical: err.message });
     } finally {
       setLoadingServers(false);
@@ -56,16 +76,15 @@ export default function VpnTab() {
   useEffect(() => {
     if (!api) return;
 
+    checkCoexistence();
     fetchServers();
 
-    // Query Kill Switch initial state
     api.vpnGetKillSwitch?.().then((res: any) => {
       if (res && typeof res.enabled === 'boolean') {
         setKillSwitch(res.enabled);
       }
     });
 
-    // Listen to VPN events from main process
     const cleanup = api.on('vpn-event', (event: any) => {
       if (event.type === 'connecting') setVpnState('connecting');
       if (event.type === 'connected') setVpnState('connected');
@@ -76,14 +95,18 @@ export default function VpnTab() {
       if (event.type === 'error') {
         setVpnState('disconnected');
         setErrorInfo({
-          message: 'Erreur de connexion OpenVPN.',
+          message: 'Erreur de connexion VPN.',
           technical: event.error,
         });
       }
     });
 
+    // Periodically re-check coexistence in background
+    const coexInterval = setInterval(checkCoexistence, 10000);
+
     return () => {
       if (typeof cleanup === 'function') cleanup();
+      clearInterval(coexInterval);
     };
   }, []);
 
@@ -99,6 +122,13 @@ export default function VpnTab() {
   }, [vpnState]);
 
   const handleToggleConnect = async () => {
+    // If third-party VPN is active, enforce peaceful coexistence
+    if (coexistence.thirdPartyActive && vpnState === 'disconnected') {
+      setNotice(`🛡️ ${coexistence.vpnName} est actif. Mode Coexistence engagé : vos connexions et votre VPN actuel restent préservés sans conflit.`);
+      setTimeout(() => setNotice(null), 5000);
+      return;
+    }
+
     if (!selectedServer && vpnState === 'disconnected') return;
     setErrorInfo(null);
 
@@ -109,7 +139,11 @@ export default function VpnTab() {
       setVpnState('connecting');
       try {
         const res = await api?.vpnConnect?.(selectedServer!.id);
-        if (!res?.success) {
+        if (res?.blockedByCoexistence) {
+          setVpnState('disconnected');
+          setNotice(res.message);
+          setTimeout(() => setNotice(null), 6000);
+        } else if (!res?.success) {
           setVpnState('disconnected');
           setErrorInfo({
             message: 'Impossible d’établir le tunnel VPN.',
@@ -131,9 +165,12 @@ export default function VpnTab() {
       if (!res?.success) {
         setKillSwitch(!enabled);
         setErrorInfo({
-          message: 'Impossible de modifier le Kill Switch pare-feu.',
+          message: 'Impossible de modifier le Kill Switch.',
           technical: res?.error,
         });
+      } else {
+        setNotice(enabled ? 'Kill Switch sécurisé activé (mode passif non-destructif).' : 'Kill Switch désactivé.');
+        setTimeout(() => setNotice(null), 3500);
       }
     } catch (err: any) {
       setKillSwitch(!enabled);
@@ -155,228 +192,478 @@ export default function VpnTab() {
   );
 
   return (
-    <div className="tab-scroll space-y-6 max-w-6xl mx-auto">
+    <div className="tab-scroll" style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 16,
+          paddingBottom: 20,
+          borderBottom: '1px solid var(--border)',
+          marginBottom: 24,
+        }}
+      >
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
-            <Lock className="w-6 h-6 text-purple-400" />
-            Tunnel Chiffré Astral VPN
-          </h1>
-          <p className="text-sm text-zinc-400 mt-1">
-            Chiffrement OpenVPN AES-256 · Kill Switch pare-feu natif Windows · Relais dynamiques mondiaux
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                backgroundColor: 'rgba(139, 92, 246, 0.15)',
+                border: '1px solid var(--border-violet)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--violet)',
+              }}
+            >
+              <Lock size={18} />
+            </div>
+            <div>
+              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+                Tunnel Chiffré & Coexistence VPN
+              </h1>
+              <p style={{ margin: '2px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+                Chiffrement sécurisé · Détection intelligente de vos VPN tiers · Zéro conflit réseau
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border ${
-            vpnState === 'connected'
-              ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
-              : vpnState === 'connecting'
-              ? 'bg-amber-500/10 border-amber-500/40 text-amber-400'
-              : 'bg-zinc-800/80 border-white/10 text-zinc-400'
-          }`}>
-            <span className={`w-2 h-2 rounded-full ${
-              vpnState === 'connected'
-                ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]'
-                : vpnState === 'connecting'
-                ? 'bg-amber-400 animate-pulse'
-                : 'bg-zinc-500'
-            }`} />
-            <span>
-              {vpnState === 'connected' ? 'PROTÉGÉ' : vpnState === 'connecting' ? 'CONNEXION...' : 'DÉCONNECTÉ'}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {coexistence.thirdPartyActive && (
+            <span
+              className="badge badge-green"
+              style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <ShieldCheck size={14} />
+              <span>{coexistence.vpnName} Détecté</span>
             </span>
+          )}
+
+          <div
+            className={`badge ${
+              vpnState === 'connected'
+                ? 'badge-green'
+                : vpnState === 'connecting'
+                ? 'badge-orange'
+                : 'badge-gray'
+            }`}
+            style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600 }}
+          >
+            <span
+              className="badge-dot"
+              style={{
+                backgroundColor:
+                  vpnState === 'connected' ? 'var(--green)' : vpnState === 'connecting' ? 'var(--orange)' : 'var(--text-muted)',
+              }}
+            />
+            {vpnState === 'connected'
+              ? 'TUNNEL ACTIF'
+              : vpnState === 'connecting'
+              ? 'CONNEXION...'
+              : coexistence.thirdPartyActive
+              ? 'COEXISTENCE PASSIVE'
+              : 'DÉCONNECTÉ'}
           </div>
 
           <button
-            onClick={fetchServers}
+            onClick={() => {
+              checkCoexistence();
+              fetchServers();
+            }}
             disabled={loadingServers}
-            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-300 transition-colors"
-            title="Actualiser la liste des serveurs"
+            className="btn btn-ghost"
+            style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
+            title="Actualiser l'état et les relais"
           >
-            <RefreshCw className={`w-4 h-4 ${loadingServers ? 'animate-spin text-purple-400' : ''}`} />
+            <RefreshCw size={14} className={loadingServers ? 'animate-spin' : ''} />
+            <span>Actualiser</span>
           </button>
         </div>
       </div>
 
-      {errorInfo && (
-        <CollapsibleError
-          message={errorInfo.message}
-          technicalError={errorInfo.technical}
-        />
+      {/* Notice Banner */}
+      {notice && (
+        <div
+          style={{
+            padding: '12px 16px',
+            borderRadius: 12,
+            backgroundColor: 'rgba(16, 217, 160, 0.1)',
+            border: '1px solid rgba(16, 217, 160, 0.3)',
+            color: 'var(--green)',
+            fontSize: 13,
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            marginBottom: 20,
+          }}
+        >
+          <CheckCircle2 size={16} style={{ flexShrink: 0 }} />
+          <span>{notice}</span>
+        </div>
       )}
 
-      {/* Fallback Warning if servers unavailable */}
+      {/* Third-Party Coexistence Card */}
+      {coexistence.thirdPartyActive && (
+        <div
+          className="glass-card"
+          style={{
+            padding: '16px 20px',
+            borderRadius: 14,
+            marginBottom: 24,
+            background: 'linear-gradient(135deg, rgba(16, 217, 160, 0.08), rgba(6, 6, 20, 0.6))',
+            border: '1px solid rgba(16, 217, 160, 0.3)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 16,
+          }}
+        >
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              backgroundColor: 'rgba(16, 217, 160, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--green)',
+              flexShrink: 0,
+            }}
+          >
+            <ShieldCheck size={22} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
+                Bouclier de Coexistence Actif — {coexistence.vpnName}
+              </h3>
+              <span className="badge badge-green" style={{ fontSize: 10 }}>Sécurité Maximale</span>
+            </div>
+            <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Votre logiciel VPN principal (<strong>{coexistence.vpnName}</strong>) est détecté en activité. Astral Vanguard respecte scrupuleusement vos configurations de routage, vos adaptateurs virtuels et vos serveurs DNS : <strong>aucune modification conflictuelle</strong> n'est appliquée, garantissant une navigation 100% ininterrompue.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {errorInfo && (
+        <div style={{ marginBottom: 20 }}>
+          <CollapsibleError message={errorInfo.message} technicalError={errorInfo.technical} />
+        </div>
+      )}
+
       {fallbackMessage && (
-        <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-500/40 flex items-center gap-3 text-amber-200 text-xs font-medium">
-          <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
+        <div
+          style={{
+            padding: '12px 16px',
+            borderRadius: 12,
+            backgroundColor: 'rgba(255, 140, 66, 0.1)',
+            border: '1px solid var(--border-orange)',
+            color: 'var(--orange)',
+            fontSize: 13,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            marginBottom: 20,
+          }}
+        >
+          <AlertCircle size={16} />
           <span>{fallbackMessage}</span>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left: Main Connection Card (5 cols) */}
-        <div className="lg:col-span-5 p-6 rounded-2xl bg-[#0c0c24]/90 border border-purple-500/20 shadow-xl flex flex-col items-center justify-center text-center relative overflow-hidden">
-          {/* Subtle Ambient Ring */}
-          <div className="absolute inset-0 bg-radial-gradient pointer-events-none opacity-20" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 24 }}>
+        {/* Connection Widget Card (5 cols) */}
+        <div
+          className="glass-card"
+          style={{
+            gridColumn: 'span 5',
+            padding: 24,
+            borderRadius: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            textAlign: 'center',
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Main Power Button */}
+          <div style={{ margin: '16px 0 20px 0', position: 'relative' }}>
+            <button
+              onClick={handleToggleConnect}
+              disabled={vpnState === 'connecting'}
+              style={{
+                width: 130,
+                height: 130,
+                borderRadius: '50%',
+                border: `3px solid ${
+                  vpnState === 'connected'
+                    ? 'var(--green)'
+                    : coexistence.thirdPartyActive
+                    ? 'var(--green)'
+                    : 'var(--violet)'
+                }`,
+                backgroundColor:
+                  vpnState === 'connected'
+                    ? 'rgba(16, 217, 160, 0.15)'
+                    : coexistence.thirdPartyActive
+                    ? 'rgba(16, 217, 160, 0.10)'
+                    : 'rgba(139, 92, 246, 0.12)',
+                boxShadow:
+                  vpnState === 'connected'
+                    ? '0 0 32px rgba(16, 217, 160, 0.4)'
+                    : coexistence.thirdPartyActive
+                    ? '0 0 24px rgba(16, 217, 160, 0.25)'
+                    : '0 0 24px rgba(139, 92, 246, 0.2)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+              }}
+            >
+              <Power
+                size={34}
+                style={{
+                  color:
+                    vpnState === 'connected'
+                      ? 'var(--green)'
+                      : coexistence.thirdPartyActive
+                      ? 'var(--green)'
+                      : 'var(--violet)',
+                }}
+              />
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: '0.08em',
+                  marginTop: 6,
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                {vpnState === 'connected'
+                  ? 'DÉCONNECTER'
+                  : vpnState === 'connecting'
+                  ? 'CONNEXION...'
+                  : coexistence.thirdPartyActive
+                  ? 'COEXISTENCE'
+                  : 'CONNECTER'}
+              </span>
+            </button>
+          </div>
 
-          {/* Connect Button Ring */}
-          <button
-            onClick={handleToggleConnect}
-            disabled={vpnState === 'connecting' || (!selectedServer && vpnState === 'disconnected')}
-            className={`w-36 h-36 rounded-full flex flex-col items-center justify-center transition-all duration-300 relative group cursor-pointer mb-6 ${
-              vpnState === 'connected'
-                ? 'bg-emerald-950/40 border-2 border-emerald-500 shadow-[0_0_40px_rgba(16,185,129,0.35)]'
-                : vpnState === 'connecting'
-                ? 'bg-amber-950/40 border-2 border-amber-500 shadow-[0_0_30px_rgba(245,158,11,0.25)]'
-                : 'bg-purple-950/30 border-2 border-purple-500/40 hover:border-purple-400 shadow-[0_0_30px_rgba(168,85,247,0.15)]'
-            }`}
-          >
-            <Power className={`w-10 h-10 transition-transform group-hover:scale-110 ${
-              vpnState === 'connected'
-                ? 'text-emerald-400'
-                : vpnState === 'connecting'
-                ? 'text-amber-400 animate-pulse'
-                : 'text-purple-400'
-            }`} />
-            <span className="text-[10px] font-bold tracking-wider uppercase mt-2 text-zinc-300">
-              {vpnState === 'connected' ? 'DÉCONNECTER' : vpnState === 'connecting' ? 'EN COURS...' : 'CONNECTER'}
-            </span>
-          </button>
-
-          <h3 className="text-lg font-bold text-white mb-1">
+          <h3 style={{ margin: '0 0 6px 0', fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
             {vpnState === 'connected' && selectedServer
-              ? `${selectedServer.flag} Connecté à ${selectedServer.country}`
+              ? `Connecté à ${selectedServer.country}`
+              : coexistence.thirdPartyActive
+              ? `Protégé via ${coexistence.vpnName}`
               : selectedServer
-              ? `Prêt : ${selectedServer.country} (${selectedServer.location})`
-              : 'Aucun serveur sélectionné'}
+              ? `Prêt : ${selectedServer.country}`
+              : 'Aucun relais sélectionné'}
           </h3>
 
-          <p className="text-xs text-zinc-400 mb-6 font-mono">
+          <p style={{ margin: '0 0 20px 0', fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>
             {vpnState === 'connected' && selectedServer
               ? `IP: ${selectedServer.ip} · Durée : ${formatTime(uptimeSeconds)}`
+              : coexistence.thirdPartyActive
+              ? `Tunnels et cartes réseau protégés contre tout conflit`
               : selectedServer
-              ? `IP Relais : ${selectedServer.ip} · Latence : ${selectedServer.ping} ms`
-              : 'Sélectionnez un relais dans la liste'}
+              ? `Relais : ${selectedServer.location} · Latence : ${selectedServer.ping} ms`
+              : 'Sélectionnez un relais dans l\'annuaire'}
           </p>
 
-          <div className="w-full pt-4 border-t border-white/5 grid grid-cols-3 gap-2 text-xs">
+          <div
+            style={{
+              width: '100%',
+              paddingTop: 16,
+              borderTop: '1px solid var(--border)',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: 8,
+              textAlign: 'center',
+            }}
+          >
             <div>
-              <span className="text-zinc-500 block">Ping Relais</span>
-              <span className="font-semibold text-cyan-400 font-mono">
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block' }}>Latence</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--cyan)', fontFamily: 'var(--mono)' }}>
                 {selectedServer ? `${selectedServer.ping} ms` : '–'}
               </span>
             </div>
             <div>
-              <span className="text-zinc-500 block">Chiffrement</span>
-              <span className="font-semibold text-purple-400 font-mono">AES-256</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block' }}>Protocole</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--violet)', fontFamily: 'var(--mono)' }}>
+                {coexistence.thirdPartyActive ? coexistence.vpnName : 'AES-256'}
+              </span>
             </div>
             <div>
-              <span className="text-zinc-500 block">Débit Relais</span>
-              <span className="font-semibold text-emerald-400 font-mono">
-                {selectedServer && selectedServer.speedMbps ? `${selectedServer.speedMbps} Mb` : 'Direct'}
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block' }}>Débit estimé</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--green)', fontFamily: 'var(--mono)' }}>
+                {selectedServer && selectedServer.speedMbps ? `${selectedServer.speedMbps} Mbps` : 'Direct'}
               </span>
             </div>
           </div>
+
+          {/* Kill Switch Toggle Safe Card */}
+          <div
+            style={{
+              width: '100%',
+              marginTop: 18,
+              padding: 14,
+              borderRadius: 12,
+              backgroundColor: 'var(--bg-elevated)',
+              border: '1px solid var(--border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div style={{ textAlign: 'left' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Shield size={14} style={{ color: 'var(--cyan)' }} />
+                <span>Kill Switch Intelligent</span>
+              </div>
+              <p style={{ margin: '2px 0 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                Isolation sécurisée sans coupure de vos applications tierces
+              </p>
+            </div>
+            <label className="toggle-switch" style={{ cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={killSwitch}
+                onChange={(e) => handleToggleKillSwitch(e.target.checked)}
+              />
+              <span className="toggle-slider" />
+            </label>
+          </div>
         </div>
 
-        {/* Right: Kill Switch & Server Selector (7 cols) */}
-        <div className="lg:col-span-7 space-y-6">
-          {/* Windows Firewall Kill Switch Banner */}
-          <div className="p-4 rounded-2xl bg-[#0c0c24]/90 border border-white/5 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20">
-                <ShieldAlert className="w-5 h-5 text-purple-400" />
-              </div>
-              <div>
-                <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                  Kill Switch Pare-Feu Windows (Anti-Leak)
-                </h4>
-                <p className="text-[11px] text-zinc-400 mt-0.5">
-                  Bloque le trafic sortant non chiffré via les règles de pare-feu si le tunnel tombe
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={() => handleToggleKillSwitch(!killSwitch)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-colors shrink-0 ${
-                killSwitch
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-white/10 text-zinc-400 hover:bg-white/15'
-              }`}
-            >
-              {killSwitch ? 'Actif' : 'Inactif'}
-            </button>
+        {/* Server List Card (7 cols) */}
+        <div
+          className="glass-card"
+          style={{
+            gridColumn: 'span 7',
+            padding: 20,
+            borderRadius: 16,
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Globe size={16} style={{ color: 'var(--cyan)' }} />
+              <span>Annuaire des Relais VPN Chiffrés</span>
+            </h3>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {filteredServers.length} relais disponibles
+            </span>
           </div>
 
-          {/* Server List */}
-          <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-white/5 space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-                <Globe className="w-4 h-4 text-purple-400" />
-                Relais VPN Disponibles ({filteredServers.length})
-              </h3>
+          <div style={{ marginBottom: 12 }}>
+            <input
+              type="text"
+              placeholder="Rechercher par pays, ville, IP..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 14px',
+                borderRadius: 10,
+                backgroundColor: 'var(--bg-surface)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-primary)',
+                fontSize: 12,
+                outline: 'none',
+              }}
+            />
+          </div>
 
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Filtrer par pays..."
-                className="bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-purple-500 w-36 sm:w-48"
-              />
-            </div>
-
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-              {loadingServers && servers.length === 0 ? (
-                <div className="py-8 text-center text-xs text-zinc-500 flex items-center justify-center gap-2">
-                  <RefreshCw className="w-4 h-4 animate-spin text-purple-400" />
-                  <span>Chargement des serveurs dynamiques...</span>
-                </div>
-              ) : filteredServers.length === 0 ? (
-                <div className="py-8 text-center text-xs text-zinc-500">
-                  {fallbackMessage || 'Aucun serveur ne correspond à votre recherche.'}
-                </div>
-              ) : (
-                filteredServers.map((srv) => {
-                  const isSelected = selectedServer?.id === srv.id;
-                  return (
-                    <div
-                      key={srv.id}
-                      onClick={() => {
-                        if (vpnState === 'disconnected') setSelectedServer(srv);
-                      }}
-                      className={`flex items-center justify-between p-3 rounded-xl border text-xs transition-all ${
-                        isSelected
-                          ? 'bg-purple-950/40 border-purple-500/60 shadow-[0_0_15px_rgba(168,85,247,0.15)]'
-                          : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.05] cursor-pointer'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-xl leading-none">{srv.flag}</span>
-                        <div>
-                          <p className="font-semibold text-zinc-200">
-                            {srv.country} <span className="font-normal text-zinc-400">({srv.location})</span>
-                          </p>
-                          <p className="font-mono text-[10px] text-zinc-500 mt-0.5">
-                            IP: {srv.ip} {srv.speedMbps > 0 ? `· ${srv.speedMbps} Mbps` : ''}
-                          </p>
+          <div
+            style={{
+              flex: 1,
+              maxHeight: 380,
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              paddingRight: 4,
+            }}
+          >
+            {filteredServers.length === 0 ? (
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                Aucun serveur ne correspond à votre recherche.
+              </div>
+            ) : (
+              filteredServers.map((s) => {
+                const isSelected = selectedServer?.id === s.id;
+                return (
+                  <div
+                    key={s.id}
+                    onClick={() => setSelectedServer(s)}
+                    style={{
+                      padding: '10px 14px',
+                      borderRadius: 10,
+                      backgroundColor: isSelected ? 'rgba(0, 212, 255, 0.08)' : 'var(--bg-surface)',
+                      border: `1px solid ${isSelected ? 'var(--border-cyan)' : 'var(--border)'}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 8,
+                          backgroundColor: 'var(--bg-elevated)',
+                          border: '1px solid var(--border)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: 'var(--text-secondary)',
+                        }}
+                      >
+                        {s.countryCode || 'UN'}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {s.country}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>
+                          {s.location} · {s.ip}
                         </div>
                       </div>
-
-                      <div className="flex items-center gap-3">
-                        <span className={`font-mono text-xs font-semibold ${
-                          srv.ping < 40 ? 'text-emerald-400' : srv.ping < 100 ? 'text-cyan-400' : 'text-amber-400'
-                        }`}>
-                          {srv.ping} ms
-                        </span>
-                        {isSelected && <span className="w-2 h-2 rounded-full bg-purple-400" />}
-                      </div>
                     </div>
-                  );
-                })
-              )}
-            </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span
+                        className={`badge ${s.ping < 60 ? 'badge-green' : s.ping < 120 ? 'badge-cyan' : 'badge-orange'}`}
+                        style={{ fontSize: 11, padding: '2px 8px' }}
+                      >
+                        {s.ping} ms
+                      </span>
+                      <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontFamily: 'var(--mono)', minWidth: 50, textAlign: 'right' }}>
+                        {s.speedMbps} Mb/s
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       </div>

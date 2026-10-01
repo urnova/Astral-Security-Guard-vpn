@@ -176,28 +176,36 @@ export default function App() {
           </div>
         )}
 
-        {/* Main content */}
+        {/* Main content with Persistent Preloaded Tab Panes */}
         <main className="app-content">
-          {activeTab === 'dashboard' && (
+          <div className="tab-pane" style={{ display: activeTab === 'dashboard' ? 'block' : 'none', height: '100%' }}>
             <Dashboard
               gamingActive={gamingModeActive}
               currentGame={currentGame}
               onTabChange={setActiveTab}
               firstName={firstName}
             />
-          )}
-          {activeTab === 'security'    && <SecurityTab />}
-          {activeTab === 'performance' && <PerformanceTab gamingActive={gamingModeActive} />}
-          {activeTab === 'network'     && <NetworkTab gamingActive={gamingModeActive} />}
-          {activeTab === 'gaming'      && (
+          </div>
+          <div className="tab-pane" style={{ display: activeTab === 'security' ? 'block' : 'none', height: '100%' }}>
+            <SecurityTab />
+          </div>
+          <div className="tab-pane" style={{ display: activeTab === 'performance' ? 'block' : 'none', height: '100%' }}>
+            <PerformanceTab gamingActive={gamingModeActive} />
+          </div>
+          <div className="tab-pane" style={{ display: activeTab === 'network' ? 'block' : 'none', height: '100%' }}>
+            <NetworkTab gamingActive={gamingModeActive} />
+          </div>
+          <div className="tab-pane" style={{ display: activeTab === 'gaming' ? 'block' : 'none', height: '100%' }}>
             <GamingTab
               gamingActive={gamingModeActive}
               currentGame={currentGame}
               onGamingToggle={setGaming}
             />
-          )}
-          {activeTab === 'vpn'         && <VpnTab />}
-          {activeTab === 'settings'    && (
+          </div>
+          <div className="tab-pane" style={{ display: activeTab === 'vpn' ? 'block' : 'none', height: '100%' }}>
+            <VpnTab />
+          </div>
+          <div className="tab-pane" style={{ display: activeTab === 'settings' ? 'block' : 'none', height: '100%' }}>
             <SettingsTab
               dndEnabled={dndEnabled}
               onDndChange={setDndEnabled}
@@ -206,7 +214,7 @@ export default function App() {
               currentTheme={theme}
               onThemeChange={handleThemeChange}
             />
-          )}
+          </div>
         </main>
       </div>
 

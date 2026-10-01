@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain } from 'electron';
 import { runPowerShell } from './psHelper';
 import { logger } from './logger';
 import { createRollbackSnapshot } from './rollback';
+import { detectThirdPartyVpn } from './vpn';
 
 export type SystemMode = 'gaming' | 'office' | 'shield' | 'eco';
 
@@ -49,13 +50,16 @@ export async function executeSosPing(): Promise<{
   // SAFETY NOTE: netsh ip reset, netsh winsock reset, TcpAckFrequency, TCPNoDelay,
   // and DODownloadMode changes have been removed from this automatic path.
   // They require explicit user opt-in from Settings > Advanced Network Options.
+  const vpnCoex = await detectThirdPartyVpn();
+  const arpCommand = vpnCoex.thirdPartyActive ? '# VPN tiers actif: table ARP préservée pour maintenir le tunnel' : 'arp -d * 2>$null';
+
   const repairScript = `
     # 1. Vider le cache DNS (non-destructif)
     Clear-DnsClientCache
     ipconfig /flushdns | Out-Null
 
-    # 2. Vider la table ARP (non-destructif)
-    arp -d * 2>$null
+    # 2. Vider la table ARP si aucun VPN tiers n'est en cours d'exécution
+    ${arpCommand}
 
     [PSCustomObject]@{
       repaired = $true

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Shield, ShieldAlert, ShieldCheck, RefreshCw, Zap, FolderPlus, Trash2, RotateCcw } from 'lucide-react';
+import { Shield, ShieldAlert, ShieldCheck, RefreshCw, Zap, FolderPlus, Trash2, RotateCcw, AlertTriangle, CheckCircle2, FileText, Check } from 'lucide-react';
 import { CollapsibleError } from '../ui/CollapsibleError';
 
 const api = (window as any).vanguard;
@@ -105,14 +105,16 @@ export default function SecurityTab() {
     try {
       const res = await api.updateSignatures();
       if (res?.success) {
-        setNotice('✅ Signatures Windows Defender mises à jour avec succès.');
+        setNotice('✅ Signatures antivirales Microsoft Defender mises à jour avec succès.');
         loadData();
       } else {
         setErrorInfo({
-          message: res?.error || 'Impossible de mettre à jour les signatures.',
-          technical: res?.rawError,
+          message: 'Impossible de mettre à jour les signatures Defender.',
+          technical: res?.error,
         });
       }
+    } catch (err: any) {
+      setErrorInfo({ message: 'Erreur signatures', technical: err.message });
     } finally {
       setUpdatingSignatures(false);
       setTimeout(() => setNotice(''), 4000);
@@ -121,32 +123,36 @@ export default function SecurityTab() {
 
   const handleAddExclusion = async () => {
     if (!api || !newExclusionPath.trim()) return;
-    const pathToAdd = newExclusionPath.trim();
-    const res = await api.addExclusion(pathToAdd);
-    if (res?.success) {
-      setNewExclusionPath('');
-      api.getExclusions().then((r: any) => setExclusions(r.paths || []));
-      setNotice('✅ Exception ajoutée à Windows Defender.');
-      setTimeout(() => setNotice(''), 3000);
-    } else {
-      setErrorInfo({
-        message: 'Impossible d’ajouter l’exception.',
-        technical: res?.error,
-      });
+    setErrorInfo(null);
+    try {
+      const res = await api.addExclusion(newExclusionPath.trim());
+      if (res?.success) {
+        setExclusions((prev) => [...prev, newExclusionPath.trim()]);
+        setNewExclusionPath('');
+        setNotice('✅ Exclusion ajoutée à Microsoft Defender.');
+      } else {
+        setErrorInfo({ message: 'Erreur lors de l’ajout de l’exclusion.', technical: res?.error });
+      }
+    } catch (err: any) {
+      setErrorInfo({ message: 'Erreur exclusion', technical: err.message });
     }
+    setTimeout(() => setNotice(''), 3000);
   };
 
-  const handleRemoveExclusion = async (pathToRemove: string) => {
+  const handleRemoveExclusion = async (path: string) => {
     if (!api) return;
-    const res = await api.removeExclusion(pathToRemove);
-    if (res?.success) {
-      api.getExclusions().then((r: any) => setExclusions(r.paths || []));
-      setNotice('✅ Exception retirée de Windows Defender.');
-      setTimeout(() => setNotice(''), 3000);
-    } else {
+    setErrorInfo(null);
+    try {
+      const res = await api.removeExclusion(path);
+      if (res?.success) {
+        setExclusions((prev) => prev.filter((p) => p !== path));
+        setNotice('✅ Exclusion retirée de Defender.');
+        setTimeout(() => setNotice(''), 3000);
+      }
+    } catch (err: any) {
       setErrorInfo({
-        message: 'Impossible de retirer l’exception.',
-        technical: res?.error,
+        message: 'Impossible de supprimer cette exclusion',
+        technical: err.message,
       });
     }
   };
@@ -193,34 +199,62 @@ export default function SecurityTab() {
     setTimeout(() => setNotice(''), 4000);
   };
 
-  const riskBadgeColor: Record<string, string> = {
-    sain: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
-    faible: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
-    moyen: 'bg-amber-500/20 text-amber-400 border-amber-500/40',
-    élevé: 'bg-red-500/20 text-red-400 border-red-500/40',
-    critique: 'bg-red-600/30 text-red-300 border-red-500/60',
-  };
-
   return (
-    <div className="tab-scroll space-y-6 max-w-6xl mx-auto">
+    <div className="tab-scroll" style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
-            <Shield className="w-6 h-6 text-purple-400" />
-            Sécurité & Bouclier Defender
-          </h1>
-          <p className="text-sm text-zinc-400 mt-1">
-            Supervision native Microsoft Defender · Heuristique autonome zéro-cloud · Gestion des exclusions
-          </p>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 16,
+          paddingBottom: 20,
+          borderBottom: '1px solid var(--border)',
+          marginBottom: 24,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              backgroundColor: 'rgba(139, 92, 246, 0.15)',
+              border: '1px solid var(--border-violet)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--violet)',
+            }}
+          >
+            <Shield size={18} />
+          </div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+              Sécurité & Bouclier Defender
+            </h1>
+            <p style={{ margin: '2px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+              Supervision native Microsoft Defender · Heuristique autonome zéro-cloud · Points de restauration
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <select
             value={scanType}
             onChange={(e) => setScanType(e.target.value as any)}
             disabled={scanState === 'scanning'}
-            className="bg-[#0f0f29] border border-purple-500/30 text-zinc-200 text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-purple-500"
+            style={{
+              padding: '8px 12px',
+              borderRadius: 10,
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border-violet)',
+              color: 'var(--text-primary)',
+              fontSize: 12,
+              outline: 'none',
+              cursor: 'pointer',
+            }}
           >
             <option value="quick">Analyse Rapide (QuickScan)</option>
             <option value="full">Analyse Complète (FullScan)</option>
@@ -240,20 +274,24 @@ export default function SecurityTab() {
               }
             }}
             disabled={scanState === 'scanning'}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold shadow-lg transition-all ${
-              scanState === 'scanning'
-                ? 'bg-purple-950/60 text-purple-300 cursor-not-allowed border border-purple-500/30'
-                : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-purple-900/30'
-            }`}
+            className="btn btn-primary"
+            style={{
+              padding: '8px 16px',
+              fontSize: 12,
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
           >
             {scanState === 'scanning' ? (
               <>
-                <RefreshCw className="w-4 h-4 animate-spin text-purple-400" />
+                <RefreshCw size={14} className="animate-spin" />
                 <span>Analyse en cours...</span>
               </>
             ) : (
               <>
-                <Zap className="w-4 h-4" />
+                <Zap size={14} />
                 <span>Lancer l'analyse</span>
               </>
             )}
@@ -262,116 +300,241 @@ export default function SecurityTab() {
       </div>
 
       {notice && (
-        <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs font-medium">
-          {notice}
+        <div
+          style={{
+            padding: '12px 16px',
+            borderRadius: 12,
+            backgroundColor: 'rgba(16, 217, 160, 0.1)',
+            border: '1px solid rgba(16, 217, 160, 0.3)',
+            color: 'var(--green)',
+            fontSize: 13,
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            marginBottom: 20,
+          }}
+        >
+          <CheckCircle2 size={16} />
+          <span>{notice}</span>
         </div>
       )}
 
       {errorInfo && (
-        <CollapsibleError
-          message={errorInfo.message}
-          technicalError={errorInfo.technical}
-        />
+        <div style={{ marginBottom: 20 }}>
+          <CollapsibleError message={errorInfo.message} technicalError={errorInfo.technical} />
+        </div>
       )}
 
-      {/* Defender Status Banner */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="p-4 rounded-2xl bg-[#0c0c24]/90 border border-purple-500/20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20">
-              <ShieldCheck className="w-5 h-5 text-purple-400" />
+      {/* Defender Status Banner (3 Cards) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
+        <div
+          className="glass-card"
+          style={{
+            padding: 16,
+            borderRadius: 14,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                backgroundColor: 'rgba(16, 217, 160, 0.12)',
+                border: '1px solid var(--border-green)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--green)',
+              }}
+            >
+              <ShieldCheck size={18} />
             </div>
             <div>
-              <p className="text-xs text-zinc-400">Protection Temps Réel</p>
-              <p className="text-sm font-semibold text-zinc-100">
+              <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Protection Temps Réel</p>
+              <p style={{ margin: '2px 0 0 0', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
                 {defenderStatus?.RealTimeProtectionEnabled ? 'Activée (OK)' : 'Non confirmée'}
               </p>
             </div>
           </div>
-          <span className={`w-2.5 h-2.5 rounded-full ${defenderStatus?.RealTimeProtectionEnabled ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-amber-500'}`} />
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              backgroundColor: defenderStatus?.RealTimeProtectionEnabled ? 'var(--green)' : 'var(--orange)',
+              boxShadow: defenderStatus?.RealTimeProtectionEnabled ? '0 0 8px rgba(16, 217, 160, 0.6)' : 'none',
+            }}
+          />
         </div>
 
-        <div className="p-4 rounded-2xl bg-[#0c0c24]/90 border border-purple-500/20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
-              <Shield className="w-5 h-5 text-indigo-400" />
+        <div
+          className="glass-card"
+          style={{
+            padding: 16,
+            borderRadius: 14,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                backgroundColor: 'rgba(139, 92, 246, 0.12)',
+                border: '1px solid var(--border-violet)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--violet)',
+              }}
+            >
+              <Shield size={18} />
             </div>
             <div>
-              <p className="text-xs text-zinc-400">Moteur Antivirus</p>
-              <p className="text-sm font-semibold text-zinc-100">
+              <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Moteur Antivirus</p>
+              <p style={{ margin: '2px 0 0 0', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
                 {defenderStatus?.AntivirusEnabled ? 'Microsoft Defender' : 'Désactivé / Inconnu'}
               </p>
             </div>
           </div>
-          <span className={`w-2.5 h-2.5 rounded-full ${defenderStatus?.AntivirusEnabled ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-red-500'}`} />
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              backgroundColor: defenderStatus?.AntivirusEnabled ? 'var(--green)' : 'var(--red)',
+              boxShadow: defenderStatus?.AntivirusEnabled ? '0 0 8px rgba(16, 217, 160, 0.6)' : 'none',
+            }}
+          />
         </div>
 
-        <div className="p-4 rounded-2xl bg-[#0c0c24]/90 border border-purple-500/20 flex items-center justify-between">
+        <div
+          className="glass-card"
+          style={{
+            padding: 16,
+            borderRadius: 14,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
           <div>
-            <p className="text-xs text-zinc-400">Signatures antivirales</p>
-            <p className="text-sm font-semibold text-zinc-100">
+            <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Signatures Antivirales</p>
+            <p style={{ margin: '2px 0 0 0', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--mono)' }}>
               {defenderStatus?.AntivirusSignatureVersion || 'À jour'}
             </p>
           </div>
           <button
             onClick={handleUpdateSignatures}
             disabled={updatingSignatures}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-zinc-200 transition-colors"
+            className="btn btn-ghost"
+            style={{ padding: '6px 10px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${updatingSignatures ? 'animate-spin text-purple-400' : ''}`} />
+            <RefreshCw size={12} className={updatingSignatures ? 'animate-spin' : ''} />
             <span>{updatingSignatures ? 'Mise à jour...' : 'Actualiser'}</span>
           </button>
         </div>
       </div>
 
-      {/* Autonomous Heuristic AI Box */}
+      {/* Heuristic AI Box */}
       {aiState !== 'idle' && (
-        <div className="p-5 rounded-2xl bg-gradient-to-br from-[#120d2b] to-[#0c0c24] border border-purple-500/30 shadow-xl space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-purple-500/20 border border-purple-500/40">
-                <Zap className="w-5 h-5 text-purple-300" />
+        <div
+          className="glass-card"
+          style={{
+            padding: 20,
+            borderRadius: 16,
+            marginBottom: 24,
+            background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(6, 6, 20, 0.8))',
+            border: '1px solid var(--border-violet)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  backgroundColor: 'rgba(139, 92, 246, 0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--violet)',
+                }}
+              >
+                <Zap size={16} />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-white tracking-wide">
+                <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
                   Bouclier IA Heuristique Autonome
                 </h3>
-                <p className="text-xs text-zinc-400">
-                  Détection locale sans cloud · Analyse des faux-positifs gaming & cracks
+                <p style={{ margin: 0, fontSize: 11, color: 'var(--text-secondary)' }}>
+                  Détection locale sans cloud · Analyse des faux-positifs gaming
                 </p>
               </div>
             </div>
 
             {aiAnalysis && (
-              <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${riskBadgeColor[aiAnalysis.riskLevel?.toLowerCase()] || 'bg-zinc-800 text-zinc-300'}`}>
+              <span
+                className={`badge ${
+                  aiAnalysis.riskLevel === 'sain'
+                    ? 'badge-green'
+                    : aiAnalysis.riskLevel === 'faible'
+                    ? 'badge-cyan'
+                    : 'badge-orange'
+                }`}
+                style={{ padding: '4px 10px', fontSize: 11 }}
+              >
                 Risque : {aiAnalysis.riskLevel}
               </span>
             )}
           </div>
 
           {aiAnalysis && (
-            <div className="space-y-3 pt-2 border-t border-purple-500/10">
-              <p className="text-xs text-zinc-300 leading-relaxed">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
                 {aiAnalysis.summary}
               </p>
               {aiAnalysis.explanation && (
-                <div className="p-3 rounded-xl bg-black/40 border border-white/5 text-xs text-zinc-400 whitespace-pre-line leading-relaxed">
+                <div
+                  style={{
+                    padding: 12,
+                    borderRadius: 10,
+                    backgroundColor: 'rgba(0,0,0,0.3)',
+                    border: '1px solid var(--border)',
+                    fontSize: 12,
+                    color: 'var(--text-muted)',
+                    whiteSpace: 'pre-line',
+                    lineHeight: 1.5,
+                  }}
+                >
                   {aiAnalysis.explanation}
                 </div>
               )}
 
               {remediationScript && (
-                <div className="space-y-2 pt-2">
-                  <p className="text-xs font-semibold text-purple-300">Script de remédiation sécurisé :</p>
-                  <pre className="p-3 rounded-xl bg-black/60 border border-purple-500/20 text-xs font-mono text-zinc-300 overflow-x-auto">
+                <div style={{ marginTop: 8 }}>
+                  <p style={{ margin: '0 0 6px 0', fontSize: 11, fontWeight: 600, color: 'var(--violet)' }}>
+                    Script de remédiation sécurisé proposé :
+                  </p>
+                  <pre className="code-block" style={{ marginBottom: 10 }}>
                     {remediationScript}
                   </pre>
                   <button
                     onClick={runRemediation}
                     disabled={remediating}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition-colors"
+                    className="btn btn-primary"
+                    style={{ fontSize: 12, padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
                   >
-                    {remediating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                    {remediating ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
                     <span>Appliquer la remédiation sécurisée</span>
                   </button>
                 </div>
@@ -381,51 +544,74 @@ export default function SecurityTab() {
         </div>
       )}
 
-      {/* Exclusions & Restore Points Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Defender Exclusions */}
-        <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-white/5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-              <FolderPlus className="w-4 h-4 text-purple-400" />
-              Exceptions Windows Defender
+      {/* Exclusions & Restore Points Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20 }}>
+        {/* Exclusions */}
+        <div className="glass-card" style={{ padding: 20, borderRadius: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <FolderPlus size={16} style={{ color: 'var(--violet)' }} />
+              <span>Exceptions Windows Defender</span>
             </h3>
-            <span className="text-xs text-zinc-500">{exclusions.length} active(s)</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{exclusions.length} active(s)</span>
           </div>
 
-          <div className="flex gap-2">
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
             <input
               type="text"
               value={newExclusionPath}
               onChange={(e) => setNewExclusionPath(e.target.value)}
               placeholder="Ex: C:\Games\MonJeu"
-              className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-purple-500"
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: 10,
+                backgroundColor: 'var(--bg-surface)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-primary)',
+                fontSize: 12,
+                outline: 'none',
+              }}
             />
             <button
               onClick={handleAddExclusion}
               disabled={!newExclusionPath.trim()}
-              className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white text-xs font-semibold transition-colors shrink-0"
+              className="btn btn-primary"
+              style={{ padding: '8px 14px', fontSize: 12, fontWeight: 600 }}
             >
               Ajouter
             </button>
           </div>
 
-          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
             {exclusions.length === 0 ? (
-              <p className="text-xs text-zinc-500 py-3">Aucune exception configurée dans Defender.</p>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)', padding: '12px 0' }}>
+                Aucune exception configurée dans Defender.
+              </p>
             ) : (
               exclusions.map((path, idx) => (
                 <div
                   key={idx}
-                  className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/5 text-xs text-zinc-300"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    backgroundColor: 'var(--bg-surface)',
+                    border: '1px solid var(--border)',
+                    fontSize: 12,
+                  }}
                 >
-                  <span className="truncate font-mono text-[11px]">{path}</span>
+                  <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {path}
+                  </span>
                   <button
                     onClick={() => handleRemoveExclusion(path)}
+                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
                     title="Supprimer cette exclusion"
-                    className="p-1 rounded-md text-zinc-500 hover:text-red-400 transition-colors shrink-0"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 size={13} style={{ color: 'var(--red)' }} />
                   </button>
                 </div>
               ))
@@ -433,92 +619,72 @@ export default function SecurityTab() {
           </div>
         </div>
 
-        {/* Two-Tier Rollback & Windows Restore Points */}
-        <div className="p-5 rounded-2xl bg-[#0c0c24]/90 border border-white/5 space-y-4">
-          <div className="flex items-center justify-between">
+        {/* Restore Points */}
+        <div className="glass-card" style={{ padding: 20, borderRadius: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <div>
-              <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-                <RotateCcw className="w-4 h-4 text-purple-400" />
-                Journal de Restauration & Sauvegardes
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <RotateCcw size={16} style={{ color: 'var(--cyan)' }} />
+                <span>Journal de Restauration & Sauvegardes</span>
               </h3>
-              <p className="text-[11px] text-zinc-500 mt-0.5">
-                Double protection : sauvegarde locale immédiate (.reg/fichiers) + point Windows
+              <p style={{ margin: '2px 0 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                Sauvegardes locales automatiques (.reg / fichiers)
               </p>
             </div>
             <button
               onClick={() => api?.openSystemRestore?.()}
-              className="text-xs text-purple-400 hover:text-purple-300 transition-colors font-medium shrink-0"
-              title="Ouvrir l'assistant natif Windows de restauration système"
+              className="btn btn-ghost"
+              style={{ fontSize: 11, padding: '4px 8px' }}
+              title="Ouvrir l'assistant natif Windows"
             >
-              Ouvrir rstrui.exe
+              rstrui.exe
             </button>
           </div>
 
-          <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 250, overflowY: 'auto' }}>
             {rollbackLog.length === 0 ? (
-              <p className="text-xs text-zinc-500 py-3">Aucune sauvegarde locale enregistrée.</p>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)', padding: '12px 0' }}>
+                Aucune sauvegarde locale enregistrée.
+              </p>
             ) : (
               rollbackLog.slice(0, 10).map((item) => (
                 <div
                   key={item.id}
-                  className="p-3 rounded-xl bg-white/[0.02] border border-white/5 hover:border-purple-500/20 text-xs transition-colors space-y-2"
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 10,
+                    backgroundColor: 'var(--bg-surface)',
+                    border: '1px solid var(--border)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                  }}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-zinc-200 truncate">{item.description}</p>
-                      <p className="text-[10px] text-zinc-500 mt-0.5 font-mono">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {item.description}
+                      </p>
+                      <p style={{ margin: '2px 0 0 0', fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>
                         {new Date(item.timestamp).toLocaleString('fr-FR')}
                       </p>
                     </div>
-
                     <button
                       onClick={() => handleRestoreEntry(item)}
-                      className="px-3 py-1.5 rounded-lg bg-purple-600/80 hover:bg-purple-600 text-white text-xs font-semibold transition-colors shrink-0 shadow-sm"
+                      className="btn btn-primary"
+                      style={{ fontSize: 11, padding: '4px 10px' }}
                     >
                       Restaurer
                     </button>
                   </div>
 
-                  {/* Two-Tier Protection Badges */}
-                  <div className="flex items-center gap-2 flex-wrap pt-1.5 border-t border-white/5 text-[10px]">
-                    {/* Tier 1: Local Backup Badge */}
-                    {item.hasRegistryBackup && item.hasFileBackup ? (
-                      <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-medium">
-                        💾 Sauvegarde locale (Registre + Fichiers)
-                      </span>
-                    ) : item.hasRegistryBackup ? (
-                      <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-medium">
-                        💾 Sauvegarde Registre (.reg exporté)
-                      </span>
-                    ) : item.hasFileBackup ? (
-                      <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-medium">
-                        💾 Sauvegarde Fichiers
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-medium">
-                        💾 Sauvegarde locale active
-                      </span>
-                    )}
-
-                    {/* Tier 2: Windows System Restore Badge */}
-                    {item.hasSystemRestorePoint ? (
-                      <span className="px-2 py-0.5 rounded-md bg-purple-500/10 border border-purple-500/30 text-purple-300 font-medium">
-                        🛡️ Point Système Windows (OK{item.systemRestoreSeq ? ` #${item.systemRestoreSeq}` : ''})
-                      </span>
-                    ) : item.systemRestoreStatus === 'frequency_limited' ? (
-                      <span
-                        className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-300 font-medium"
-                        title="Limite Windows 24h atteinte. La sauvegarde locale garantit 100% de la restauration."
-                      >
-                        ⚠️ Quota Windows 24h (Restauration locale garantie)
-                      </span>
-                    ) : item.systemRestoreStatus === 'disabled' ? (
-                      <span className="px-2 py-0.5 rounded-md bg-zinc-800 border border-white/10 text-zinc-400 font-medium">
-                        🛡️ Point Système (Non-admin - Local garanti)
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-md bg-zinc-800 border border-white/10 text-zinc-400 font-medium">
-                        🛡️ Point Système (Local seul)
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <span className="badge badge-green" style={{ fontSize: 9, padding: '1px 6px' }}>
+                      💾 Registre & Paramètres
+                    </span>
+                    {item.hasSystemRestorePoint && (
+                      <span className="badge badge-violet" style={{ fontSize: 9, padding: '1px 6px' }}>
+                        🛡️ Point Windows #{item.systemRestoreSeq || ''}
                       </span>
                     )}
                   </div>
