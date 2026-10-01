@@ -395,14 +395,106 @@ export default function VpnTab() {
             overflow: 'hidden',
           }}
         >
-          {/* Main Power Button */}
-          <div style={{ margin: '16px 0 20px 0', position: 'relative' }}>
+          {/* Main Power Button with Animated Orbital Cyber Ring */}
+          <div style={{ margin: '16px 0 20px 0', position: 'relative', width: 170, height: 170, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <style>{`
+              @keyframes orbitalSpin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+              }
+              @keyframes orbitalSpinReverse {
+                from { transform: rotate(360deg); }
+                to { transform: rotate(0deg); }
+              }
+            `}</style>
+
+            {/* Rotating Orbital SVG Ring */}
+            <svg
+              width="170"
+              height="170"
+              viewBox="0 0 170 170"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                pointerEvents: 'none',
+              }}
+            >
+              <defs>
+                <linearGradient id="orbitalGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor={vpnState === 'connected' ? '#10d9a0' : vpnState === 'connecting' ? '#00d4ff' : '#8b5cf6'} stopOpacity="0.8" />
+                  <stop offset="50%" stopColor={vpnState === 'connected' ? '#00d4ff' : vpnState === 'connecting' ? '#ff9f1c' : '#c084fc'} stopOpacity="0.3" />
+                  <stop offset="100%" stopColor={vpnState === 'connected' ? '#10d9a0' : vpnState === 'connecting' ? '#00d4ff' : '#8b5cf6'} stopOpacity="0.9" />
+                </linearGradient>
+              </defs>
+
+              {/* Background circular guide */}
+              <circle
+                cx="85"
+                cy="85"
+                r="76"
+                fill="none"
+                stroke="rgba(255, 255, 255, 0.05)"
+                strokeWidth="1.5"
+              />
+
+              {/* Outer Dashed Rotating Cyber Ring */}
+              <g
+                style={{
+                  transformOrigin: '85px 85px',
+                  animation: `orbitalSpin ${vpnState === 'connecting' ? '2.5s' : vpnState === 'connected' ? '8s' : '22s'} linear infinite`,
+                }}
+              >
+                <circle
+                  cx="85"
+                  cy="85"
+                  r="76"
+                  fill="none"
+                  stroke="url(#orbitalGrad)"
+                  strokeWidth="2"
+                  strokeDasharray="24 16 8 16"
+                  strokeLinecap="round"
+                />
+                <circle
+                  cx="85"
+                  cy="9"
+                  r="3.5"
+                  fill={vpnState === 'connected' ? '#10d9a0' : vpnState === 'connecting' ? '#00d4ff' : '#c084fc'}
+                />
+              </g>
+
+              {/* Inner Reverse Subtle Orbital Ring */}
+              <g
+                style={{
+                  transformOrigin: '85px 85px',
+                  animation: `orbitalSpinReverse ${vpnState === 'connecting' ? '4s' : '16s'} linear infinite`,
+                }}
+              >
+                <circle
+                  cx="85"
+                  cy="85"
+                  r="70"
+                  fill="none"
+                  stroke={vpnState === 'connected' ? 'rgba(16, 217, 160, 0.25)' : 'rgba(139, 92, 246, 0.2)'}
+                  strokeWidth="1"
+                  strokeDasharray="6 30 12 20"
+                />
+                <circle
+                  cx="155"
+                  cy="85"
+                  r="2"
+                  fill={vpnState === 'connected' ? '#10d9a0' : '#8b5cf6'}
+                />
+              </g>
+            </svg>
+
+            {/* Central Power Button */}
             <button
               onClick={handleToggleConnect}
               disabled={vpnState === 'connecting'}
               style={{
-                width: 130,
-                height: 130,
+                width: 122,
+                height: 122,
                 borderRadius: '50%',
                 border: `3px solid ${
                   vpnState === 'connected'
@@ -413,22 +505,24 @@ export default function VpnTab() {
                 }`,
                 backgroundColor:
                   vpnState === 'connected'
-                    ? 'rgba(16, 217, 160, 0.15)'
+                    ? 'rgba(16, 217, 160, 0.16)'
                     : coexistence.thirdPartyActive
                     ? 'rgba(16, 217, 160, 0.10)'
                     : 'rgba(139, 92, 246, 0.12)',
                 boxShadow:
                   vpnState === 'connected'
-                    ? '0 0 32px rgba(16, 217, 160, 0.4)'
+                    ? '0 0 32px rgba(16, 217, 160, 0.45)'
                     : coexistence.thirdPartyActive
                     ? '0 0 24px rgba(16, 217, 160, 0.25)'
-                    : '0 0 24px rgba(139, 92, 246, 0.2)',
+                    : '0 0 24px rgba(139, 92, 246, 0.22)',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: 'pointer',
                 transition: 'all 0.3s ease',
+                position: 'relative',
+                zIndex: 2,
               }}
             >
               <Power

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Shield, ShieldAlert, ShieldCheck, RefreshCw, Zap, FolderPlus, Trash2, RotateCcw, AlertTriangle, CheckCircle2, FileText, Check } from 'lucide-react';
+import { Shield, ShieldAlert, ShieldCheck, RefreshCw, Zap, FolderPlus, Trash2, RotateCcw, AlertTriangle, CheckCircle2, FileText, Check, Unlock, FolderCheck, Download } from 'lucide-react';
 import { CollapsibleError } from '../ui/CollapsibleError';
 
 const api = (window as any).vanguard;
@@ -19,9 +19,49 @@ export default function SecurityTab() {
   const [remediationScript, setRemediationScript] = useState('');
   const [remediating, setRemediating] = useState(false);
   const [updatingSignatures, setUpdatingSignatures] = useState(false);
+  const [unblockingDownloads, setUnblockingDownloads] = useState(false);
+  const [unblockingFile, setUnblockingFile] = useState(false);
   const [defenderStatus, setDefenderStatus] = useState<any>(null);
   const [errorInfo, setErrorInfo] = useState<{ message: string; technical?: string } | null>(null);
   const [notice, setNotice] = useState('');
+
+  const handleUnblockDownloads = async () => {
+    if (!api) return;
+    setUnblockingDownloads(true);
+    setErrorInfo(null);
+    try {
+      const res = await api.unblockDownloads?.();
+      if (res?.success) {
+        setNotice(`✅ Dossier Téléchargements débloqué : ${res.count} fichier(s) libéré(s) de l'attribut Zone.Identifier.`);
+      } else {
+        setErrorInfo({ message: 'Erreur lors du déblocage des téléchargements', technical: res?.error });
+      }
+    } catch (err: any) {
+      setErrorInfo({ message: 'Erreur inattendue', technical: err.message });
+    } finally {
+      setUnblockingDownloads(false);
+      setTimeout(() => setNotice(''), 4000);
+    }
+  };
+
+  const handleSelectAndUnblock = async () => {
+    if (!api) return;
+    setUnblockingFile(true);
+    setErrorInfo(null);
+    try {
+      const res = await api.selectAndUnblock?.();
+      if (res?.success) {
+        setNotice(`✅ Fichier débloqué avec succès : ${res.filePath}`);
+      } else if (!res?.canceled) {
+        setErrorInfo({ message: 'Impossible de débloquer ce fichier', technical: res?.error });
+      }
+    } catch (err: any) {
+      setErrorInfo({ message: 'Erreur inattendue', technical: err.message });
+    } finally {
+      setUnblockingFile(false);
+      setTimeout(() => setNotice(''), 4000);
+    }
+  };
 
   const loadData = () => {
     if (!api) return;
@@ -543,6 +583,70 @@ export default function SecurityTab() {
           )}
         </div>
       )}
+
+      {/* File & Download Unblocker (Zone.Identifier ADS) */}
+      <div className="glass-card" style={{ padding: 22, borderRadius: 16, marginBottom: 24, border: '1px solid rgba(16, 217, 160, 0.25)', background: 'linear-gradient(135deg, rgba(16, 217, 160, 0.05), rgba(6, 6, 20, 0.6))' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 12,
+                backgroundColor: 'rgba(16, 217, 160, 0.12)',
+                border: '1px solid rgba(16, 217, 160, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--green)',
+                boxShadow: '0 0 16px rgba(16, 217, 160, 0.2)',
+              }}
+            >
+              <Unlock size={22} />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Débloqueur de Fichiers & Téléchargements
+                </h3>
+                <span className="badge badge-green" style={{ fontSize: 10 }}>Zone.Identifier ADS</span>
+              </div>
+              <p style={{ margin: '3px 0 0 0', fontSize: 12, color: 'var(--text-secondary)' }}>
+                Supprime le blocage Windows « Ce fichier provient d'un autre ordinateur » et libère l'accès direct aux exécutables, mods et photos.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button
+              onClick={handleUnblockDownloads}
+              disabled={unblockingDownloads}
+              className="btn btn-primary"
+              style={{ padding: '8px 14px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              {unblockingDownloads ? <RefreshCw size={13} className="animate-spin" /> : <FolderCheck size={13} />}
+              <span>{unblockingDownloads ? 'Déblocage en cours...' : 'Débloquer Téléchargements'}</span>
+            </button>
+
+            <button
+              onClick={handleSelectAndUnblock}
+              disabled={unblockingFile}
+              className="btn btn-ghost"
+              style={{ padding: '8px 14px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              {unblockingFile ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
+              <span>Choisir un fichier à débloquer</span>
+            </button>
+          </div>
+        </div>
+
+        <div style={{ padding: '10px 14px', borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.25)', border: '1px solid var(--border)', fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Shield size={14} style={{ color: 'var(--green)', flexShrink: 0 }} />
+          <span>
+            Le scanner de téléchargements en arrière-plan d'Astral Vanguard débloque automatiquement les nouveaux fichiers sains dès leur validation par Microsoft Defender.
+          </span>
+        </div>
+      </div>
 
       {/* Exclusions & Restore Points Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20 }}>

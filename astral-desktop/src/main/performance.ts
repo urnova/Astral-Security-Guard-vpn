@@ -67,12 +67,15 @@ export function setupPerformanceIPC(win: BrowserWindow) {
         $props = Get-ItemProperty -Path $hkcu
         $props.PSObject.Properties | Where-Object { $_.Name -notmatch '^PS' } | ForEach-Object {
           $list += [PSCustomObject]@{
-            name = $_.Name
-            command = $_.Value.ToString()
-            location = "HKCU"
-            enabled = $true
+            name      = $_.Name
+            Name      = $_.Name
+            command   = $_.Value.ToString()
+            Command   = $_.Value.ToString()
+            location  = "HKCU"
+            Location  = "HKCU"
+            enabled   = $true
             publisher = "Éditeur Tiers"
-            impact = "Moyen"
+            impact    = "Moyen"
           }
         }
       }
@@ -84,12 +87,15 @@ export function setupPerformanceIPC(win: BrowserWindow) {
         if ($props) {
           $props.PSObject.Properties | Where-Object { $_.Name -notmatch '^PS' } | ForEach-Object {
             $list += [PSCustomObject]@{
-              name = $_.Name
-              command = $_.Value.ToString()
-              location = "HKLM"
-              enabled = $true
+              name      = $_.Name
+              Name      = $_.Name
+              command   = $_.Value.ToString()
+              Command   = $_.Value.ToString()
+              location  = "HKLM"
+              Location  = "HKLM"
+              enabled   = $true
               publisher = "Système / Logiciel"
-              impact = "Élevé"
+              impact    = "Élevé"
             }
           }
         }
@@ -243,12 +249,49 @@ export function setupPerformanceIPC(win: BrowserWindow) {
   // ── Disk Health (SMART) ───────────────────────────────────────────────────
   ipcMain.handle('perf:get-disk-health', async () => {
     const script = `
-      $disks = Get-PhysicalDisk -ErrorAction SilentlyContinue | Select-Object FriendlyName, MediaType, OperationalStatus, HealthStatus, Size
+      $disks = @()
+      $phys = Get-PhysicalDisk -ErrorAction SilentlyContinue
+      if ($phys) {
+        foreach ($d in $phys) {
+          $media = if ($d.MediaType) { $d.MediaType.ToString() } else { "SSD/NVMe" }
+          $health = if ($d.HealthStatus) { $d.HealthStatus.ToString() } else { "Healthy" }
+          $opStatus = if ($d.OperationalStatus) { ($d.OperationalStatus -join ', ') } else { "OK" }
+          $sizeGB = if ($d.Size -gt 0) { [Math]::Round($d.Size / 1GB, 0) } else { 0 }
+
+          $disks += [PSCustomObject]@{
+            model         = $d.FriendlyName
+            FriendlyName  = $d.FriendlyName
+            mediaType     = if ($media -eq "SSD") { "SSD NVMe / SATA" } elseif ($media -eq "HDD") { "Disque dur HDD" } else { "Stockage Rapide" }
+            MediaType     = $media
+            health        = if ($health -eq "Healthy" -or $opStatus -eq "OK") { "Sain (SMART OK)" } else { $health }
+            HealthStatus  = $health
+            status        = if ($opStatus -eq "OK" -or $health -eq "Healthy") { "OK" } else { $opStatus }
+            OperationalStatus = $opStatus
+            sizeGB        = $sizeGB
+          }
+        }
+      } else {
+        # Fallback to Get-Disk if PhysicalDisk is not exposed
+        $stdDisks = Get-Disk -ErrorAction SilentlyContinue
+        if ($stdDisks) {
+          foreach ($sd in $stdDisks) {
+            $disks += [PSCustomObject]@{
+              model        = $sd.FriendlyName
+              FriendlyName = $sd.FriendlyName
+              mediaType    = if ($sd.BusType) { $sd.BusType.ToString() } else { "Disque Principal" }
+              health       = if ($sd.HealthStatus) { $sd.HealthStatus.ToString() } else { "Sain (SMART OK)" }
+              HealthStatus = "Healthy"
+              status       = "OK"
+              sizeGB       = [Math]::Round($sd.Size / 1GB, 0)
+            }
+          }
+        }
+      }
       $disks | ConvertTo-Json -Compress
     `;
-    const res = await runPowerShell(script, { asJson: true, timeout: 6000 });
-    let disks = res.data || [];
-    if (!Array.isArray(disks)) disks = disks ? [disks] : [];
-    return { success: true, disks };
+    const res = await runPowerShell(script, { asJson: true, timeout: 7000 });
+    let rawDisks = res.data || [];
+    if (!Array.isArray(rawDisks)) rawDisks = rawDisks ? [rawDisks] : [];
+    return { success: true, disks: rawDisks };
   });
 }

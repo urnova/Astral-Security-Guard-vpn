@@ -5,10 +5,15 @@ import { CollapsibleError } from '../ui/CollapsibleError';
 const api = (window as any).vanguard;
 
 interface DiskHealth {
-  model: string;
-  status: string;
-  mediaType: string;
-  health: 'Bon' | 'Attention' | 'Inconnu';
+  model?: string;
+  FriendlyName?: string;
+  status?: string;
+  OperationalStatus?: string;
+  mediaType?: string;
+  MediaType?: string;
+  health?: string;
+  HealthStatus?: string;
+  sizeGB?: number;
 }
 
 interface ProcessItem {
@@ -37,19 +42,22 @@ export default function PerformanceTab({ gamingActive }: { gamingActive: boolean
     } catch {}
   }, []);
 
-  useEffect(() => {
-    loadMetrics();
-    const id = setInterval(loadMetrics, 4000);
-
-    // Initial load for disk health
-    api?.getDiskHealth?.().then((res: any) => {
+  const loadDiskHealth = useCallback(async () => {
+    if (!api) return;
+    try {
+      const res = await api.getDiskHealth?.();
       if (res?.success && Array.isArray(res.disks)) {
         setDiskHealth(res.disks);
       }
-    });
+    } catch {}
+  }, []);
 
+  useEffect(() => {
+    loadMetrics();
+    loadDiskHealth();
+    const id = setInterval(loadMetrics, 4000);
     return () => clearInterval(id);
-  }, [loadMetrics]);
+  }, [loadMetrics, loadDiskHealth]);
 
   useEffect(() => {
     setGamingOn(gamingActive);
@@ -109,10 +117,12 @@ export default function PerformanceTab({ gamingActive }: { gamingActive: boolean
 
   const handleDisableStartup = async (item: any) => {
     if (!api) return;
+    const name = item.name || item.Name;
+    const location = item.location || item.Location || 'HKCU';
     try {
-      await api.disableStartup(item.Name, item.Location);
-      setStartup((prev) => prev.filter((i) => i.Name !== item.Name));
-      setNotice(`✅ Entrée "${item.Name}" désactivée au démarrage.`);
+      await api.disableStartup(name, location);
+      setStartup((prev) => prev.filter((i) => (i.name || i.Name) !== name));
+      setNotice(`✅ Entrée "${name}" désactivée au démarrage.`);
       setTimeout(() => setNotice(''), 3000);
     } catch (err: any) {
       setErrorInfo({ message: 'Impossible de désactiver cette entrée', technical: err.message });
@@ -367,10 +377,10 @@ export default function PerformanceTab({ gamingActive }: { gamingActive: boolean
                 >
                   <div style={{ minWidth: 0, paddingRight: 8 }}>
                     <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {item.Name}
+                      {item.name || item.Name}
                     </p>
                     <p style={{ margin: '2px 0 0 0', fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--mono)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {item.Command}
+                      {item.command || item.Command}
                     </p>
                   </div>
                   <button
@@ -393,7 +403,17 @@ export default function PerformanceTab({ gamingActive }: { gamingActive: boolean
               <HardDrive size={16} style={{ color: 'var(--green)' }} />
               <span>Santé Matérielle des Disques (SMART)</span>
             </h3>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{diskHealth.length} unité(s)</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{diskHealth.length} unité(s)</span>
+              <button
+                onClick={loadDiskHealth}
+                className="btn btn-ghost"
+                style={{ fontSize: 11, padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 4 }}
+                title="Actualiser la santé des disques"
+              >
+                <RefreshCw size={11} />
+              </button>
+            </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -402,43 +422,46 @@ export default function PerformanceTab({ gamingActive }: { gamingActive: boolean
                 Inspection matérielle en cours...
               </p>
             ) : (
-              diskHealth.map((d, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    padding: '12px 14px',
-                    borderRadius: 10,
-                    backgroundColor: 'var(--bg-surface)',
-                    border: '1px solid var(--border)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <div>
-                    <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
-                      {d.model || `Disque physique #${idx + 1}`}
-                    </p>
-                    <p style={{ margin: '2px 0 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
-                      Technologie : {d.mediaType || 'Disque SSD / NVMe'}
-                    </p>
+              diskHealth.map((d, idx) => {
+                const isHealthy = d.status === 'OK' || d.health === 'Sain (SMART OK)' || d.HealthStatus === 'Healthy' || d.health === 'Bon';
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: 10,
+                      backgroundColor: 'var(--bg-surface)',
+                      border: '1px solid var(--border)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <div>
+                      <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {d.model || d.FriendlyName || `Disque physique #${idx + 1}`}
+                      </p>
+                      <p style={{ margin: '2px 0 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                        Technologie : {d.mediaType || d.MediaType || 'SSD NVMe / SATA'}{d.sizeGB ? ` · ${d.sizeGB} Go` : ''}
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: '50%',
+                          backgroundColor: isHealthy ? 'var(--green)' : 'var(--orange)',
+                          boxShadow: isHealthy ? '0 0 8px rgba(16, 217, 160, 0.6)' : 'none',
+                        }}
+                      />
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isHealthy ? 'var(--green)' : 'var(--orange)' }}>
+                        {d.health || (isHealthy ? 'Sain (SMART OK)' : d.status)}
+                      </span>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: '50%',
-                        backgroundColor: 'var(--green)',
-                        boxShadow: '0 0 8px rgba(16, 217, 160, 0.6)',
-                      }}
-                    />
-                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--green)' }}>
-                      {d.status === 'OK' || d.health === 'Bon' ? 'Sain (SMART OK)' : d.status}
-                    </span>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

@@ -29,7 +29,8 @@
       "runAfterFinish": true,
       "allowElevation": true,
       "installerIcon": "public/installer.ico",
-      "uninstallerIcon": "public/uninstaller.ico"
+      "uninstallerIcon": "public/uninstaller.ico",
+      "deleteAppDataOnUninstall": true
     },
     "extraResources": [
       {

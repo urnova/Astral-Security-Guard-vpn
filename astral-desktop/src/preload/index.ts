@@ -32,6 +32,9 @@ const api = {
   getExclusions: () => ipcRenderer.invoke('security:get-exclusions'),
   getThreats: () => ipcRenderer.invoke('security:get-threats'),
   updateSignatures: () => ipcRenderer.invoke('security:update-signatures'),
+  unblockDownloads: () => ipcRenderer.invoke('security:unblock-downloads'),
+  unblockFile: (filePath: string) => ipcRenderer.invoke('security:unblock-file', filePath),
+  selectAndUnblock: () => ipcRenderer.invoke('security:select-and-unblock'),
 
   // Performance
   getMetrics: () => ipcRenderer.invoke('perf:get-metrics'),

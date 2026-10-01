@@ -48,10 +48,8 @@ const TEMP_DOWNLOAD_EXTS = new Set([
 
 const DEFAULT_IGNORED_EXTS = [
   '.txt', '.log', '.md',
-  '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico',
   '.mp3', '.wav', '.flac', '.aac', '.ogg',
   '.mp4', '.mkv', '.avi', '.mov', '.webm',
-  '.pdf',
 ];
 
 const SPOOFED_SYSTEM_EXECUTABLES = new Set([
@@ -550,6 +548,18 @@ async function handleFileEvent(folderPath: string, filename: string) {
           type: 'info',
           title: '⚠️ Fichier téléchargé suspect',
           message: `${filename} : ${result.threatName || 'Anomalie heuristique détectée.'}`,
+          critical: false,
+        });
+      } else if (result.status === 'safe') {
+        // Auto-unblock Windows Zone.Identifier ADS for verified clean files
+        try {
+          runPowerShell(`Unblock-File -LiteralPath "${filePath.replace(/"/g, '`"')}" -ErrorAction SilentlyContinue`, { timeout: 3000 });
+        } catch {}
+
+        activeMainWindow.webContents.send('notification:trigger', {
+          type: 'report',
+          title: '🛡️ Téléchargement vérifié & débloqué',
+          message: `${filename} : Sain et intègre. Protection Windows Zone.Identifier levée.`,
           critical: false,
         });
       }

@@ -5,7 +5,7 @@ import { playSound, SoundEffectType } from '../lib/audioSynth';
 
 export interface ToastNotification {
   id: string;
-  type: 'threat' | 'lag' | 'game' | 'sos' | 'update' | 'info';
+  type: 'threat' | 'lag' | 'game' | 'sos' | 'update' | 'info' | 'report' | 'success';
   title: string;
   message: string;
   actionLabel?: string;
@@ -35,6 +35,7 @@ export const NotificationSystem: React.FC<{ dndEnabled?: boolean }> = ({ dndEnab
     else if (toast.type === 'lag') soundType = 'lag_alert';
     else if (toast.type === 'sos') soundType = 'sos_resolved';
     else if (toast.type === 'update') soundType = 'update_ready';
+    else if (toast.type === 'report' || toast.type === 'success') soundType = 'scan_complete';
 
     playSound(soundType);
 
@@ -111,7 +112,7 @@ export const NotificationSystem: React.FC<{ dndEnabled?: boolean }> = ({ dndEnab
             borderColor = 'border-cyan-500/60';
             glowColor = 'shadow-[0_0_20px_rgba(6,182,212,0.3)]';
             icon = <Zap className="w-5 h-5 text-cyan-400" />;
-          } else if (toast.type === 'sos') {
+          } else if (toast.type === 'sos' || toast.type === 'report' || toast.type === 'success') {
             borderColor = 'border-emerald-500/60';
             glowColor = 'shadow-[0_0_20px_rgba(16,185,129,0.3)]';
             icon = <CheckCircle className="w-5 h-5 text-emerald-400" />;
@@ -134,6 +135,8 @@ export const NotificationSystem: React.FC<{ dndEnabled?: boolean }> = ({ dndEnab
                     ? 'bg-amber-500'
                     : toast.type === 'game'
                     ? 'bg-cyan-500'
+                    : toast.type === 'report' || toast.type === 'success' || toast.type === 'sos'
+                    ? 'bg-emerald-500'
                     : 'bg-purple-500'
                 }`}
               />
