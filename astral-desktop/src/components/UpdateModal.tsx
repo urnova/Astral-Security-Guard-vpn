@@ -73,8 +73,8 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
   };
 
   const progress = updaterState?.progressPercent || 0;
-  const currentVer = updaterState?.currentVersion || '2.3.0';
-  const targetVer = info?.version || '2.3.0';
+  const currentVer = updaterState?.currentVersion || '2.4.0';
+  const targetVer = info?.version || '2.4.0';
   const isDownloaded = updaterState?.status === 'downloaded';
 
   const formatBytes = (bytes: number) => {
@@ -195,7 +195,7 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
           {info?.releaseNotes ? (
             <div>{info.releaseNotes}</div>
           ) : (
-            <div>Améliorations de performance, design system Vanguard v2.3.0, corrections de sécurité et optimisation réseau.</div>
+            <div>Améliorations de performance, design system Vanguard v2.4.0, corrections de sécurité et optimisation réseau.</div>
           )}
         </div>
 

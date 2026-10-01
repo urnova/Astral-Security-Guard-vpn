@@ -5,12 +5,11 @@ const api = (window as any).vanguard;
 export default function OverlayHUD() {
   const [metrics, setMetrics] = useState({ cpu: 0, ramPercent: 0 });
   const [ping, setPing] = useState<number>(0);
-  const [mode, setMode] = useState('STANDARD');
+  const [mode, setMode] = useState('E-SPORT');
 
   useEffect(() => {
     if (!api) return;
 
-    // Load initial real metrics
     api.getMetrics?.().then((res: any) => {
       if (res?.data) {
         setMetrics({
@@ -47,75 +46,86 @@ export default function OverlayHUD() {
     api?.overlayHide?.();
   };
 
-  const cpuColor = metrics.cpu > 85 ? 'var(--rose)' : metrics.cpu > 60 ? 'var(--amber)' : 'var(--cyan)';
-  const ramColor = metrics.ramPercent > 85 ? 'var(--rose)' : metrics.ramPercent > 70 ? 'var(--amber)' : 'var(--emerald)';
-  const pingColor = ping > 150 ? 'var(--rose)' : ping > 70 ? 'var(--amber)' : 'var(--emerald)';
+  const cpuColor = metrics.cpu > 80 ? '#ff4b4b' : metrics.cpu > 55 ? '#ff9f1c' : '#00d4ff';
+  const ramColor = metrics.ramPercent > 80 ? '#ff4b4b' : metrics.ramPercent > 65 ? '#ff9f1c' : '#a855f7';
+  const pingColor = ping > 120 ? '#ff4b4b' : ping > 60 ? '#ff9f1c' : '#10d9a0';
 
   return (
     <div
-      className="overlay-hud"
       style={{
-        position: 'relative',
+        width: 220,
+        padding: '14px 16px',
+        backgroundColor: 'rgba(6, 6, 20, 0.92)',
+        backdropFilter: 'blur(24px)',
+        border: '1px solid rgba(0, 212, 255, 0.35)',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.8), 0 0 15px rgba(0, 212, 255, 0.2)',
+        borderRadius: 14,
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: 11,
+        color: '#ffffff',
         userSelect: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
       }}
     >
-      <div className="hud-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 6, borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span className="hud-brand">⚡ VANGUARD</span>
-          <div className="hud-dot" />
+          <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.1em', color: '#00d4ff' }}>
+            ⚡ VANGUARD HUD
+          </span>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#10d9a0', boxShadow: '0 0 8px #10d9a0' }} />
         </div>
         <button
           onClick={handleClose}
-          title="Fermer l'overlay (Raccourci: Ctrl+Shift+O)"
+          title="Fermer HUD (Ctrl+Shift+O)"
           style={{
             background: 'none',
             border: 'none',
             color: 'rgba(255,255,255,0.4)',
             cursor: 'pointer',
-            fontSize: 14,
+            fontSize: 13,
             lineHeight: 1,
             padding: '2px 4px',
           }}
-          onMouseEnter={(e) => ((e.target as HTMLElement).style.color = 'var(--rose)')}
-          onMouseLeave={(e) => ((e.target as HTMLElement).style.color = 'rgba(255,255,255,0.4)')}
         >
           ✕
         </button>
       </div>
 
-      <div className="hud-row">
-        <span>CPU</span>
-        <span className="hud-val" style={{ color: cpuColor }}>
-          {metrics.cpu}%
-        </span>
-      </div>
-      <div className="hud-bar">
-        <div className="hud-bar-fill" style={{ width: `${metrics.cpu}%`, background: cpuColor }} />
-      </div>
-
-      <div className="hud-row" style={{ marginTop: 4 }}>
-        <span>RAM</span>
-        <span className="hud-val" style={{ color: ramColor }}>
-          {metrics.ramPercent}%
-        </span>
-      </div>
-      <div className="hud-bar">
-        <div className="hud-bar-fill" style={{ width: `${metrics.ramPercent}%`, background: ramColor }} />
+      {/* CPU Row */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+          <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 10 }}>PROCESSEUR</span>
+          <span style={{ fontWeight: 800, color: cpuColor }}>{metrics.cpu}%</span>
+        </div>
+        <div style={{ width: '100%', height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
+          <div style={{ width: `${metrics.cpu}%`, height: '100%', backgroundColor: cpuColor, boxShadow: `0 0 6px ${cpuColor}`, transition: 'width 0.3s' }} />
+        </div>
       </div>
 
-      <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 0' }} />
-
-      <div className="hud-row">
-        <span style={{ color: 'rgba(0,212,255,0.7)' }}>PING</span>
-        <span className="hud-val" style={{ color: pingColor, fontSize: 10 }}>
-          {ping} ms
-        </span>
+      {/* RAM Row */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+          <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 10 }}>MÉMOIRE RAM</span>
+          <span style={{ fontWeight: 800, color: ramColor }}>{metrics.ramPercent}%</span>
+        </div>
+        <div style={{ width: '100%', height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
+          <div style={{ width: `${metrics.ramPercent}%`, height: '100%', backgroundColor: ramColor, boxShadow: `0 0 6px ${ramColor}`, transition: 'width 0.3s' }} />
+        </div>
       </div>
-      <div className="hud-row">
-        <span style={{ color: 'rgba(0,212,255,0.7)' }}>PROFIL</span>
-        <span className="hud-val" style={{ color: 'var(--violet)', fontSize: 10 }}>
-          {mode}
-        </span>
+
+      {/* Ping & Mode Footer */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 4, borderTop: '1px solid rgba(255, 255, 255, 0.08)', fontSize: 10 }}>
+        <div>
+          <span style={{ color: 'rgba(255,255,255,0.5)' }}>PING : </span>
+          <span style={{ fontWeight: 800, color: pingColor }}>{ping} ms</span>
+        </div>
+        <div>
+          <span style={{ color: 'rgba(255,255,255,0.5)' }}>MODE : </span>
+          <span style={{ fontWeight: 800, color: '#a855f7' }}>{mode}</span>
+        </div>
       </div>
     </div>
   );

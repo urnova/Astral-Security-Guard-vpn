@@ -11,28 +11,30 @@ export default function AppTitlebar({ gamingActive, currentGame }: AppTitlebarPr
     <header
       className="app-titlebar titlebar-drag"
       style={{
-        height: 36,
-        minHeight: 36,
+        height: 40,
+        minHeight: 40,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingLeft: 14,
-        paddingRight: 140, // Reserved area for Windows native caption controls
-        backgroundColor: 'var(--bg-surface)',
+        paddingLeft: 16,
+        paddingRight: 140, // Reserved for Windows native caption buttons
+        backgroundColor: '#07071a',
         borderBottom: '1px solid var(--border)',
         userSelect: 'none',
         zIndex: 100,
+        width: '100%',
       }}
     >
-      <div className="titlebar-no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <VanguardLogo size={18} glow={false} />
+      {/* Unified Single Brand Emblem & Title */}
+      <div className="titlebar-no-drag" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <VanguardLogo size={20} glow={false} />
         <span
           style={{
             fontFamily: "'Space Grotesk', system-ui, sans-serif",
-            fontSize: 12,
-            fontWeight: 700,
+            fontSize: 13,
+            fontWeight: 800,
             letterSpacing: '0.04em',
-            color: 'var(--text-secondary)',
+            color: 'var(--text-primary)',
           }}
         >
           ASTRAL VANGUARD
@@ -40,34 +42,38 @@ export default function AppTitlebar({ gamingActive, currentGame }: AppTitlebarPr
         <span
           style={{
             fontSize: 10,
-            padding: '1px 6px',
-            borderRadius: 99,
-            backgroundColor: 'rgba(255,255,255,0.06)',
-            color: 'var(--text-muted)',
+            fontWeight: 700,
+            padding: '2px 8px',
+            borderRadius: 6,
+            backgroundColor: 'rgba(99, 102, 241, 0.15)',
+            border: '1px solid rgba(99, 102, 241, 0.3)',
+            color: '#a5b4fc',
             fontFamily: 'var(--mono)',
           }}
         >
-          v2.3.0
+          v2.4.0
         </span>
       </div>
 
+      {/* Middle Status Indicator */}
       <div className="titlebar-no-drag" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {gamingActive ? (
-          <span
-            className="badge badge-cyan"
-            style={{ fontSize: 10, padding: '2px 8px' }}
-          >
+          <span className="badge badge-cyan" style={{ fontSize: 10, padding: '3px 10px' }}>
             <span className="badge-dot" style={{ animation: 'dotPulse 1.4s infinite' }} />
-            GAMING : {currentGame || 'Actif'}
+            GAMING : {currentGame || 'Session Active'}
           </span>
         ) : (
           <span
             style={{
               fontSize: 11,
-              color: 'var(--text-muted)',
+              color: 'var(--text-secondary)',
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
+              gap: 7,
+              backgroundColor: 'rgba(255, 255, 255, 0.03)',
+              padding: '3px 10px',
+              borderRadius: 20,
+              border: '1px solid var(--border)',
             }}
           >
             <span
@@ -79,7 +85,7 @@ export default function AppTitlebar({ gamingActive, currentGame }: AppTitlebarPr
                 boxShadow: '0 0 8px rgba(16,217,160,0.6)',
               }}
             />
-            Protection active
+            Système Protégé
           </span>
         )}
       </div>

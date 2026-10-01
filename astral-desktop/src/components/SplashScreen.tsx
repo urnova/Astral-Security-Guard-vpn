@@ -124,7 +124,7 @@ export default function SplashScreen({ onFinish }: SplashScreenProps) {
               letterSpacing: '0.04em',
             }}
           >
-            Protection & Performance Suite · <span style={{ color: '#a78bfa', fontFamily: 'monospace' }}>v2.3.0</span>
+            Protection & Performance Suite · <span style={{ color: '#a78bfa', fontFamily: 'monospace' }}>v2.4.0</span>
           </div>
         </div>
 

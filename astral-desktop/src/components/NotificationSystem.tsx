@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldAlert, Zap, Radio, CheckCircle, Info, X, BellOff } from 'lucide-react';
+import { ShieldAlert, Zap, Radio, CheckCircle2, Info, X } from 'lucide-react';
 import { playSound, SoundEffectType } from '../lib/audioSynth';
 
 export interface ToastNotification {
@@ -18,7 +18,6 @@ export const NotificationSystem: React.FC<{ dndEnabled?: boolean }> = ({ dndEnab
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
 
   const addToast = (toast: Omit<ToastNotification, 'id'>) => {
-    // If DND is active and notification is not critical, suppress
     if (dndEnabled && !toast.critical) {
       return;
     }
@@ -26,9 +25,8 @@ export const NotificationSystem: React.FC<{ dndEnabled?: boolean }> = ({ dndEnab
     const id = Date.now().toString() + Math.random().toString().slice(2, 6);
     const newToast: ToastNotification = { ...toast, id };
 
-    setToasts((prev) => [...prev.slice(-3), newToast]); // max 4 stacked toasts
+    setToasts((prev) => [...prev.slice(-2), newToast]); // max 3 toasts
 
-    // Trigger matching procedural audio
     let soundType: SoundEffectType = 'scan_complete';
     if (toast.type === 'threat') soundType = 'threat_blocked';
     else if (toast.type === 'game') soundType = 'game_detected';
@@ -39,8 +37,7 @@ export const NotificationSystem: React.FC<{ dndEnabled?: boolean }> = ({ dndEnab
 
     playSound(soundType);
 
-    // Auto-dismiss after duration (default 6s, 10s for threat)
-    const timeout = toast.duration || (toast.type === 'threat' ? 10000 : 6000);
+    const timeout = toast.duration || (toast.type === 'threat' ? 9000 : 5000);
     setTimeout(() => {
       removeToast(id);
     }, timeout);
@@ -54,7 +51,6 @@ export const NotificationSystem: React.FC<{ dndEnabled?: boolean }> = ({ dndEnab
     const vanguard = (window as any).vanguard;
     if (!vanguard?.on) return;
 
-    // Listen to generic notification trigger from main process
     const unsubTrigger = vanguard.on('notification:trigger', (data: any) => {
       addToast({
         type: data.type || 'info',
@@ -65,7 +61,6 @@ export const NotificationSystem: React.FC<{ dndEnabled?: boolean }> = ({ dndEnab
       });
     });
 
-    // Lag alert listener
     const unsubLag = vanguard.on('doctor:lag-alert', (data: any) => {
       addToast({
         type: 'lag',
@@ -75,7 +70,6 @@ export const NotificationSystem: React.FC<{ dndEnabled?: boolean }> = ({ dndEnab
       });
     });
 
-    // Game detection listener
     const unsubGame = vanguard.on('gaming:game-started', (data: any) => {
       addToast({
         type: 'game',
@@ -93,63 +87,93 @@ export const NotificationSystem: React.FC<{ dndEnabled?: boolean }> = ({ dndEnab
   }, [dndEnabled]);
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 pointer-events-none max-w-sm w-full">
+    <div
+      style={{
+        position: 'fixed',
+        bottom: 24,
+        right: 24,
+        zIndex: 9999,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        maxWidth: 360,
+        width: '100%',
+        pointerEvents: 'none',
+      }}
+    >
       <AnimatePresence>
         {toasts.map((toast) => {
-          let borderColor = 'border-purple-500/40';
-          let glowColor = 'shadow-[0_0_20px_rgba(168,85,247,0.25)]';
-          let icon = <Info className="w-5 h-5 text-purple-400" />;
+          let accentColor = '#8b5cf6';
+          let icon = <Info size={16} style={{ color: accentColor }} />;
 
           if (toast.type === 'threat') {
-            borderColor = 'border-red-500/60';
-            glowColor = 'shadow-[0_0_25px_rgba(239,68,68,0.35)]';
-            icon = <ShieldAlert className="w-5 h-5 text-red-400" />;
+            accentColor = '#ff4b4b';
+            icon = <ShieldAlert size={16} style={{ color: accentColor }} />;
           } else if (toast.type === 'lag') {
-            borderColor = 'border-amber-500/60';
-            glowColor = 'shadow-[0_0_20px_rgba(245,158,11,0.3)]';
-            icon = <Radio className="w-5 h-5 text-amber-400" />;
+            accentColor = '#ff9f1c';
+            icon = <Radio size={16} style={{ color: accentColor }} />;
           } else if (toast.type === 'game') {
-            borderColor = 'border-cyan-500/60';
-            glowColor = 'shadow-[0_0_20px_rgba(6,182,212,0.3)]';
-            icon = <Zap className="w-5 h-5 text-cyan-400" />;
+            accentColor = '#00d4ff';
+            icon = <Zap size={16} style={{ color: accentColor }} />;
           } else if (toast.type === 'sos' || toast.type === 'report' || toast.type === 'success') {
-            borderColor = 'border-emerald-500/60';
-            glowColor = 'shadow-[0_0_20px_rgba(16,185,129,0.3)]';
-            icon = <CheckCircle className="w-5 h-5 text-emerald-400" />;
+            accentColor = '#10d9a0';
+            icon = <CheckCircle2 size={16} style={{ color: accentColor }} />;
           }
 
           return (
             <motion.div
               key={toast.id}
-              initial={{ opacity: 0, y: 30, scale: 0.95 }}
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
-              className={`pointer-events-auto bg-[#0d0d21]/95 backdrop-blur-xl border ${borderColor} ${glowColor} rounded-xl p-4 text-white shadow-2xl relative overflow-hidden`}
+              style={{
+                pointerEvents: 'auto',
+                backgroundColor: 'rgba(10, 10, 26, 0.95)',
+                backdropFilter: 'blur(20px)',
+                border: `1px solid ${accentColor}40`,
+                boxShadow: `0 10px 30px rgba(0, 0, 0, 0.6), 0 0 15px ${accentColor}25`,
+                borderRadius: 14,
+                padding: '12px 14px',
+                color: '#ffffff',
+                position: 'relative',
+                overflow: 'hidden',
+              }}
             >
-              {/* Subtle top indicator bar */}
+              {/* Top Accent Strip */}
               <div
-                className={`absolute top-0 left-0 right-0 h-0.5 ${
-                  toast.type === 'threat'
-                    ? 'bg-red-500'
-                    : toast.type === 'lag'
-                    ? 'bg-amber-500'
-                    : toast.type === 'game'
-                    ? 'bg-cyan-500'
-                    : toast.type === 'report' || toast.type === 'success' || toast.type === 'sos'
-                    ? 'bg-emerald-500'
-                    : 'bg-purple-500'
-                }`}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 3,
+                  backgroundColor: accentColor,
+                  boxShadow: `0 0 8px ${accentColor}`,
+                }}
               />
 
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-white/5 border border-white/10 shrink-0 mt-0.5">
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <div
+                  style={{
+                    padding: 6,
+                    borderRadius: 8,
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    marginTop: 2,
+                  }}
+                >
                   {icon}
                 </div>
-                <div className="flex-1 min-w-0 pr-4">
-                  <h4 className="text-sm font-semibold tracking-wide text-zinc-100 flex items-center gap-1.5">
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h4 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#f3f4f6' }}>
                     {toast.title}
                   </h4>
-                  <p className="text-xs text-zinc-300 mt-1 leading-relaxed break-words">
+                  <p style={{ margin: '3px 0 0 0', fontSize: 11, color: '#9ca3af', lineHeight: 1.4, wordBreak: 'break-word' }}>
                     {toast.message}
                   </p>
                   {toast.actionLabel && (
@@ -158,17 +182,37 @@ export const NotificationSystem: React.FC<{ dndEnabled?: boolean }> = ({ dndEnab
                         toast.onAction?.();
                         removeToast(toast.id);
                       }}
-                      className="mt-2.5 text-xs font-semibold px-3 py-1 rounded-md bg-purple-600/80 hover:bg-purple-600 text-white transition-colors"
+                      style={{
+                        marginTop: 8,
+                        fontSize: 11,
+                        fontWeight: 600,
+                        padding: '4px 10px',
+                        borderRadius: 6,
+                        backgroundColor: accentColor,
+                        color: '#ffffff',
+                        border: 'none',
+                        cursor: 'pointer',
+                      }}
                     >
                       {toast.actionLabel}
                     </button>
                   )}
                 </div>
+
                 <button
                   onClick={() => removeToast(toast.id)}
-                  className="text-zinc-500 hover:text-zinc-300 transition-colors p-1"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'rgba(255, 255, 255, 0.4)',
+                    cursor: 'pointer',
+                    padding: 4,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
                 >
-                  <X className="w-4 h-4" />
+                  <X size={14} />
                 </button>
               </div>
             </motion.div>

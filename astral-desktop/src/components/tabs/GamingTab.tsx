@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Gamepad2, Zap, RefreshCw, Sliders, Shield, Monitor, Layers, CheckCircle2 } from 'lucide-react';
+import { Gamepad2, Zap, RefreshCw, Monitor, Layers, CheckCircle2, Play, Activity } from 'lucide-react';
 import { CollapsibleError } from '../ui/CollapsibleError';
 
 const api = (window as any).vanguard;
@@ -21,16 +21,12 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
   const [overlayEnabled, setOverlayEnabled] = useState(false);
   const [installedGames, setInstalledGames] = useState<InstalledGame[]>([]);
   const [scanningGames, setScanningGames] = useState(false);
-  const [profiles, setProfiles] = useState<Record<string, any>>({});
-  const [selectedGameForProfile, setSelectedGameForProfile] = useState<string | null>(null);
   const [errorInfo, setErrorInfo] = useState<{ message: string; technical?: string } | null>(null);
   const [notice, setNotice] = useState('');
 
   useEffect(() => {
     if (!api) return;
-    api.getProfiles?.().then((r: any) => setProfiles(r?.profiles || {}));
     api.getOverlayStatus?.().then((active: boolean) => setOverlayEnabled(Boolean(active)));
-
     scanGames();
   }, []);
 
@@ -97,12 +93,12 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
           marginBottom: 24,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
+              width: 40,
+              height: 40,
+              borderRadius: 12,
               backgroundColor: 'rgba(139, 92, 246, 0.15)',
               border: '1px solid var(--border-violet)',
               display: 'flex',
@@ -111,14 +107,14 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
               color: 'var(--violet)',
             }}
           >
-            <Gamepad2 size={18} />
+            <Gamepad2 size={20} />
           </div>
           <div>
             <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-              Mode Gaming & Détection Intelligente
+              Mode Gaming & Optimisation E-Sport
             </h1>
             <p style={{ margin: '2px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-              Optimisation basse latence · Détection plein écran non-intrusive · Overlay HUD
+              Priorité CPU maximale · Réduction de latence Nagle · Widget HUD transparent
             </p>
           </div>
         </div>
@@ -163,10 +159,12 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
         className="glass-card"
         style={{
           padding: 24,
-          borderRadius: 16,
+          borderRadius: 18,
           marginBottom: 24,
-          background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(6, 6, 20, 0.8))',
-          border: '1px solid var(--border-violet)',
+          background: gamingActive
+            ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.12) 0%, rgba(139, 92, 246, 0.1) 50%, rgba(6, 6, 20, 0.85) 100%)'
+            : 'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(6, 6, 20, 0.85) 100%)',
+          border: gamingActive ? '1px solid var(--border-cyan)' : '1px solid var(--border-violet)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
@@ -189,12 +187,12 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
             </div>
             <div>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
-                {gamingActive ? 'Optimisation Gaming Maximale Active' : 'Mode Gaming inactif — activation manuelle uniquement'}
+                {gamingActive ? 'Boost Gaming & Plan Performance Actif' : 'Mode E-Sport en Attente'}
               </h3>
               <p style={{ margin: '4px 0 0 0', fontSize: 12, color: 'var(--text-secondary)', maxWidth: 650, lineHeight: 1.5 }}>
                 {gamingActive
-                  ? 'Plan haute performance actif, priorité temps-réel sur le jeu et optimisation des paquets réseau engagée.'
-                  : 'Activation manuelle en un clic. Détection auto désactivée par défaut pour éviter tout faux positif (Edge, Chrome, Antigravity exclus).'}
+                  ? 'Plan d\'alimentation maximal Windows actif, priorité haute allouée au jeu et suppression des temporisations TCP.'
+                  : 'Activez en 1 clic pour couper les interruptions d\'arrière-plan et verrouiller la stabilité de vos images par seconde.'}
               </p>
             </div>
           </div>
@@ -202,7 +200,7 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
           <button
             onClick={toggleMode}
             className={`btn ${gamingActive ? 'btn-primary' : 'btn-ghost'}`}
-            style={{ fontSize: 12, padding: '10px 20px', fontWeight: 700 }}
+            style={{ fontSize: 12, padding: '10px 22px', fontWeight: 700 }}
           >
             {gamingActive ? 'Désactiver le Boost' : 'Activer le Boost Gaming'}
           </button>
@@ -215,95 +213,65 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
               paddingTop: 16,
               borderTop: '1px solid var(--border)',
               display: 'grid',
-              gridTemplateColumns: 'repeat(4, 1fr)',
+              gridTemplateColumns: 'repeat(3, 1fr)',
               gap: 12,
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
               <Zap size={14} style={{ color: 'var(--cyan)' }} />
-              <span>Alimentation Maximale</span>
+              <span>Fréquence CPU Maximale</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
               <Layers size={14} style={{ color: 'var(--violet)' }} />
-              <span>Priorité Processus Haute</span>
+              <span>Priorité Thread Temps Réel</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
               <Monitor size={14} style={{ color: 'var(--green)' }} />
-              <span>Anti-Nagle TCP Engagé</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
-              <Shield size={14} style={{ color: 'var(--orange)' }} />
-              <span>Coexistence Tiers Préservée</span>
+              <span>Anti-Nagle TCP Faible Latence</span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Overlay & HUD Control Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20, marginBottom: 24 }}>
-        <div className="glass-card" style={{ padding: 20, borderRadius: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+      {/* Overlay HUD Showcase & Control */}
+      <div className="glass-card" style={{ padding: 22, borderRadius: 16, marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Monitor size={16} style={{ color: 'var(--violet)' }} />
-              <span>Overlay HUD In-Game (Transparent)</span>
+              <span>Overlay HUD Transparent In-Game</span>
             </h3>
-            <button
-              onClick={toggleOverlay}
-              className={`btn ${overlayEnabled ? 'btn-primary' : 'btn-ghost'}`}
-              style={{ fontSize: 11, padding: '5px 12px' }}
-            >
-              {overlayEnabled ? 'Affiché' : 'Masqué'}
-            </button>
+            <p style={{ margin: '3px 0 0 0', fontSize: 12, color: 'var(--text-secondary)' }}>
+              Mini-compteur ultra-léger affichant CPU, RAM et Ping directement en jeu sans injection DLL
+            </p>
           </div>
-          <p style={{ margin: '0 0 14px 0', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-            Affiche un mini-widget discret transparent affichant le CPU, la RAM et la latence sans injecter de DLL dans vos jeux.
-          </p>
-          <div
-            style={{
-              padding: '10px 14px',
-              borderRadius: 10,
-              backgroundColor: 'var(--bg-surface)',
-              border: '1px solid var(--border)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              fontSize: 12,
-            }}
+
+          <button
+            onClick={toggleOverlay}
+            className={`btn ${overlayEnabled ? 'btn-primary' : 'btn-ghost'}`}
+            style={{ fontSize: 12, padding: '7px 16px' }}
           >
-            <span style={{ color: 'var(--text-muted)' }}>Raccourci global clavier :</span>
-            <kbd style={{ padding: '3px 8px', borderRadius: 6, backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--violet)', fontFamily: 'var(--mono)', fontSize: 11 }}>
-              Ctrl + Shift + O
-            </kbd>
-          </div>
+            {overlayEnabled ? 'Désactiver HUD' : 'Activer HUD'}
+          </button>
         </div>
 
-        <div className="glass-card" style={{ padding: 20, borderRadius: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Shield size={16} style={{ color: 'var(--cyan)' }} />
-              <span>Protection Anti-Faux-Positifs</span>
-            </h3>
-            <span className="badge badge-green" style={{ fontSize: 11 }}>Strictement Exclus</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderRadius: 12, backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Activity size={16} style={{ color: 'var(--cyan)' }} />
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Raccourci clavier universel :</span>
           </div>
-          <p style={{ margin: '0 0 14px 0', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-            Les navigateurs Web, IDE et outils bureautiques ne peuvent jamais être confondus avec des jeux vidéo :
-          </p>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {['msedge.exe', 'chrome.exe', 'brave.exe', 'firefox.exe', 'code.exe', 'antigravity.exe'].map((app) => (
-              <span key={app} className="badge badge-gray" style={{ fontSize: 11, padding: '2px 8px', fontFamily: 'var(--mono)' }}>
-                {app}
-              </span>
-            ))}
-          </div>
+          <kbd style={{ padding: '4px 10px', borderRadius: 6, backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--violet)', fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 700 }}>
+            Ctrl + Shift + O
+          </kbd>
         </div>
       </div>
 
       {/* Installed Games Library Scanner */}
-      <div className="glass-card" style={{ padding: 20, borderRadius: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+      <div className="glass-card" style={{ padding: 22, borderRadius: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <div>
-            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Gamepad2 size={16} style={{ color: 'var(--violet)' }} />
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Gamepad2 size={16} style={{ color: 'var(--cyan)' }} />
               <span>Bibliothèque de Jeux Détectés ({installedGames.length})</span>
             </h3>
             <p style={{ margin: '2px 0 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
@@ -318,14 +286,14 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
             style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 6 }}
           >
             <RefreshCw size={12} className={scanningGames ? 'animate-spin' : ''} />
-            <span>{scanningGames ? 'Recherche...' : 'Scanner les jeux'}</span>
+            <span>{scanningGames ? 'Recherche...' : 'Re-scanner'}</span>
           </button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
           {installedGames.length === 0 && !scanningGames ? (
             <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)', padding: '20px 0' }}>
-              Aucun jeu détecté automatiquement. Cliquez sur « Scanner les jeux » pour analyser vos bibliothèques.
+              Aucun jeu détecté automatiquement. Lancez un scan pour indexer votre bibliothèque.
             </p>
           ) : (
             installedGames.map((game, idx) => (
@@ -343,14 +311,14 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
                 }}
               >
                 <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {game.name}
                   </p>
-                  <p style={{ margin: '2px 0 0 0', fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--mono)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <p style={{ margin: '2px 0 0 0', fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {game.executable}
                   </p>
                 </div>
-                <span className="badge badge-violet" style={{ fontSize: 10, padding: '2px 6px', textTransform: 'uppercase' }}>
+                <span className="badge badge-violet" style={{ fontSize: 10, padding: '2px 8px', textTransform: 'uppercase' }}>
                   {game.platform}
                 </span>
               </div>

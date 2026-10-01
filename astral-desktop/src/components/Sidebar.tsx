@@ -1,5 +1,4 @@
-import { Shield, LayoutDashboard, Cpu, Gamepad2, Wifi, Lock, Settings, User } from 'lucide-react';
-import VanguardLogo from './common/VanguardLogo';
+import { Shield, LayoutDashboard, Cpu, Gamepad2, Wifi, Lock, Settings } from 'lucide-react';
 
 const NAV_ITEMS = [
   { id: 'dashboard',   label: 'Accueil',      icon: LayoutDashboard },
@@ -27,24 +26,14 @@ function getInitials(first: string, last: string) {
   return (f.charAt(0) + l.charAt(0)).toUpperCase();
 }
 
-export default function Sidebar({ activeTab, onTabChange, gamingActive, currentGame, firstName = '', lastName = '' }: Props) {
+export default function Sidebar({ activeTab, onTabChange, gamingActive, firstName = '', lastName = '' }: Props) {
   return (
     <aside className="sidebar">
-      {/* Brand header */}
-      <div className="sidebar-header">
-        <div className="sidebar-brand">
-          <VanguardLogo size={28} />
-          <div>
-            <div className="sidebar-brand-name">Vanguard</div>
-            <div className="sidebar-brand-sub">Astral Security</div>
-          </div>
+      {/* Navigation Links directly at top */}
+      <nav className="sidebar-nav" style={{ paddingTop: 16 }}>
+        <div className="sidebar-section-label" style={{ padding: '0 16px 8px 16px', fontSize: 10, letterSpacing: '0.08em', color: 'var(--text-faint)', textTransform: 'uppercase', fontWeight: 700 }}>
+          Navigation
         </div>
-        <div className="sidebar-version">v2.3.0</div>
-      </div>
-
-      {/* Navigation */}
-      <nav className="sidebar-nav">
-        <div className="sidebar-section-label">Navigation</div>
         {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
           const isGaming = id === 'gaming' && gamingActive;
           const isActive = activeTab === id;
@@ -65,35 +54,79 @@ export default function Sidebar({ activeTab, onTabChange, gamingActive, currentG
         })}
       </nav>
 
-      {/* Simplified Footer: Compte & Paramètres */}
-      <div className="sidebar-footer">
-        <button
-          className={`sidebar-user ${activeTab === 'settings' ? 'active' : ''}`}
+      {/* Unified User Profile & Settings Hub */}
+      <div className="sidebar-footer" style={{ padding: '12px 14px', borderTop: '1px solid var(--border)' }}>
+        <div
           onClick={() => onTabChange('settings')}
-          title="Mon compte & profil"
-          aria-label="Mon compte"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '9px 10px',
+            borderRadius: 12,
+            backgroundColor: activeTab === 'settings' ? 'rgba(99, 102, 241, 0.16)' : 'rgba(255, 255, 255, 0.03)',
+            border: `1px solid ${activeTab === 'settings' ? 'rgba(99, 102, 241, 0.35)' : 'var(--border)'}`,
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+          title="Gérer le profil et les paramètres"
         >
-          <div className="sidebar-avatar" aria-hidden="true">
+          <div
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: '50%',
+              backgroundColor: 'rgba(99, 102, 241, 0.2)',
+              border: '1px solid rgba(99, 102, 241, 0.4)',
+              color: '#c084fc',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 12,
+              fontWeight: 800,
+              flexShrink: 0,
+            }}
+          >
             {getInitials(firstName, lastName)}
           </div>
-          <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-            <div className="sidebar-user-name">
-              {firstName || lastName ? `${firstName} ${lastName}`.trim() : 'Mon compte'}
-            </div>
-            <div className="sidebar-user-role">Profil joueur</div>
-          </div>
-        </button>
 
-        <button
-          className={`sidebar-item ${activeTab === 'settings' ? 'active' : ''}`}
-          onClick={() => onTabChange('settings')}
-          aria-label="Paramètres"
-        >
-          <Settings size={16} strokeWidth={1.8} />
-          <span>Paramètres</span>
-        </button>
+          <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                color: 'var(--text-primary)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {firstName || lastName ? `${firstName} ${lastName}`.trim() : 'Mon Profil'}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Profil Joueur</div>
+          </div>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onTabChange('settings');
+            }}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: activeTab === 'settings' ? 'var(--cyan)' : 'var(--text-muted)',
+              cursor: 'pointer',
+              padding: 4,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            title="Paramètres de l'application"
+          >
+            <Settings size={15} />
+          </button>
+        </div>
       </div>
     </aside>
   );
 }
-

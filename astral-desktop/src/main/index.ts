@@ -48,16 +48,18 @@ export function notifyUser(title: string, body: string, isCritical = false) {
     });
   }
 
-  // Windows native notification when main window is hidden or minimized
-  if (Notification.isSupported() && (!mainWin || !mainWin.isVisible() || mainWin.isMinimized())) {
+  // Windows native notification - always dispatch to Windows Action Center
+  if (Notification.isSupported()) {
     try {
+      const iconPath = process.env.PUBLIC ? path.join(process.env.PUBLIC, 'icon.ico') : undefined;
       const n = new Notification({
         title,
         body,
-        icon: path.join(process.env.PUBLIC!, 'icon.ico'),
+        icon: iconPath,
+        urgency: isCritical ? 'critical' : 'normal',
       });
       n.on('click', () => {
-        if (mainWin) {
+        if (mainWin && !mainWin.isDestroyed()) {
           if (mainWin.isMinimized()) mainWin.restore();
           mainWin.show();
           mainWin.focus();

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Shield, ShieldCheck, ShieldAlert, Globe, Lock, Power, RefreshCw, AlertCircle, Wifi, CheckCircle2, Info } from 'lucide-react';
+import { Shield, ShieldCheck, Globe, Lock, Power, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { CollapsibleError } from '../ui/CollapsibleError';
 
 const api = (window as any).vanguard;
@@ -9,11 +9,9 @@ export interface VpnServer {
   country: string;
   location: string;
   countryCode?: string;
-  flag?: string;
   ping: number;
   ip: string;
   speedMbps: number;
-  uptimeHours?: number;
   sessions?: number;
 }
 
@@ -21,7 +19,6 @@ interface CoexistenceStatus {
   thirdPartyActive: boolean;
   vpnName?: string;
   adapterName?: string;
-  details?: string;
 }
 
 export default function VpnTab() {
@@ -33,7 +30,6 @@ export default function VpnTab() {
   const [loadingServers, setLoadingServers] = useState(false);
   const [search, setSearch] = useState('');
   const [coexistence, setCoexistence] = useState<CoexistenceStatus>({ thirdPartyActive: false });
-  const [fallbackMessage, setFallbackMessage] = useState<string | null>(null);
   const [errorInfo, setErrorInfo] = useState<{ message: string; technical?: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -41,16 +37,13 @@ export default function VpnTab() {
     if (!api?.vpnGetCoexistenceStatus) return;
     try {
       const status = await api.vpnGetCoexistenceStatus();
-      if (status) {
-        setCoexistence(status);
-      }
+      if (status) setCoexistence(status);
     } catch {}
   };
 
   const fetchServers = async () => {
     if (!api) return;
     setLoadingServers(true);
-    setFallbackMessage(null);
     setErrorInfo(null);
 
     try {
@@ -60,13 +53,8 @@ export default function VpnTab() {
         if (!selectedServer) {
           setSelectedServer(res.servers[0]);
         }
-      } else {
-        setServers([]);
-        setFallbackMessage(res?.message || 'Aucun serveur VPN disponible actuellement, réessayez plus tard.');
       }
     } catch (err: any) {
-      setServers([]);
-      setFallbackMessage('Serveurs VPN temporairement indisponibles.');
       setErrorInfo({ message: 'Erreur lors de la récupération des serveurs VPN.', technical: err.message });
     } finally {
       setLoadingServers(false);
@@ -101,8 +89,7 @@ export default function VpnTab() {
       }
     });
 
-    // Periodically re-check coexistence in background
-    const coexInterval = setInterval(checkCoexistence, 10000);
+    const coexInterval = setInterval(checkCoexistence, 15000);
 
     return () => {
       if (typeof cleanup === 'function') cleanup();
@@ -122,10 +109,9 @@ export default function VpnTab() {
   }, [vpnState]);
 
   const handleToggleConnect = async () => {
-    // If third-party VPN is active, enforce peaceful coexistence
     if (coexistence.thirdPartyActive && vpnState === 'disconnected') {
-      setNotice(`🛡️ ${coexistence.vpnName} est actif. Mode Coexistence engagé : vos connexions et votre VPN actuel restent préservés sans conflit.`);
-      setTimeout(() => setNotice(null), 5000);
+      setNotice(`🛡️ ${coexistence.vpnName} est déjà actif sur votre ordinateur.`);
+      setTimeout(() => setNotice(null), 4000);
       return;
     }
 
@@ -142,7 +128,7 @@ export default function VpnTab() {
         if (res?.blockedByCoexistence) {
           setVpnState('disconnected');
           setNotice(res.message);
-          setTimeout(() => setNotice(null), 6000);
+          setTimeout(() => setNotice(null), 5000);
         } else if (!res?.success) {
           setVpnState('disconnected');
           setErrorInfo({
@@ -169,8 +155,8 @@ export default function VpnTab() {
           technical: res?.error,
         });
       } else {
-        setNotice(enabled ? 'Kill Switch sécurisé activé (mode passif non-destructif).' : 'Kill Switch désactivé.');
-        setTimeout(() => setNotice(null), 3500);
+        setNotice(enabled ? 'Kill Switch d\'urgence activé.' : 'Kill Switch désactivé.');
+        setTimeout(() => setNotice(null), 3000);
       }
     } catch (err: any) {
       setKillSwitch(!enabled);
@@ -178,18 +164,22 @@ export default function VpnTab() {
     }
   };
 
-  const formatTime = (sec: number) => {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  const formatTime = (secs: number) => {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    return `${h > 0 ? `${h}h ` : ''}${m < 10 ? `0${m}` : m}m ${s < 10 ? `0${s}` : s}s`;
   };
 
-  const filteredServers = servers.filter(
-    (s) =>
-      s.country.toLowerCase().includes(search.toLowerCase()) ||
-      s.location.toLowerCase().includes(search.toLowerCase()) ||
-      s.ip.includes(search)
-  );
+  const filteredServers = servers.filter((s) => {
+    const q = search.toLowerCase();
+    return (
+      s.country.toLowerCase().includes(q) ||
+      s.location.toLowerCase().includes(q) ||
+      s.ip.includes(q) ||
+      (s.countryCode && s.countryCode.toLowerCase().includes(q))
+    );
+  });
 
   return (
     <div className="tab-scroll" style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
@@ -206,31 +196,29 @@ export default function VpnTab() {
           marginBottom: 24,
         }}
       >
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                backgroundColor: 'rgba(139, 92, 246, 0.15)',
-                border: '1px solid var(--border-violet)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--violet)',
-              }}
-            >
-              <Lock size={18} />
-            </div>
-            <div>
-              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-                Tunnel Chiffré & Coexistence VPN
-              </h1>
-              <p style={{ margin: '2px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-                Chiffrement sécurisé · Détection intelligente de vos VPN tiers · Zéro conflit réseau
-              </p>
-            </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              backgroundColor: 'rgba(139, 92, 246, 0.15)',
+              border: '1px solid var(--border-violet)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--violet)',
+            }}
+          >
+            <Lock size={20} />
+          </div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+              Réseau Privé Virtuel (VPN)
+            </h1>
+            <p style={{ margin: '2px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+              Tunnel chiffré haut débit · Protection de l'adresse IP et de la vie privée
+            </p>
           </div>
         </div>
 
@@ -241,7 +229,7 @@ export default function VpnTab() {
               style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
               <ShieldCheck size={14} />
-              <span>{coexistence.vpnName} Détecté</span>
+              <span>{coexistence.vpnName} Actif</span>
             </span>
           )}
 
@@ -266,8 +254,6 @@ export default function VpnTab() {
               ? 'TUNNEL ACTIF'
               : vpnState === 'connecting'
               ? 'CONNEXION...'
-              : coexistence.thirdPartyActive
-              ? 'COEXISTENCE PASSIVE'
               : 'DÉCONNECTÉ'}
           </div>
 
@@ -279,7 +265,7 @@ export default function VpnTab() {
             disabled={loadingServers}
             className="btn btn-ghost"
             style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
-            title="Actualiser l'état et les relais"
+            title="Actualiser la liste"
           >
             <RefreshCw size={14} className={loadingServers ? 'animate-spin' : ''} />
             <span>Actualiser</span>
@@ -287,7 +273,6 @@ export default function VpnTab() {
         </div>
       </div>
 
-      {/* Notice Banner */}
       {notice && (
         <div
           style={{
@@ -309,73 +294,9 @@ export default function VpnTab() {
         </div>
       )}
 
-      {/* Third-Party Coexistence Card */}
-      {coexistence.thirdPartyActive && (
-        <div
-          className="glass-card"
-          style={{
-            padding: '16px 20px',
-            borderRadius: 14,
-            marginBottom: 24,
-            background: 'linear-gradient(135deg, rgba(16, 217, 160, 0.08), rgba(6, 6, 20, 0.6))',
-            border: '1px solid rgba(16, 217, 160, 0.3)',
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 16,
-          }}
-        >
-          <div
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 10,
-              backgroundColor: 'rgba(16, 217, 160, 0.15)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--green)',
-              flexShrink: 0,
-            }}
-          >
-            <ShieldCheck size={22} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
-                Bouclier de Coexistence Actif — {coexistence.vpnName}
-              </h3>
-              <span className="badge badge-green" style={{ fontSize: 10 }}>Sécurité Maximale</span>
-            </div>
-            <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Votre logiciel VPN principal (<strong>{coexistence.vpnName}</strong>) est détecté en activité. Astral Vanguard respecte scrupuleusement vos configurations de routage, vos adaptateurs virtuels et vos serveurs DNS : <strong>aucune modification conflictuelle</strong> n'est appliquée, garantissant une navigation 100% ininterrompue.
-            </p>
-          </div>
-        </div>
-      )}
-
       {errorInfo && (
         <div style={{ marginBottom: 20 }}>
           <CollapsibleError message={errorInfo.message} technicalError={errorInfo.technical} />
-        </div>
-      )}
-
-      {fallbackMessage && (
-        <div
-          style={{
-            padding: '12px 16px',
-            borderRadius: 12,
-            backgroundColor: 'rgba(255, 140, 66, 0.1)',
-            border: '1px solid var(--border-orange)',
-            color: 'var(--orange)',
-            fontSize: 13,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            marginBottom: 20,
-          }}
-        >
-          <AlertCircle size={16} />
-          <span>{fallbackMessage}</span>
         </div>
       )}
 
@@ -428,7 +349,6 @@ export default function VpnTab() {
                 </linearGradient>
               </defs>
 
-              {/* Background circular guide */}
               <circle
                 cx="85"
                 cy="85"
@@ -438,7 +358,6 @@ export default function VpnTab() {
                 strokeWidth="1.5"
               />
 
-              {/* Outer Dashed Rotating Cyber Ring */}
               <g
                 style={{
                   transformOrigin: '85px 85px',
@@ -463,7 +382,6 @@ export default function VpnTab() {
                 />
               </g>
 
-              {/* Inner Reverse Subtle Orbital Ring */}
               <g
                 style={{
                   transformOrigin: '85px 85px',
@@ -479,12 +397,6 @@ export default function VpnTab() {
                   strokeWidth="1"
                   strokeDasharray="6 30 12 20"
                 />
-                <circle
-                  cx="155"
-                  cy="85"
-                  r="2"
-                  fill={vpnState === 'connected' ? '#10d9a0' : '#8b5cf6'}
-                />
               </g>
             </svg>
 
@@ -499,21 +411,15 @@ export default function VpnTab() {
                 border: `3px solid ${
                   vpnState === 'connected'
                     ? 'var(--green)'
-                    : coexistence.thirdPartyActive
-                    ? 'var(--green)'
                     : 'var(--violet)'
                 }`,
                 backgroundColor:
                   vpnState === 'connected'
                     ? 'rgba(16, 217, 160, 0.16)'
-                    : coexistence.thirdPartyActive
-                    ? 'rgba(16, 217, 160, 0.10)'
                     : 'rgba(139, 92, 246, 0.12)',
                 boxShadow:
                   vpnState === 'connected'
                     ? '0 0 32px rgba(16, 217, 160, 0.45)'
-                    : coexistence.thirdPartyActive
-                    ? '0 0 24px rgba(16, 217, 160, 0.25)'
                     : '0 0 24px rgba(139, 92, 246, 0.22)',
                 display: 'flex',
                 flexDirection: 'column',
@@ -531,8 +437,6 @@ export default function VpnTab() {
                   color:
                     vpnState === 'connected'
                       ? 'var(--green)'
-                      : coexistence.thirdPartyActive
-                      ? 'var(--green)'
                       : 'var(--violet)',
                 }}
               />
@@ -549,8 +453,6 @@ export default function VpnTab() {
                   ? 'DÉCONNECTER'
                   : vpnState === 'connecting'
                   ? 'CONNEXION...'
-                  : coexistence.thirdPartyActive
-                  ? 'COEXISTENCE'
                   : 'CONNECTER'}
               </span>
             </button>
@@ -559,8 +461,6 @@ export default function VpnTab() {
           <h3 style={{ margin: '0 0 6px 0', fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
             {vpnState === 'connected' && selectedServer
               ? `Connecté à ${selectedServer.country}`
-              : coexistence.thirdPartyActive
-              ? `Protégé via ${coexistence.vpnName}`
               : selectedServer
               ? `Prêt : ${selectedServer.country}`
               : 'Aucun relais sélectionné'}
@@ -569,8 +469,6 @@ export default function VpnTab() {
           <p style={{ margin: '0 0 20px 0', fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>
             {vpnState === 'connected' && selectedServer
               ? `IP: ${selectedServer.ip} · Durée : ${formatTime(uptimeSeconds)}`
-              : coexistence.thirdPartyActive
-              ? `Tunnels et cartes réseau protégés contre tout conflit`
               : selectedServer
               ? `Relais : ${selectedServer.location} · Latence : ${selectedServer.ping} ms`
               : 'Sélectionnez un relais dans l\'annuaire'}
@@ -596,7 +494,7 @@ export default function VpnTab() {
             <div>
               <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block' }}>Protocole</span>
               <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--violet)', fontFamily: 'var(--mono)' }}>
-                {coexistence.thirdPartyActive ? coexistence.vpnName : 'AES-256'}
+                AES-256-GCM
               </span>
             </div>
             <div>
@@ -624,10 +522,10 @@ export default function VpnTab() {
             <div style={{ textAlign: 'left' }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Shield size={14} style={{ color: 'var(--cyan)' }} />
-                <span>Kill Switch Intelligent</span>
+                <span>Kill Switch d'urgence</span>
               </div>
               <p style={{ margin: '2px 0 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
-                Isolation sécurisée sans coupure de vos applications tierces
+                Coupe la connexion en cas de rupture pour protéger votre IP
               </p>
             </div>
             <label className="toggle-switch" style={{ cursor: 'pointer' }}>
@@ -655,10 +553,10 @@ export default function VpnTab() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
             <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Globe size={16} style={{ color: 'var(--cyan)' }} />
-              <span>Annuaire des Relais VPN Chiffrés</span>
+              <span>Annuaire des Relais Internationaux</span>
             </h3>
             <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              {filteredServers.length} relais disponibles
+              {filteredServers.length} relais optimisés
             </span>
           </div>
 
@@ -745,12 +643,12 @@ export default function VpnTab() {
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       <span
-                        className={`badge ${s.ping < 60 ? 'badge-green' : s.ping < 120 ? 'badge-cyan' : 'badge-orange'}`}
+                        className={`badge ${s.ping < 40 ? 'badge-green' : s.ping < 100 ? 'badge-cyan' : 'badge-orange'}`}
                         style={{ fontSize: 11, padding: '2px 8px' }}
                       >
                         {s.ping} ms
                       </span>
-                      <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontFamily: 'var(--mono)', minWidth: 50, textAlign: 'right' }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontFamily: 'var(--mono)', minWidth: 60, textAlign: 'right' }}>
                         {s.speedMbps} Mb/s
                       </span>
                     </div>

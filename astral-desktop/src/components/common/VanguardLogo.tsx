@@ -16,7 +16,7 @@ export default function VanguardLogo({
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 512 512"
+      viewBox="0 0 256 256"
       width={size}
       height={size}
       className={className}
@@ -24,7 +24,7 @@ export default function VanguardLogo({
         display: 'block',
         flexShrink: 0,
         filter: glow
-          ? 'drop-shadow(0 0 12px rgba(0, 245, 255, 0.45)) drop-shadow(0 0 24px rgba(139, 92, 246, 0.35))'
+          ? 'drop-shadow(0 0 10px rgba(0, 245, 255, 0.4)) drop-shadow(0 0 20px rgba(99, 102, 241, 0.3))'
           : 'none',
         ...style,
       }}
@@ -32,114 +32,95 @@ export default function VanguardLogo({
       role="img"
     >
       <defs>
-        {/* Core Gradients */}
-        <linearGradient id="avg-shield-border" x1="0%" y1="0%" x2="100%" y2="100%">
+        {/* Sleek Outer Shield Gradient */}
+        <linearGradient id="vg-shield-grad" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#00f5ff" />
-          <stop offset="45%" stopColor="#3b82f6" />
-          <stop offset="80%" stopColor="#8b5cf6" />
-          <stop offset="100%" stopColor="#c084fc" />
+          <stop offset="40%" stopColor="#3b82f6" />
+          <stop offset="75%" stopColor="#6366f1" />
+          <stop offset="100%" stopColor="#a855f7" />
         </linearGradient>
 
-        <linearGradient id="avg-shield-bg" x1="50%" y1="0%" x2="50%" y2="100%">
-          <stop offset="0%" stopColor="#0d1124" />
-          <stop offset="60%" stopColor="#060814" />
-          <stop offset="100%" stopColor="#04050d" />
+        {/* Inner Dark Chrome Gradient */}
+        <linearGradient id="vg-core-dark" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#0f172a" />
+          <stop offset="100%" stopColor="#030712" />
         </linearGradient>
 
-        <linearGradient id="avg-wing-left" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#00f5ff" />
-          <stop offset="100%" stopColor="#0284c7" />
+        {/* Dynamic V-Blade Neon Gradient */}
+        <linearGradient id="vg-v-blade" x1="0%" y1="0%" x2="100%" y2="80%">
+          <stop offset="0%" stopColor="#38bdf8" />
+          <stop offset="50%" stopColor="#00f5ff" />
+          <stop offset="100%" stopColor="#818cf8" />
         </linearGradient>
 
-        <linearGradient id="avg-wing-right" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#a855f7" />
-          <stop offset="100%" stopColor="#6366f1" />
-        </linearGradient>
-
-        <linearGradient id="avg-star-core" x1="0%" y1="0%" x2="100%" y2="100%">
+        {/* Astral Star Core Flare */}
+        <linearGradient id="vg-star-flare" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#ffffff" />
-          <stop offset="50%" stopColor="#e0f2fe" />
-          <stop offset="100%" stopColor="#38bdf8" />
+          <stop offset="50%" stopColor="#38bdf8" />
+          <stop offset="100%" stopColor="#00f5ff" />
         </linearGradient>
-
-        <filter id="avg-glow" x="-30%" y="-30%" width="160%" height="160%">
-          <feGaussianBlur stdDeviation="12" result="blur" />
-          <feComposite in="SourceGraphic" in2="blur" operator="over" />
-        </filter>
       </defs>
 
-      {/* Exterior Stealth Aura */}
-      <polygon
-        points="256,24 464,96 440,352 256,488 72,352 48,96"
-        fill="url(#avg-shield-border)"
-        opacity="0.25"
-        filter="url(#avg-glow)"
-      />
-
-      {/* Primary Stealth Armor Shield */}
-      <polygon
-        points="256,28 460,98 436,348 256,482 76,348 52,98"
-        fill="url(#avg-shield-bg)"
-        stroke="url(#avg-shield-border)"
-        strokeWidth="9"
+      {/* ── Outer Stealth Shield Contour ── */}
+      <path
+        d="M 128,14
+           L 218,52
+           C 218,128 184,196 128,242
+           C 72,196 38,128 38,52
+           Z"
+        fill="url(#vg-core-dark)"
+        stroke="url(#vg-shield-grad)"
+        strokeWidth="5"
         strokeLinejoin="round"
       />
 
-      {/* Inner Cyber Armor Facet (Upper) */}
-      <polygon
-        points="256,64 424,124 256,180 88,124"
-        fill="rgba(0, 245, 255, 0.05)"
-        stroke="rgba(0, 245, 255, 0.4)"
-        strokeWidth="2.5"
-        strokeLinejoin="round"
+      {/* ── Precision Chamfer Cutouts (Left & Right Armor Plates) ── */}
+      <path
+        d="M 54,64
+           L 112,40
+           L 84,142
+           C 68,114 58,88 54,64
+           Z"
+        fill="rgba(0, 245, 255, 0.08)"
+        stroke="rgba(0, 245, 255, 0.25)"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M 202,64
+           L 144,40
+           L 172,142
+           C 188,114 198,88 202,64
+           Z"
+        fill="rgba(99, 102, 241, 0.08)"
+        stroke="rgba(99, 102, 241, 0.25)"
+        strokeWidth="1.5"
       />
 
-      {/* Inner Cyber Armor Facet (Lower Spine) */}
-      <polygon
-        points="256,180 404,324 256,444 108,324"
-        fill="rgba(139, 92, 246, 0.04)"
-        stroke="rgba(139, 92, 246, 0.35)"
-        strokeWidth="2"
-        strokeLinejoin="round"
+      {/* ── Iconic Vanguard "V" Blade Apex ── */}
+      <path
+        d="M 128,198
+           L 72,82
+           L 104,82
+           L 128,146
+           L 152,82
+           L 184,82
+           Z"
+        fill="url(#vg-v-blade)"
       />
 
-      {/* Vanguard Wing Left (Aero-Blade) */}
+      {/* ── 4-Point Astral Star Nexus Blade (Center Top) ── */}
       <polygon
-        points="140,164 212,164 256,356 216,356"
-        fill="url(#avg-wing-left)"
-        opacity="0.95"
+        points="128,42 135,62 155,69 135,76 128,96 121,76 101,69 121,62"
+        fill="url(#vg-star-flare)"
       />
 
-      {/* Vanguard Wing Right (Aero-Blade) */}
-      <polygon
-        points="372,164 300,164 256,356 296,356"
-        fill="url(#avg-wing-right)"
-        opacity="0.95"
-      />
+      {/* Center Micro-Flare Crystal */}
+      <circle cx="128" cy="69" r="2.5" fill="#ffffff" />
 
-      {/* Wing Accent Lines */}
-      <line x1="176" y1="164" x2="236" y2="356" stroke="#ffffff" strokeWidth="2.5" opacity="0.6" />
-      <line x1="336" y1="164" x2="276" y2="356" stroke="#ffffff" strokeWidth="2.5" opacity="0.6" />
-
-      {/* Central Astral Star (4-Point Diamond Core Blade) */}
-      <polygon
-        points="256,112 284,196 368,224 284,252 256,336 228,252 144,224 228,196"
-        fill="url(#avg-star-core)"
-        filter="url(#avg-glow)"
-      />
-
-      {/* Diamond Star Center Highlight */}
-      <polygon
-        points="256,160 274,224 256,288 238,224"
-        fill="#ffffff"
-      />
-
-      {/* High-Tech Orbital Ring Dots */}
-      <circle cx="256" cy="224" r="5" fill="#00f5ff" />
-      <circle cx="256" cy="74" r="3" fill="#00f5ff" />
-      <circle cx="434" cy="130" r="3" fill="#38bdf8" />
-      <circle cx="78" cy="130" r="3" fill="#00f5ff" />
-      <circle cx="256" cy="454" r="3" fill="#c084fc" />
+      {/* Tactical Circuit Micro-Pips */}
+      <circle cx="128" cy="222" r="3" fill="#00f5ff" />
+      <circle cx="206" cy="56" r="2" fill="#38bdf8" />
+      <circle cx="50" cy="56" r="2" fill="#00f5ff" />
     </svg>
   );
 }

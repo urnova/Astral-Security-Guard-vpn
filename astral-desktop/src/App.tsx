@@ -122,106 +122,122 @@ export default function App() {
   };
 
   return (
-    <div className="app-root" data-gaming={gamingModeActive} data-theme={theme}>
-      {/* Integrated Splash Transition */}
-      {!splashDone && <SplashScreen onFinish={() => setSplashDone(true)} />}
+      <div className="app-root" data-gaming={gamingModeActive} data-theme={theme}>
+        {/* Integrated Splash Transition */}
+        {!splashDone && <SplashScreen onFinish={() => setSplashDone(true)} />}
 
-      {/* Onboarding Initial Setup Wizard */}
-      {splashDone && showOnboarding && (
-        <OnboardingWizard
-          initialFirstName={firstName}
-          initialLastName={lastName}
-          onFinish={handleFinishOnboarding}
-        />
-      )}
-
-      {/* Gaming ambient glow */}
-      {gamingModeActive && (
-        <div
-          aria-hidden="true"
-          style={{
-            position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none',
-            background: 'radial-gradient(ellipse at top, rgba(0,212,255,0.07), transparent 65%)',
-          }}
-        />
-      )}
-
-      <Sidebar
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        gamingActive={gamingModeActive}
-        currentGame={currentGame}
-        firstName={firstName}
-        lastName={lastName}
-      />
-
-      <div className="app-main">
-        {/* Dedicated Window Drag & Titlebar Strip (with 140px reserved area on right) */}
-        <AppTitlebar gamingActive={gamingModeActive} currentGame={currentGame} />
-
-        {/* Admin banner */}
-        {!isAdmin && (
-          <div className="admin-banner">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <ShieldAlert size={15} style={{ color: 'var(--orange)', flexShrink: 0 }} />
-              <span>
-                <strong>Mode restreint —</strong> Certaines fonctions (Defender, optimisations réseau) nécessitent les droits administrateur.
-              </span>
-            </div>
-            <div className="admin-banner-actions">
-              <button className="btn btn-ghost btn-sm" onClick={() => api?.relaunchElevated?.()}>
-                Relancer en administrateur
-              </button>
-            </div>
-          </div>
+        {/* Onboarding Initial Setup Wizard */}
+        {splashDone && showOnboarding && (
+          <OnboardingWizard
+            initialFirstName={firstName}
+            initialLastName={lastName}
+            onFinish={handleFinishOnboarding}
+          />
         )}
 
-        {/* Main content with Persistent Preloaded Tab Panes */}
-        <main className="app-content">
-          <div className="tab-pane" style={{ display: activeTab === 'dashboard' ? 'block' : 'none', height: '100%' }}>
-            <Dashboard
-              gamingActive={gamingModeActive}
-              currentGame={currentGame}
-              onTabChange={setActiveTab}
-              firstName={firstName}
-            />
-          </div>
-          <div className="tab-pane" style={{ display: activeTab === 'security' ? 'block' : 'none', height: '100%' }}>
-            <SecurityTab />
-          </div>
-          <div className="tab-pane" style={{ display: activeTab === 'performance' ? 'block' : 'none', height: '100%' }}>
-            <PerformanceTab gamingActive={gamingModeActive} />
-          </div>
-          <div className="tab-pane" style={{ display: activeTab === 'network' ? 'block' : 'none', height: '100%' }}>
-            <NetworkTab gamingActive={gamingModeActive} />
-          </div>
-          <div className="tab-pane" style={{ display: activeTab === 'gaming' ? 'block' : 'none', height: '100%' }}>
-            <GamingTab
-              gamingActive={gamingModeActive}
-              currentGame={currentGame}
-              onGamingToggle={setGaming}
-            />
-          </div>
-          <div className="tab-pane" style={{ display: activeTab === 'vpn' ? 'block' : 'none', height: '100%' }}>
-            <VpnTab />
-          </div>
-          <div className="tab-pane" style={{ display: activeTab === 'settings' ? 'block' : 'none', height: '100%' }}>
-            <SettingsTab
-              dndEnabled={dndEnabled}
-              onDndChange={setDndEnabled}
-              onProfileSaved={refreshProfile}
-              onRelaunchOnboarding={() => setShowOnboarding(true)}
-              currentTheme={theme}
-              onThemeChange={handleThemeChange}
-            />
-          </div>
-        </main>
-      </div>
+        {/* Gaming ambient glow */}
+        {gamingModeActive && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none',
+              background: 'radial-gradient(ellipse at top, rgba(0,212,255,0.07), transparent 65%)',
+            }}
+          />
+        )}
 
-      <NotificationSystem dndEnabled={dndEnabled} />
-      <DownloadScanModal />
-      {updateInfo && <UpdateModal info={updateInfo} onClose={() => setUpdateInfo(null)} />}
-    </div>
-  );
-}
+        {/* Dedicated Window Drag & Full-Width Titlebar Strip (with reserved window controls area) */}
+        <AppTitlebar gamingActive={gamingModeActive} currentGame={currentGame} />
+
+        <div className="app-body">
+          <Sidebar
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            gamingActive={gamingModeActive}
+            currentGame={currentGame}
+            firstName={firstName}
+            lastName={lastName}
+          />
+
+          <div className="app-main">
+            {/* Admin banner */}
+            {!isAdmin && (
+              <div className="admin-banner">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <ShieldAlert size={15} style={{ color: 'var(--orange)', flexShrink: 0 }} />
+                  <span>
+                    <strong>Mode restreint —</strong> Certaines fonctions (Defender, optimisations réseau) nécessitent les droits administrateur.
+                  </span>
+                </div>
+                <div className="admin-banner-actions">
+                  <button className="btn btn-ghost btn-sm" onClick={() => api?.relaunchElevated?.()}>
+                    Relancer en administrateur
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Main content with Lazy Loaded Tab Panes to prevent background CPU freezes & fan spin */}
+            <main className="app-content">
+              {activeTab === 'dashboard' && (
+                <div className="tab-pane" style={{ height: '100%' }}>
+                  <Dashboard
+                    gamingActive={gamingModeActive}
+                    currentGame={currentGame}
+                    onTabChange={setActiveTab}
+                    firstName={firstName}
+                  />
+                </div>
+              )}
+              {activeTab === 'security' && (
+                <div className="tab-pane" style={{ height: '100%' }}>
+                  <SecurityTab />
+                </div>
+              )}
+              {activeTab === 'performance' && (
+                <div className="tab-pane" style={{ height: '100%' }}>
+                  <PerformanceTab gamingActive={gamingModeActive} />
+                </div>
+              )}
+              {activeTab === 'network' && (
+                <div className="tab-pane" style={{ height: '100%' }}>
+                  <NetworkTab gamingActive={gamingModeActive} />
+                </div>
+              )}
+              {activeTab === 'gaming' && (
+                <div className="tab-pane" style={{ height: '100%' }}>
+                  <GamingTab
+                    gamingActive={gamingModeActive}
+                    currentGame={currentGame}
+                    onGamingToggle={setGaming}
+                  />
+                </div>
+              )}
+              {activeTab === 'vpn' && (
+                <div className="tab-pane" style={{ height: '100%' }}>
+                  <VpnTab />
+                </div>
+              )}
+              {activeTab === 'settings' && (
+                <div className="tab-pane" style={{ height: '100%' }}>
+                  <SettingsTab
+                    dndEnabled={dndEnabled}
+                    onDndChange={setDndEnabled}
+                    onProfileSaved={refreshProfile}
+                    onRelaunchOnboarding={() => setShowOnboarding(true)}
+                    currentTheme={theme}
+                    onThemeChange={handleThemeChange}
+                  />
+                </div>
+              )}
+            </main>
+          </div>
+        </div>
+
+        <NotificationSystem dndEnabled={dndEnabled} />
+        <DownloadScanModal />
+        {updateInfo && <UpdateModal info={updateInfo} onClose={() => setUpdateInfo(null)} />}
+      </div>
+    );
+  }
 
