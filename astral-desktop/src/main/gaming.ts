@@ -101,53 +101,112 @@ export function setupGamingIPC(
 
   ipcMain.handle('gaming:get-auto-detect', () => ({ autoDetectEnabled }));
 
-  // ── Scan Installed Game Libraries (Steam, Epic, Xbox, GOG, Riot) ─────────
+  // ── Scan Installed Game Libraries (Multi-drive Steam, Epic, GOG, Riot) ──
   const scanLibraries = async () => {
-    logger.info('Scan heuristique des bibliothèques de jeux installés...');
+    logger.info('Scan heuristique approfondi des jeux installés multi-disques...');
 
     const script = `
       $games = @()
+      $nonGames = @(
+        'Steamworks Shared', 'SteamVR', 'Steam Controller Configs',
+        'DirectXRedist', 'DirectX', '_CommonRedist', 'Riot Client',
+        'Installers', 'CrashReport', 'Prerequisites', 'Epic Online Services',
+        'Launcher', 'Support', 'CommonRedist', 'Redist', 'wallpaper_engine',
+        'Animaze'
+      )
 
-      # 1. Scan Steam common apps
-      $steamPath = "C:\\Program Files (x86)\\Steam\\steamapps\\common"
-      if (Test-Path $steamPath) {
-        Get-ChildItem -Path $steamPath -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-          $games += [PSCustomObject]@{ name = $_.Name; launcher = "Steam"; path = $_.FullName }
+      # 1. Multi-Drive Steam Libraries detection
+      $steamDirs = @("C:\\Program Files (x86)\\Steam\\steamapps\\common")
+      $vdf = "C:\\Program Files (x86)\\Steam\\steamapps\\libraryfolders.vdf"
+      if (Test-Path $vdf) {
+        $lines = Get-Content $vdf -ErrorAction SilentlyContinue
+        foreach ($line in $lines) {
+          if ($line -match '"path"\s+"([^"]+)"') {
+            $rawPath = $matches[1].Replace('\\\\', '\\')
+            $commonPath = Join-Path $rawPath "steamapps\\common"
+            if (Test-Path $commonPath) {
+              $steamDirs += $commonPath
+            }
+          }
         }
       }
 
-      # 2. Scan Epic Games
-      $epicPath = "C:\\Program Files\\Epic Games"
-      if (Test-Path $epicPath) {
-        Get-ChildItem -Path $epicPath -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-          $games += [PSCustomObject]@{ name = $_.Name; launcher = "Epic Games"; path = $_.FullName }
+      # Common Steam fallback paths across drives
+      @("D:\\SteamLibrary\\steamapps\\common", "E:\\SteamLibrary\\steamapps\\common", "F:\\SteamLibrary\\steamapps\\common", "D:\\Steam\\steamapps\\common") | ForEach-Object {
+        if (Test-Path $_) { $steamDirs += $_ }
+      }
+
+      foreach ($sd in ($steamDirs | Select-Object -Unique)) {
+        Get-ChildItem -Path $sd -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+          $isTool = ($nonGames -contains $_.Name) -or ($_.Name -match 'Steamworks|SteamVR|Controller|DirectX|Redist|_CommonRedist|Launcher|Prerequisites|CrashReport')
+          if (-not $isTool) {
+            $games += [PSCustomObject]@{
+              name     = $_.Name
+              launcher = "Steam"
+              path     = $_.FullName
+            }
+          }
         }
       }
 
-      # 3. Scan GOG Galaxy
-      $gogPath = "C:\\Program Files (x86)\\GOG Galaxy\\Games"
-      if (Test-Path $gogPath) {
-        Get-ChildItem -Path $gogPath -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-          $games += [PSCustomObject]@{ name = $_.Name; launcher = "GOG"; path = $_.FullName }
+      # 2. Epic Games multi-drive detection
+      @("C:\\Program Files\\Epic Games", "D:\\Epic Games", "E:\\Epic Games", "F:\\Epic Games") | ForEach-Object {
+        if (Test-Path $_) {
+          Get-ChildItem -Path $_ -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            $isTool = ($nonGames -contains $_.Name) -or ($_.Name -match 'Launcher|DirectX|Prerequisites|Redist')
+            if (-not $isTool) {
+              $games += [PSCustomObject]@{
+                name     = $_.Name
+                launcher = "Epic Games"
+                path     = $_.FullName
+              }
+            }
+          }
         }
       }
 
-      # 4. Scan Riot Games
-      $riotPath = "C:\\Riot Games"
-      if (Test-Path $riotPath) {
-        Get-ChildItem -Path $riotPath -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-          $games += [PSCustomObject]@{ name = $_.Name; launcher = "Riot Games"; path = $_.FullName }
+      # 3. Riot Games multi-drive detection (excluding Riot Client launcher)
+      @("C:\\Riot Games", "D:\\Riot Games", "E:\\Riot Games") | ForEach-Object {
+        if (Test-Path $_) {
+          Get-ChildItem -Path $_ -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            if ($_.Name -ne 'Riot Client' -and $nonGames -notcontains $_.Name) {
+              $games += [PSCustomObject]@{
+                name     = $_.Name
+                launcher = "Riot Games"
+                path     = $_.FullName
+              }
+            }
+          }
         }
       }
 
-      $games | ConvertTo-Json -Compress
+      # 4. GOG Galaxy detection
+      @("C:\\Program Files (x86)\\GOG Galaxy\\Games", "C:\\GOG Games", "D:\\GOG Games") | ForEach-Object {
+        if (Test-Path $_) {
+          Get-ChildItem -Path $_ -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            $games += [PSCustomObject]@{
+              name     = $_.Name
+              launcher = "GOG"
+              path     = $_.FullName
+            }
+          }
+        }
+      }
+
+      # Deduplicate games by name
+      $uniqueGames = $games | Group-Object -Property name | ForEach-Object { $_.Group[0] }
+      $uniqueGames | ConvertTo-Json -Compress
     `;
 
-    const res = await runPowerShell(script, { asJson: true, timeout: 8000 });
-    let list = res.data || [];
-    if (!Array.isArray(list)) list = list ? [list] : [];
-    logger.info(`Bibliothèques de jeux : ${list.length} jeux détectés`);
-    return { success: true, games: list };
+    try {
+      const res = await runPowerShell(script, { asJson: true, timeout: 10000 });
+      let list = res.data || [];
+      if (!Array.isArray(list)) list = list ? [list] : [];
+      logger.info(`Bibliothèques de jeux : ${list.length} jeux réels détectés sur les disques.`);
+      return { success: true, games: list };
+    } catch {
+      return { success: true, games: [] };
+    }
   };
 
   ipcMain.handle('gaming:scan-libraries', scanLibraries);

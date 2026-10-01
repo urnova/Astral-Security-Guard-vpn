@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Gamepad2, Zap, RefreshCw, Monitor, Layers, CheckCircle2,
-  Play, Activity, Sparkles, Wifi, Shield, Sliders
+  Play, Activity, Sparkles, Wifi, Shield, Sliders, Flame, FolderOpen
 } from 'lucide-react';
 import { CollapsibleError } from '../ui/CollapsibleError';
 import { CyberToggle } from '../common/CyberToggle';
@@ -10,8 +10,7 @@ const api = (window as any).vanguard;
 
 interface InstalledGame {
   name: string;
-  executable: string;
-  platform: 'steam' | 'epic' | 'gog' | 'riot' | 'generic';
+  launcher: 'Steam' | 'Epic Games' | 'GOG' | 'Riot Games' | 'Xbox' | string;
   path: string;
 }
 
@@ -27,6 +26,7 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
   const [profile, setProfile] = useState<'competitive' | 'balanced' | 'stream'>('competitive');
   const [installedGames, setInstalledGames] = useState<InstalledGame[]>([]);
   const [scanningGames, setScanningGames] = useState(false);
+  const [selectedPlatform, setSelectedPlatform] = useState<string>('all');
   const [errorInfo, setErrorInfo] = useState<{ message: string; technical?: string } | null>(null);
   const [notice, setNotice] = useState('');
 
@@ -46,7 +46,7 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
         setInstalledGames(res.games);
       }
     } catch (err: any) {
-      setErrorInfo({ message: 'Erreur détection bibliothèque de jeux', technical: err.message });
+      setErrorInfo({ message: 'Erreur lors de la détection des bibliothèques de jeux', technical: err.message });
     } finally {
       setScanningGames(false);
     }
@@ -57,9 +57,9 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
     setTimeout(() => setNotice(''), 3500);
   };
 
-  const toggleGamingMode = async () => {
+  const toggleGamingMode = async (forceGameName?: string) => {
     if (!api) return;
-    const next = !gamingActive;
+    const next = forceGameName ? true : !gamingActive;
     try {
       await api.toggleGaming(next);
       if (next) {
@@ -74,8 +74,8 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
       onGamingToggle(next);
       showNotice(
         next
-          ? '🎮 Mode E-Sport Activé : Priorité CPU temps réel & anti-bufferbloat engagés'
-          : 'Mode Gaming désactivé'
+          ? `🎮 Mode E-Sport Activé ${forceGameName ? `pour [${forceGameName}]` : ''} : Priorité processeur & anti-bufferbloat engagés.`
+          : 'Mode Gaming désactivé : retour aux priorités Windows par défaut.'
       );
     } catch (err: any) {
       setErrorInfo({ message: 'Impossible de basculer le mode gaming', technical: err.message });
@@ -88,6 +88,18 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
     setOverlayEnabled(enabled);
     showNotice(enabled ? '🖥️ Overlay HUD affiché en jeu (Ctrl+Shift+O)' : 'Overlay HUD masqué');
   };
+
+  // Platform filtering
+  const platforms = ['all', 'Steam', 'Epic Games', 'Riot Games', 'GOG'];
+  const filteredGames = installedGames.filter((g) => {
+    if (selectedPlatform === 'all') return true;
+    return g.launcher.toLowerCase() === selectedPlatform.toLowerCase();
+  });
+
+  const steamCount = installedGames.filter((g) => g.launcher === 'Steam').length;
+  const epicCount = installedGames.filter((g) => g.launcher === 'Epic Games').length;
+  const riotCount = installedGames.filter((g) => g.launcher === 'Riot Games').length;
+  const gogCount = installedGames.filter((g) => g.launcher === 'GOG').length;
 
   return (
     <div className="tab-scroll animate-in" style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
@@ -110,17 +122,17 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
                 fontWeight: 700,
               }}
             >
-              LATENCY ZERO
+              PRIORITÉ CPU TEMPS RÉEL
             </span>
           </div>
           <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-            Priorité processeur temps réel, suppression des interruptions et overlay HUD transparent
+            Réduction de latence, allocation des cœurs processeur et overlay de performances
           </p>
         </div>
 
         {/* Global Gaming Switch */}
         <button
-          onClick={toggleGamingMode}
+          onClick={() => toggleGamingMode()}
           className="btn btn-primary"
           style={{
             display: 'flex',
@@ -186,10 +198,10 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <span className={`badge ${gamingActive ? 'badge-cyan' : 'badge-violet'}`}>
               <span className="badge-dot" style={{ animation: gamingActive ? 'dotPulse 1.4s infinite' : 'none' }} />
-              {gamingActive ? 'COCKPIT ENGAGÉ' : 'EN ATTENTE DE JEU'}
+              {gamingActive ? 'COCKPIT ENGAGÉ' : 'MODE STANDARD'}
             </span>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Jeu détecté : <strong style={{ color: '#ffffff' }}>{currentGame || 'Détection automatique prête'}</strong>
+              Cible active : <strong style={{ color: '#ffffff' }}>{currentGame || 'Tous les jeux lancés'}</strong>
             </span>
           </div>
 
@@ -198,7 +210,9 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
           </h2>
 
           <p style={{ margin: '8px 0 0 0', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-            Alloue la priorité processeur temps réel au jeu, supprime les interruptions de fond de Windows et stabilise le débit des paquets réseau UDP.
+            {gamingActive
+              ? 'Priorité CPU temps réel allouée, processus superflus d’arrière-plan suspendus et file d’attente UDP réseau stabilisée.'
+              : 'Cliquez sur « Activer le mode E-Sport » ou sur un jeu ci-dessous pour déclencher l’optimisation sans latence.'}
           </p>
         </div>
 
@@ -251,7 +265,7 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
               <CyberToggle checked={overlayEnabled} onChange={toggleOverlay} />
             </div>
             <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Affiche un widget acrylique sombre transparent indiquant en temps réel vos IPS (FPS), charge CPU, RAM et le ping vers les serveurs de jeu.
+              Affiche un widget acrylique sombre transparent indiquant en temps réel vos IPS (FPS), charge CPU, RAM et le ping réseau.
             </p>
           </div>
         </div>
@@ -265,66 +279,187 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
                   <Wifi size={20} />
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#ffffff' }}>Performance Wi-Fi Récurrente</h3>
+                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#ffffff' }}>Performance Wi-Fi E-Sport</h3>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Anti-Bufferbloat Automatique</div>
                 </div>
               </div>
               <CyberToggle checked={autoWifiBoost} onChange={setAutoWifiBoost} glowColor="purple" />
             </div>
             <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Maintient les files d’attente UDP purgées et la gigue sous contrôle tout au long de vos sessions de jeu sans déconnexion.
+              Purge les tampons de paquets UDP et stabilise la gigue tout au long de vos sessions de jeu sans coupure.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Detected Games Library */}
-      <div className="glass-card" style={{ padding: '22px 26px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+      {/* Detected Real Games Library */}
+      <div className="glass-card" style={{ padding: '24px 28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Gamepad2 size={18} style={{ color: 'var(--cyan)' }} />
+            <div style={{ padding: 8, borderRadius: 8, backgroundColor: 'rgba(0, 245, 255, 0.1)', color: 'var(--cyan)' }}>
+              <Gamepad2 size={18} />
+            </div>
             <div>
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#ffffff' }}>
                 Bibliothèque de Jeux Détectés ({installedGames.length})
               </h2>
               <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                Steam, Epic Games, Riot Games, GOG & lanceurs indépendants
+                Jeux réels détectés sur l'ensemble de vos disques de stockage
               </div>
             </div>
           </div>
-          <button onClick={scanGames} className="btn btn-ghost btn-sm btn-icon" title="Actualiser la bibliothèque">
-            <RefreshCw size={14} className={scanningGames ? 'animate-spin' : ''} />
-          </button>
-        </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
-          {installedGames.length === 0 ? (
-            <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12, gridColumn: '1 / -1' }}>
-              {scanningGames ? 'Recherche des jeux installés...' : 'Aucun jeu détecté automatiquement. Le mode manuel s’applique à toute application active.'}
-            </div>
-          ) : (
-            installedGames.map((g, i) => (
-              <div
-                key={i}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {/* Platform Filter Buttons */}
+            <div style={{ display: 'flex', gap: 4, backgroundColor: 'rgba(0, 0, 0, 0.35)', padding: 3, borderRadius: 8, border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+              <button
+                onClick={() => setSelectedPlatform('all')}
                 style={{
-                  padding: '12px 14px',
-                  borderRadius: 10,
-                  backgroundColor: 'rgba(0, 0, 0, 0.3)',
-                  border: '1px solid rgba(255, 255, 255, 0.05)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: 'none',
+                  backgroundColor: selectedPlatform === 'all' ? 'rgba(0, 245, 255, 0.15)' : 'transparent',
+                  color: selectedPlatform === 'all' ? 'var(--cyan)' : 'var(--text-muted)',
                 }}
               >
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff' }}>{g.name}</div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                    {g.platform}
+                Tous ({installedGames.length})
+              </button>
+              {steamCount > 0 && (
+                <button
+                  onClick={() => setSelectedPlatform('Steam')}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    border: 'none',
+                    backgroundColor: selectedPlatform === 'Steam' ? 'rgba(0, 245, 255, 0.15)' : 'transparent',
+                    color: selectedPlatform === 'Steam' ? 'var(--cyan)' : 'var(--text-muted)',
+                  }}
+                >
+                  Steam ({steamCount})
+                </button>
+              )}
+              {epicCount > 0 && (
+                <button
+                  onClick={() => setSelectedPlatform('Epic Games')}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    border: 'none',
+                    backgroundColor: selectedPlatform === 'Epic Games' ? 'rgba(0, 245, 255, 0.15)' : 'transparent',
+                    color: selectedPlatform === 'Epic Games' ? 'var(--cyan)' : 'var(--text-muted)',
+                  }}
+                >
+                  Epic ({epicCount})
+                </button>
+              )}
+              {riotCount > 0 && (
+                <button
+                  onClick={() => setSelectedPlatform('Riot Games')}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    border: 'none',
+                    backgroundColor: selectedPlatform === 'Riot Games' ? 'rgba(0, 245, 255, 0.15)' : 'transparent',
+                    color: selectedPlatform === 'Riot Games' ? 'var(--cyan)' : 'var(--text-muted)',
+                  }}
+                >
+                  Riot ({riotCount})
+                </button>
+              )}
+            </div>
+
+            <button onClick={scanGames} className="btn btn-ghost btn-sm btn-icon" title="Actualiser la bibliothèque">
+              <RefreshCw size={14} className={scanningGames ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        </div>
+
+        {/* Game Cards Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+          {filteredGames.length === 0 ? (
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, gridColumn: '1 / -1' }}>
+              {scanningGames ? 'Recherche approfondie des jeux installés...' : 'Aucun jeu correspondant trouvé pour ce filtre.'}
+            </div>
+          ) : (
+            filteredGames.map((g, i) => {
+              const isCurrent = gamingActive && currentGame === g.name;
+
+              return (
+                <div
+                  key={i}
+                  style={{
+                    padding: '14px 16px',
+                    borderRadius: 12,
+                    backgroundColor: isCurrent ? 'rgba(0, 245, 255, 0.08)' : 'rgba(0, 0, 0, 0.3)',
+                    border: isCurrent ? '1px solid rgba(0, 245, 255, 0.4)' : '1px solid rgba(255, 255, 255, 0.06)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#ffffff', marginBottom: 2 }}>{g.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ color: 'var(--cyan)', fontWeight: 600 }}>{g.launcher}</span>
+                        <span>·</span>
+                        <span style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {g.path.split('\\').slice(-2, -1)[0] || g.path}
+                        </span>
+                      </div>
+                    </div>
+
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontFamily: "'JetBrains Mono', monospace",
+                        padding: '3px 8px',
+                        borderRadius: 6,
+                        backgroundColor: isCurrent ? 'rgba(16, 185, 129, 0.15)' : gamingActive ? 'rgba(0, 245, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                        border: isCurrent ? '1px solid rgba(16, 185, 129, 0.4)' : gamingActive ? '1px solid rgba(0, 245, 255, 0.3)' : '1px solid rgba(255, 255, 255, 0.1)',
+                        color: isCurrent ? '#10b981' : gamingActive ? 'var(--cyan)' : 'var(--text-secondary)',
+                        fontWeight: 700,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {isCurrent ? '⚡ HAUTE PRIORITÉ' : gamingActive ? 'PRÊT E-SPORT' : 'DÉTECTÉ'}
+                    </span>
                   </div>
+
+                  <button
+                    onClick={() => toggleGamingMode(g.name)}
+                    className="btn btn-secondary"
+                    style={{
+                      width: '100%',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      padding: '6px 0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <Play size={12} />
+                    <span>{isCurrent ? 'Priorité CPU Actuelle' : 'Allouer Priorité E-Sport'}</span>
+                  </button>
                 </div>
-                <span className="badge badge-cyan" style={{ fontSize: 10 }}>Optimisé</span>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

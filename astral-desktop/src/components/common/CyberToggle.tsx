@@ -6,8 +6,8 @@ export interface CyberToggleProps {
   disabled?: boolean;
   size?: 'sm' | 'md';
   ariaLabel?: string;
-  glowColor?: 'cyan' | 'purple' | 'green';
-  color?: 'cyan' | 'purple' | 'green';
+  glowColor?: 'cyan' | 'purple' | 'green' | 'orange' | 'amber';
+  color?: 'cyan' | 'purple' | 'green' | 'orange' | 'amber';
 }
 
 export default function CyberToggle({
@@ -30,6 +30,7 @@ export default function CyberToggle({
     if (!checked) return 'rgba(30, 41, 59, 0.7)';
     if (effectiveGlow === 'green') return 'linear-gradient(135deg, #10b981 0%, #06b6d4 100%)';
     if (effectiveGlow === 'purple') return 'linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%)';
+    if (effectiveGlow === 'orange' || effectiveGlow === 'amber') return 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)';
     return 'linear-gradient(135deg, #00f5ff 0%, #6366f1 100%)';
   };
 
@@ -37,6 +38,7 @@ export default function CyberToggle({
     if (!checked) return 'inset 0 1px 3px rgba(0, 0, 0, 0.5)';
     if (effectiveGlow === 'green') return '0 0 12px rgba(16, 185, 129, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.4)';
     if (effectiveGlow === 'purple') return '0 0 12px rgba(139, 92, 246, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.4)';
+    if (effectiveGlow === 'orange' || effectiveGlow === 'amber') return '0 0 12px rgba(245, 158, 11, 0.6), inset 0 1px 2px rgba(255, 255, 255, 0.4)';
     return '0 0 14px rgba(0, 245, 255, 0.55), inset 0 1px 2px rgba(255, 255, 255, 0.4)';
   };
 

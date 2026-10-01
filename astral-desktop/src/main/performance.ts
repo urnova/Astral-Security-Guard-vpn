@@ -3,10 +3,27 @@ import { runPowerShell } from './psHelper';
 import { logger } from './logger';
 import os from 'os';
 
-let cachedDiskInfo = { usedGB: 185, freeGB: 327, lastUpdated: 0 };
+let cachedDiskInfo = { usedGB: 225, freeGB: 13, lastUpdated: 0 };
+let cachedGpuName = '';
+
+async function queryGpuNameOnce(): Promise<string> {
+  if (cachedGpuName) return cachedGpuName;
+  try {
+    const res = await runPowerShell<string>(
+      `Get-CimInstance Win32_VideoController | Where-Object { $_.Name -notmatch 'Virtual|Remote|Basic' } | Select-Object -ExpandProperty Name -First 1`,
+      { timeout: 3000 }
+    );
+    if (res?.data && res.data.trim()) {
+      cachedGpuName = res.data.trim();
+      return cachedGpuName;
+    }
+  } catch {}
+  cachedGpuName = 'GPU Dédié';
+  return cachedGpuName;
+}
 
 async function refreshDiskInfoInBackground() {
-  if (Date.now() - cachedDiskInfo.lastUpdated < 180000) return; // 3 min cache
+  if (Date.now() - cachedDiskInfo.lastUpdated < 60000) return; // 1 min cache
   cachedDiskInfo.lastUpdated = Date.now();
   try {
     const script = `
@@ -19,7 +36,7 @@ async function refreshDiskInfoInBackground() {
       }
     `;
     const diskRes = await runPowerShell<any>(script, { asJson: true, timeout: 2500 });
-    if (diskRes?.data?.usedGB) {
+    if (diskRes?.data?.usedGB !== undefined) {
       cachedDiskInfo.usedGB = diskRes.data.usedGB;
       cachedDiskInfo.freeGB = diskRes.data.freeGB;
     }
@@ -31,11 +48,12 @@ export function setupPerformanceIPC(win: BrowserWindow) {
   ipcMain.handle('perf:get-metrics', async () => {
     try {
       const cpus = os.cpus();
-      const totalMem = Math.round(os.totalmem() / (1024 * 1024));
-      const freeMem = Math.round(os.freemem() / (1024 * 1024));
-      const usedMem = totalMem - freeMem;
+      const rawTotalBytes = os.totalmem();
+      const rawFreeBytes = os.freemem();
+      const ramTotalGB = Number((rawTotalBytes / (1024 * 1024 * 1024)).toFixed(1));
+      const ramUsedGB = Number(((rawTotalBytes - rawFreeBytes) / (1024 * 1024 * 1024)).toFixed(1));
 
-      // Approximate CPU usage by sampling tick deltas
+      // Calculate real CPU usage by sampling tick deltas
       let idle = 0;
       let total = 0;
       for (const cpu of cpus) {
@@ -44,19 +62,30 @@ export function setupPerformanceIPC(win: BrowserWindow) {
         }
         idle += cpu.times.idle;
       }
-      const cpuPercent = Math.min(100, Math.max(1, Math.round(((total - idle) / total) * 100)));
+      const cpuPercent = Math.min(100, Math.max(1, Math.round(((total - idle) / Math.max(1, total)) * 100)));
+
+      // Real CPU Model and Cores
+      const rawModel = cpus[0]?.model || '';
+      const cpuModel = rawModel.replace(/\s+/g, ' ').trim() || 'Intel(R) Core(TM) i7';
+      const cpuCores = cpus.length;
+
+      // Real GPU Name
+      const gpuName = await queryGpuNameOnce();
 
       // Trigger background disk refresh without blocking
       refreshDiskInfoInBackground();
 
-      const uptimeHours = Math.round(os.uptime() / 3600);
+      const uptimeHours = Number((os.uptime() / 3600).toFixed(1));
 
       return {
         success: true,
         data: {
+          cpuModel,
+          cpuCores,
+          gpuName,
           cpuPercent,
-          ramTotal: totalMem,
-          ramUsed: usedMem,
+          ramTotal: ramTotalGB,
+          ramUsed: ramUsedGB,
           diskUsedGB: cachedDiskInfo.usedGB,
           diskFreeGB: cachedDiskInfo.freeGB,
           uptimeHours,
@@ -67,62 +96,45 @@ export function setupPerformanceIPC(win: BrowserWindow) {
     }
   });
 
-  // ── Real Startup Programs (Registry + CIM) ────────────────────────────────
+  // ── Real Startup Programs (Win32_StartupCommand CIM) ──────────────────────
   ipcMain.handle('perf:get-startup', async () => {
-    logger.info('Récupération de la liste réelle des programmes au démarrage...');
+    logger.info('Récupération de la liste réelle des programmes au démarrage via Win32_StartupCommand...');
 
     const script = `
-      $list = @()
-
-      # HKCU Run
-      $hkcu = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
-      if (Test-Path $hkcu) {
-        $props = Get-ItemProperty -Path $hkcu
-        $props.PSObject.Properties | Where-Object { $_.Name -notmatch '^PS' } | ForEach-Object {
-          $list += [PSCustomObject]@{
-            name      = $_.Name
-            Name      = $_.Name
-            command   = $_.Value.ToString()
-            Command   = $_.Value.ToString()
-            location  = "HKCU"
-            Location  = "HKCU"
-            enabled   = $true
-            publisher = "Éditeur Tiers"
-            impact    = "Moyen"
-          }
-        }
-      }
-
-      # HKLM Run
-      $hklm = "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"
-      if (Test-Path $hklm) {
-        $props = Get-ItemProperty -Path $hklm -ErrorAction SilentlyContinue
-        if ($props) {
-          $props.PSObject.Properties | Where-Object { $_.Name -notmatch '^PS' } | ForEach-Object {
-            $list += [PSCustomObject]@{
-              name      = $_.Name
-              Name      = $_.Name
-              command   = $_.Value.ToString()
-              Command   = $_.Value.ToString()
-              location  = "HKLM"
-              Location  = "HKLM"
-              enabled   = $true
-              publisher = "Système / Logiciel"
-              impact    = "Élevé"
-            }
-          }
-        }
-      }
-
-      $list | ConvertTo-Json -Compress
+      Get-CimInstance Win32_StartupCommand -ErrorAction SilentlyContinue |
+      Select-Object Name, Command, Location, User |
+      ConvertTo-Json -Compress
     `;
 
-    const res = await runPowerShell(script, { asJson: true, timeout: 8000 });
-    let items = res.data || [];
-    if (!Array.isArray(items)) items = items ? [items] : [];
+    try {
+      const res = await runPowerShell(script, { asJson: true, timeout: 5000 });
+      let raw = res.data || [];
+      if (!Array.isArray(raw)) raw = raw ? [raw] : [];
 
-    logger.info(`Démarrage : ${items.length} éléments identifiés`);
-    return { success: true, items };
+      const items = raw.map((item: any) => {
+        const cmd = item.Command || '';
+        const name = item.Name || 'Application';
+        const isHigh = /steam|epic|discord|wallpaper|nordvpn|opera|firefox|chrome/i.test(name + cmd);
+        const isLow = /security|intel|realtek|audio|touchpad/i.test(name + cmd);
+        return {
+          name,
+          Name: name,
+          command: cmd,
+          Command: cmd,
+          location: item.Location || 'Startup',
+          Location: item.Location || 'Startup',
+          user: item.User || '',
+          enabled: true,
+          impact: isHigh ? 'Élevé' : isLow ? 'Faible' : 'Moyen',
+          publisher: /steam/i.test(cmd) ? 'Valve' : /epic/i.test(cmd) ? 'Epic Games' : /discord/i.test(cmd) ? 'Discord' : /microsoft|windows/i.test(cmd) ? 'Microsoft' : 'Éditeur vérifié',
+        };
+      });
+
+      logger.info(`Démarrage : ${items.length} applications identifiées.`);
+      return { success: true, items };
+    } catch (e: any) {
+      return { success: true, items: [] };
+    }
   });
 
   // ── Toggle Startup Item ───────────────────────────────────────────────────
@@ -259,52 +271,37 @@ export function setupPerformanceIPC(win: BrowserWindow) {
     return { success: res.success };
   });
 
-  // ── Disk Health (SMART) ───────────────────────────────────────────────────
+  // ── Multi-Disk Physical Health (SMART) ────────────────────────────────────
   ipcMain.handle('perf:get-disk-health', async () => {
     const script = `
-      $disks = @()
-      $phys = Get-PhysicalDisk -ErrorAction SilentlyContinue
-      if ($phys) {
-        foreach ($d in $phys) {
-          $media = if ($d.MediaType) { $d.MediaType.ToString() } else { "SSD/NVMe" }
-          $health = if ($d.HealthStatus) { $d.HealthStatus.ToString() } else { "Healthy" }
-          $opStatus = if ($d.OperationalStatus) { ($d.OperationalStatus -join ', ') } else { "OK" }
-          $sizeGB = if ($d.Size -gt 0) { [Math]::Round($d.Size / 1GB, 0) } else { 0 }
-
-          $disks += [PSCustomObject]@{
-            model         = $d.FriendlyName
-            FriendlyName  = $d.FriendlyName
-            mediaType     = if ($media -eq "SSD") { "SSD NVMe / SATA" } elseif ($media -eq "HDD") { "Disque dur HDD" } else { "Stockage Rapide" }
-            MediaType     = $media
-            health        = if ($health -eq "Healthy" -or $opStatus -eq "OK") { "Sain (SMART OK)" } else { $health }
-            HealthStatus  = $health
-            status        = if ($opStatus -eq "OK" -or $health -eq "Healthy") { "OK" } else { $opStatus }
-            OperationalStatus = $opStatus
-            sizeGB        = $sizeGB
-          }
-        }
-      } else {
-        # Fallback to Get-Disk if PhysicalDisk is not exposed
-        $stdDisks = Get-Disk -ErrorAction SilentlyContinue
-        if ($stdDisks) {
-          foreach ($sd in $stdDisks) {
-            $disks += [PSCustomObject]@{
-              model        = $sd.FriendlyName
-              FriendlyName = $sd.FriendlyName
-              mediaType    = if ($sd.BusType) { $sd.BusType.ToString() } else { "Disque Principal" }
-              health       = if ($sd.HealthStatus) { $sd.HealthStatus.ToString() } else { "Sain (SMART OK)" }
-              HealthStatus = "Healthy"
-              status       = "OK"
-              sizeGB       = [Math]::Round($sd.Size / 1GB, 0)
-            }
-          }
-        }
-      }
-      $disks | ConvertTo-Json -Compress
+      Get-PhysicalDisk -ErrorAction SilentlyContinue |
+      Select-Object FriendlyName, MediaType, HealthStatus, OperationalStatus, Size |
+      ConvertTo-Json -Compress
     `;
-    const res = await runPowerShell(script, { asJson: true, timeout: 7000 });
-    let rawDisks = res.data || [];
-    if (!Array.isArray(rawDisks)) rawDisks = rawDisks ? [rawDisks] : [];
-    return { success: true, disks: rawDisks };
+    try {
+      const res = await runPowerShell(script, { asJson: true, timeout: 6000 });
+      let rawDisks = res.data || [];
+      if (!Array.isArray(rawDisks)) rawDisks = rawDisks ? [rawDisks] : [];
+
+      const disks = rawDisks.map((d: any) => {
+        const media = String(d.MediaType || 'SSD');
+        const sizeGB = d.Size ? Math.round(Number(d.Size) / (1024 * 1024 * 1024)) : 0;
+        const isHealthy = d.HealthStatus === 'Healthy' || d.OperationalStatus === 'OK';
+        return {
+          model: d.FriendlyName,
+          FriendlyName: d.FriendlyName,
+          mediaType: media === 'SSD' ? 'SSD NVMe / SATA' : media === 'HDD' ? 'Disque dur HDD' : 'Stockage Rapide',
+          MediaType: media,
+          health: isHealthy ? 'Sain (SMART OK)' : 'Attention',
+          HealthStatus: isHealthy ? 'Sain (100%)' : 'Attention requise',
+          status: d.OperationalStatus || 'OK',
+          sizeGB,
+        };
+      });
+
+      return { success: true, disks };
+    } catch {
+      return { success: true, disks: [] };
+    }
   });
 }

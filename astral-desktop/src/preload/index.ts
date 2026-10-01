@@ -22,8 +22,10 @@ const api = {
 
   // Security (100% Offline & Autonomous)
   startScan: (scanType: 'quick' | 'full') => ipcRenderer.invoke('security:start-scan', scanType),
+  cancelScan: () => ipcRenderer.invoke('security:cancel-scan'),
   quickScan: () => ipcRenderer.invoke('security:start-scan', 'quick'),
   fullScan: () => ipcRenderer.invoke('security:start-scan', 'full'),
+  toggleRealTime: (enabled: boolean) => ipcRenderer.invoke('security:toggle-realtime', enabled),
   getSecurityStatus: () => ipcRenderer.invoke('security:get-status'),
   aiAnalyze: (threats: any[]) => ipcRenderer.invoke('security:ai-analyze', threats),
   runRemediation: (script: string) => ipcRenderer.invoke('security:run-remediation', script),
@@ -52,7 +54,8 @@ const api = {
   getAdapters: () => ipcRenderer.invoke('network:get-adapters'),
   networkGamingOn: () => ipcRenderer.invoke('network:gaming-mode-on'),
   networkGamingOff: () => ipcRenderer.invoke('network:gaming-mode-off'),
-  setDns: (dns: 'cloudflare' | 'google' | 'auto') => ipcRenderer.invoke('network:set-dns', dns),
+  setDns: (dns: 'cloudflare' | 'google' | 'quad9' | 'opendns' | 'auto' | string) => ipcRenderer.invoke('network:set-dns', dns),
+  testDnsLatencies: () => ipcRenderer.invoke('network:test-dns-latencies'),
   getNetworkProcesses: () => ipcRenderer.invoke('network:get-processes'),
   wifiInterference: () => ipcRenderer.invoke('network:wifi-interference'),
   dnsBenchmark: () => ipcRenderer.invoke('network:dns-benchmark'),

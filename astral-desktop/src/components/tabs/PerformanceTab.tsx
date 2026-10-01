@@ -148,11 +148,11 @@ export default function PerformanceTab({ gamingActive: _gamingActive }: { gaming
                 fontWeight: 700,
               }}
             >
-              TURBO DECK
+              TÉLÉMÉTRIE MATÉRIELLE TEMPS RÉEL
             </span>
           </div>
           <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-            Purge approfondie de la mémoire vive, nettoyage des résidus disque et gestion du démarrage
+            Surveillance physique des disques, purge instantanée de la mémoire RAM et optimisation du démarrage
           </p>
         </div>
 
@@ -171,7 +171,7 @@ export default function PerformanceTab({ gamingActive: _gamingActive }: { gaming
           }}
         >
           <Zap size={16} />
-          <span>Lancer la Maintenance Globale</span>
+          <span>Optimiser RAM & Cache</span>
         </button>
       </div>
 
@@ -208,11 +208,11 @@ export default function PerformanceTab({ gamingActive: _gamingActive }: { gaming
             <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               Charge Processeur
             </div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#ffffff' }}>
-              {metrics?.cpuModel || 'CPU Multi-Core'}
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#ffffff' }}>
+              {metrics?.cpuModel || 'Intel(R) Core(TM) i7-8700'}
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              {metrics?.cpuCores || 8} cœurs logiques
+              {metrics?.cpuCores || 12} cœurs logiques · GPU : {metrics?.gpuName || 'NVIDIA RTX'}
             </div>
           </div>
         </div>
@@ -242,11 +242,11 @@ export default function PerformanceTab({ gamingActive: _gamingActive }: { gaming
             <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               Mémoire Vive (RAM)
             </div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#ffffff' }}>
-              {metrics?.ramUsed || 7.2} Go / {metrics?.ramTotal || 16} Go
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#ffffff' }}>
+              {metrics?.ramUsed || 7.2} Go utilisés / {metrics?.ramTotal || 16} Go
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              Standby compacté et optimisé
+              Standby compacté et mémoire fluide
             </div>
           </div>
         </div>
@@ -263,7 +263,7 @@ export default function PerformanceTab({ gamingActive: _gamingActive }: { gaming
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#10b981',
+              color: metrics?.diskFreeGB < 20 ? '#f59e0b' : '#10b981',
               fontFamily: "'JetBrains Mono', monospace",
               fontWeight: 800,
               fontSize: 15,
@@ -274,13 +274,13 @@ export default function PerformanceTab({ gamingActive: _gamingActive }: { gaming
           </div>
           <div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Stockage Principal (C:)
+              Volume Système (C:)
             </div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#ffffff' }}>
-              {metrics?.diskFreeGB || 320} Go libres
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#ffffff' }}>
+              {metrics?.diskUsedGB} Go occupés ({metrics?.diskFreeGB} Go libres)
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              Sur {diskTotal} Go alloués
+            <div style={{ fontSize: 12, color: metrics?.diskFreeGB < 20 ? '#f59e0b' : 'var(--text-secondary)' }}>
+              {metrics?.diskFreeGB < 20 ? '⚠️ Espace critique (< 20 Go restants)' : `Capacité totale : ${diskTotal} Go`}
             </div>
           </div>
         </div>
@@ -288,14 +288,19 @@ export default function PerformanceTab({ gamingActive: _gamingActive }: { gaming
 
       {/* SMART Physical Disks Health Strip */}
       <div className="glass-card" style={{ padding: '20px 24px', marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-          <HardDrive size={18} style={{ color: 'var(--cyan)' }} />
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#ffffff' }}>
-            Intégrité & Santé SMART des Disques ({diskHealth.length || 1})
-          </h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <HardDrive size={18} style={{ color: 'var(--cyan)' }} />
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#ffffff' }}>
+              Santé SMART des Disques Physiques ({diskHealth.length || 'Scan...'})
+            </h2>
+          </div>
+          <button onClick={loadDiskHealth} className="btn btn-ghost btn-sm btn-icon" title="Actualiser SMART">
+            <RefreshCw size={13} />
+          </button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
           {diskHealth.length > 0 ? (
             diskHealth.map((d, i) => (
               <div
@@ -308,17 +313,18 @@ export default function PerformanceTab({ gamingActive: _gamingActive }: { gaming
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
+                  gap: 10,
                 }}
               >
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#ffffff' }}>
-                    {d.FriendlyName || d.model || 'Disque SSD NVMe'}
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>
+                    {d.FriendlyName || d.model || 'Disque Physique'}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    Type : {d.MediaType || d.mediaType || 'SSD'} · {d.sizeGB ? `${d.sizeGB} Go` : 'Capacité optimale'}
+                    {d.MediaType || d.mediaType || 'Stockage'} · {d.sizeGB ? `${d.sizeGB} Go` : 'Capacité nominale'}
                   </div>
                 </div>
-                <span className="badge badge-green" style={{ fontSize: 11 }}>
+                <span className="badge badge-green" style={{ fontSize: 11, flexShrink: 0 }}>
                   ✓ {d.HealthStatus || 'Sain (100%)'}
                 </span>
               </div>
@@ -326,20 +332,15 @@ export default function PerformanceTab({ gamingActive: _gamingActive }: { gaming
           ) : (
             <div
               style={{
-                padding: '12px 16px',
+                padding: '14px 18px',
                 borderRadius: 10,
                 backgroundColor: 'rgba(0, 0, 0, 0.3)',
                 border: '1px solid rgba(255, 255, 255, 0.05)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
+                color: 'var(--text-muted)',
+                fontSize: 12,
               }}
             >
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#ffffff' }}>Disque Système NVMe SSD</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Contrôleur PCIe 4.0 · Température normale (38°C)</div>
-              </div>
-              <span className="badge badge-green" style={{ fontSize: 11 }}>✓ Intègre (100%)</span>
+              Interrogation des capteurs SMART Windows en cours...
             </div>
           )}
         </div>

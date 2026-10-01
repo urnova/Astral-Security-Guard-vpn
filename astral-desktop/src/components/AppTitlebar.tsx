@@ -1,5 +1,6 @@
 import React from 'react';
 import VanguardLogo from './common/VanguardLogo';
+import { useSystem } from '../context/SystemContext';
 
 interface AppTitlebarProps {
   gamingActive: boolean;
@@ -7,6 +8,9 @@ interface AppTitlebarProps {
 }
 
 export default function AppTitlebar({ gamingActive, currentGame }: AppTitlebarProps) {
+  const { securityStatus } = useSystem();
+  const isProtected = securityStatus?.realTimeProtection ?? true;
+
   return (
     <header
       className="app-titlebar titlebar-drag"
@@ -61,6 +65,32 @@ export default function AppTitlebar({ gamingActive, currentGame }: AppTitlebarPr
           <span className="badge badge-cyan" style={{ fontSize: 10, padding: '3px 10px' }}>
             <span className="badge-dot" style={{ animation: 'dotPulse 1.4s infinite' }} />
             GAMING : {currentGame || 'Session Active'}
+          </span>
+        ) : !isProtected ? (
+          <span
+            style={{
+              fontSize: 11,
+              color: '#f59e0b',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 7,
+              backgroundColor: 'rgba(245, 158, 11, 0.1)',
+              padding: '3px 10px',
+              borderRadius: 20,
+              border: '1px solid rgba(245, 158, 11, 0.4)',
+              fontWeight: 600,
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                backgroundColor: '#f59e0b',
+                boxShadow: '0 0 8px rgba(245, 158, 11, 0.7)',
+              }}
+            />
+            Protection Suspendue
           </span>
         ) : (
           <span

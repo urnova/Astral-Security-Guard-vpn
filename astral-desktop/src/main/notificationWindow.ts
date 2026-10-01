@@ -4,13 +4,14 @@ import { logger } from './logger';
 
 let popupWin: BrowserWindow | null = null;
 let hideTimer: NodeJS.Timeout | null = null;
+let currentClickFocusCallback: (() => void) | null = null;
 
-function getPopupPosition(width = 380, height = 160) {
+function getPopupPosition(width = 390, height = 150) {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { workArea } = primaryDisplay;
   return {
-    x: Math.round(workArea.x + workArea.width - width - 20),
-    y: Math.round(workArea.y + workArea.height - height - 20),
+    x: Math.round(workArea.x + workArea.width - width - 24),
+    y: Math.round(workArea.y + workArea.height - height - 24),
   };
 }
 
@@ -19,11 +20,11 @@ export function createOrGetNotificationWindow(): BrowserWindow {
     return popupWin;
   }
 
-  const { x, y } = getPopupPosition(380, 160);
+  const { x, y } = getPopupPosition(390, 150);
 
   popupWin = new BrowserWindow({
-    width: 380,
-    height: 160,
+    width: 390,
+    height: 150,
     x,
     y,
     frame: false,
@@ -40,6 +41,23 @@ export function createOrGetNotificationWindow(): BrowserWindow {
 
   popupWin.setMenu(null);
   popupWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+  // Navigation interceptor for custom actions
+  popupWin.webContents.on('will-navigate', (event, url) => {
+    event.preventDefault();
+    if (url.includes('vanguard://close')) {
+      if (popupWin && !popupWin.isDestroyed()) {
+        popupWin.hide();
+      }
+    } else if (url.includes('vanguard://focus')) {
+      if (currentClickFocusCallback) {
+        currentClickFocusCallback();
+      }
+      if (popupWin && !popupWin.isDestroyed()) {
+        popupWin.hide();
+      }
+    }
+  });
 
   popupWin.on('closed', () => {
     popupWin = null;
@@ -59,21 +77,35 @@ export function showAvastStyleToast({
   type?: 'info' | 'threat' | 'gaming' | 'success';
   onClickFocus?: () => void;
 }) {
+  currentClickFocusCallback = onClickFocus || null;
+
   const win = createOrGetNotificationWindow();
-  const { x, y } = getPopupPosition(380, 160);
-  win.setBounds({ x, y, width: 380, height: 160 });
+  const { x, y } = getPopupPosition(390, 150);
+  win.setBounds({ x, y, width: 390, height: 150 });
 
   const borderColor =
-    type === 'threat' ? 'rgba(239, 68, 68, 0.6)' :
-    type === 'gaming' ? 'rgba(168, 85, 247, 0.6)' :
-    type === 'success' ? 'rgba(16, 185, 129, 0.6)' :
-    'rgba(0, 245, 255, 0.5)';
+    type === 'threat' ? 'rgba(239, 68, 68, 0.7)' :
+    type === 'gaming' ? 'rgba(168, 85, 247, 0.7)' :
+    type === 'success' ? 'rgba(16, 185, 129, 0.7)' :
+    'rgba(0, 245, 255, 0.6)';
 
   const accentColor =
     type === 'threat' ? '#ef4444' :
     type === 'gaming' ? '#c084fc' :
     type === 'success' ? '#10b981' :
     '#00f5ff';
+
+  const glowRgba =
+    type === 'threat' ? 'rgba(239, 68, 68, 0.25)' :
+    type === 'gaming' ? 'rgba(168, 85, 247, 0.25)' :
+    type === 'success' ? 'rgba(16, 185, 129, 0.25)' :
+    'rgba(0, 245, 255, 0.25)';
+
+  const badgeText =
+    type === 'threat' ? 'ALERTE SÉCURITÉ' :
+    type === 'gaming' ? 'MODE E-SPORT' :
+    type === 'success' ? 'SYSTÈME PROTÉGÉ' :
+    'ASTRAL VANGUARD';
 
   const html = `
     <!DOCTYPE html>
@@ -96,22 +128,29 @@ export function showAvastStyleToast({
           .card {
             width: 100%;
             height: 100%;
-            background: rgba(8, 12, 24, 0.94);
+            background: linear-gradient(145deg, rgba(12, 16, 32, 0.96) 0%, rgba(6, 8, 20, 0.98) 100%);
             backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
             border: 1px solid ${borderColor};
-            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8), 0 0 20px ${borderColor};
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85), 0 0 24px ${glowRgba};
             border-radius: 14px;
-            padding: 16px 18px;
+            padding: 14px 16px;
             display: flex;
             flex-direction: column;
             justifyContent: space-between;
             color: #ffffff;
             cursor: pointer;
-            animation: slideIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+          }
+          .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 20px 48px rgba(0, 0, 0, 0.9), 0 0 30px ${glowRgba};
           }
           @keyframes slideIn {
-            from { transform: translateY(30px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
+            from { transform: translateY(24px) scale(0.96); opacity: 0; }
+            to { transform: translateY(0) scale(1); opacity: 1; }
           }
           .header {
             display: flex;
@@ -122,7 +161,7 @@ export function showAvastStyleToast({
           .brand {
             font-size: 10px;
             font-weight: 800;
-            letter-spacing: 0.12em;
+            letter-spacing: 0.14em;
             color: ${accentColor};
             text-transform: uppercase;
             display: flex;
@@ -130,11 +169,33 @@ export function showAvastStyleToast({
             gap: 6px;
           }
           .dot {
-            width: 6px;
-            height: 6px;
+            width: 7px;
+            height: 7px;
             border-radius: 50%;
             background-color: ${accentColor};
-            box-shadow: 0 0 6px ${accentColor};
+            box-shadow: 0 0 8px ${accentColor};
+          }
+          .close-btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #94a3b8;
+            border-radius: 6px;
+            width: 22px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1;
+            transition: all 0.2s ease;
+          }
+          .close-btn:hover {
+            background: rgba(239, 68, 68, 0.4);
+            border-color: #ef4444;
+            color: #ffffff;
+            transform: scale(1.1);
           }
           .title {
             font-size: 13px;
@@ -142,53 +203,68 @@ export function showAvastStyleToast({
             color: #ffffff;
             line-height: 1.3;
             margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
           }
           .message {
             font-size: 11px;
             color: #94a3b8;
             line-height: 1.4;
-            max-height: 48px;
+            max-height: 44px;
             overflow: hidden;
             text-overflow: ellipsis;
           }
           .footer {
-            font-size: 10px;
-            color: rgba(255, 255, 255, 0.35);
             display: flex;
-            justifyContent: flex-end;
+            align-items: center;
+            justifyContent: space-between;
+            font-size: 10px;
+            color: rgba(148, 163, 184, 0.6);
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            padding-top: 6px;
+            margin-top: 4px;
+          }
+          .action-hint {
+            color: ${accentColor};
+            font-weight: 600;
           }
         </style>
       </head>
       <body>
-        <div class="card" id="card">
+        <div class="card" id="card" onclick="window.location.href='vanguard://focus'">
           <div>
             <div class="header">
               <div class="brand">
                 <span class="dot"></span>
-                <span>ASTRAL VANGUARD</span>
+                <span>${badgeText}</span>
               </div>
+              <button class="close-btn" title="Fermer" onclick="event.stopPropagation(); window.location.href='vanguard://close'">✕</button>
             </div>
             <div class="title">${escapeHtml(title)}</div>
             <div class="message">${escapeHtml(message)}</div>
           </div>
-          <div class="footer">Cliquer pour ouvrir</div>
+          <div class="footer">
+            <span>Astral Vanguard v2.4</span>
+            <span class="action-hint">Cliquer pour afficher ➔</span>
+          </div>
         </div>
 
         <script>
-          // High-tech audio chime using Web Audio API
+          // High-tech sound chime
           try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-            osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12); // A5
-            gain.gain.setValueAtTime(0.08, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+            osc.frequency.setValueAtTime(${type === 'threat' ? 440 : 587.33}, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(${type === 'threat' ? 220 : 880}, ctx.currentTime + 0.12);
+            gain.gain.setValueAtTime(0.06, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.32);
             osc.connect(gain);
             gain.connect(ctx.destination);
             osc.start();
-            osc.stop(ctx.currentTime + 0.36);
+            osc.stop(ctx.currentTime + 0.33);
           } catch(e) {}
         </script>
       </body>
@@ -203,7 +279,7 @@ export function showAvastStyleToast({
     if (popupWin && !popupWin.isDestroyed()) {
       popupWin.hide();
     }
-  }, 4800);
+  }, 5000);
 }
 
 export function showAvastStyleDownloadScan({
@@ -220,8 +296,8 @@ export function showAvastStyleDownloadScan({
   isUnsigned?: boolean;
 }) {
   const win = createOrGetNotificationWindow();
-  const { x, y } = getPopupPosition(420, 210);
-  win.setBounds({ x, y, width: 420, height: 210 });
+  const { x, y } = getPopupPosition(420, 190);
+  win.setBounds({ x, y, width: 420, height: 190 });
 
   const isThreat = status === 'threat';
   const isSuspect = status === 'suspect';
@@ -229,13 +305,13 @@ export function showAvastStyleDownloadScan({
 
   const accentColor = isThreat ? '#ef4444' : isSuspect ? '#f59e0b' : '#10b981';
   const statusTitle = isThreat
-    ? '🚨 Menace détectée dans le téléchargement'
+    ? 'Menace détectée dans le téléchargement'
     : isSuspect
-    ? '⚠️ Fichier téléchargé suspect'
-    : '✓ Fichier vérifié et sain';
+    ? 'Fichier téléchargé suspect'
+    : 'Téléchargement sécurisé et intègre';
 
   const statusDesc = isThreat
-    ? `Contenu malveillant : ${threatName || 'Malware bloqué'}`
+    ? `Composant malveillant bloqué : ${threatName || 'Malware'}`
     : isSuspect
     ? `${threatName || 'Anomalie détectée'}`
     : 'Aucune charge hostile détectée. Le fichier peut être exécuté en toute sécurité.';
@@ -261,20 +337,20 @@ export function showAvastStyleDownloadScan({
           .card {
             width: 100%;
             height: 100%;
-            background: rgba(6, 9, 20, 0.96);
-            backdrop-filter: blur(28px);
-            border: 1px solid ${accentColor}80;
-            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85), 0 0 25px ${accentColor}40;
+            background: linear-gradient(145deg, rgba(12, 16, 32, 0.97) 0%, rgba(6, 8, 20, 0.99) 100%);
+            backdrop-filter: blur(24px);
+            border: 1px solid ${accentColor};
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85), 0 0 24px ${accentColor}40;
             border-radius: 14px;
-            padding: 16px 18px;
+            padding: 16px;
             display: flex;
             flex-direction: column;
             justifyContent: space-between;
             color: #ffffff;
-            animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
           }
           @keyframes slideIn {
-            from { transform: translateY(30px); opacity: 0; }
+            from { transform: translateY(24px); opacity: 0; }
             to { transform: translateY(0); opacity: 1; }
           }
           .header {
@@ -286,59 +362,62 @@ export function showAvastStyleDownloadScan({
           .brand {
             font-size: 10px;
             font-weight: 800;
-            letter-spacing: 0.12em;
+            letter-spacing: 0.14em;
             color: ${accentColor};
             text-transform: uppercase;
             display: flex;
             align-items: center;
             gap: 6px;
           }
-          .dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background-color: ${accentColor};
-            box-shadow: 0 0 6px ${accentColor};
+          .close-btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #94a3b8;
+            border-radius: 6px;
+            width: 22px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1;
+            transition: all 0.2s ease;
           }
-          .filename {
+          .close-btn:hover {
+            background: rgba(239, 68, 68, 0.4);
+            border-color: #ef4444;
+            color: #ffffff;
+          }
+          .title {
             font-size: 13px;
             font-weight: 700;
             color: #ffffff;
+            margin-bottom: 2px;
+          }
+          .file-name {
+            font-size: 11px;
+            font-family: monospace;
+            color: ${accentColor};
+            margin-bottom: 4px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            margin-bottom: 4px;
           }
-          .status {
-            font-size: 12px;
-            font-weight: 600;
-            color: ${accentColor};
-            margin-bottom: 2px;
-          }
-          .desc {
+          .message {
             font-size: 11px;
             color: #94a3b8;
-            line-height: 1.4;
+            line-height: 1.35;
           }
-          .actions {
+          .footer {
             display: flex;
-            justify-content: flex-end;
-            gap: 8px;
-            margin-top: 8px;
-          }
-          .btn {
-            padding: 5px 12px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-weight: 600;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            background: rgba(255, 255, 255, 0.08);
-            color: #ffffff;
-            cursor: pointer;
-          }
-          .btn-danger {
-            background: #ef4444;
-            border-color: #ef4444;
+            align-items: center;
+            justifyContent: space-between;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            padding-top: 6px;
+            font-size: 10px;
+            color: rgba(148, 163, 184, 0.6);
           }
         </style>
       </head>
@@ -347,17 +426,17 @@ export function showAvastStyleDownloadScan({
           <div>
             <div class="header">
               <div class="brand">
-                <span class="dot"></span>
-                <span>SENTINELLE TÉLÉCHARGEMENT · ASTRAL VANGUARD</span>
+                <span>SENTINELLE TÉLÉCHARGEMENTS</span>
               </div>
+              <button class="close-btn" title="Fermer" onclick="window.location.href='vanguard://close'">✕</button>
             </div>
-            <div class="filename">📁 ${escapeHtml(fileName)}</div>
-            <div class="status">${escapeHtml(statusTitle)}</div>
-            <div class="desc">${escapeHtml(statusDesc)}</div>
+            <div class="title">${escapeHtml(statusTitle)}</div>
+            <div class="file-name">${escapeHtml(fileName)}</div>
+            <div class="message">${escapeHtml(statusDesc)}</div>
           </div>
-          <div class="actions">
-            ${isThreat ? '<button class="btn btn-danger" onclick="window.close()">Mettre en quarantaine</button>' : ''}
-            <button class="btn" onclick="window.close()">Fermer</button>
+          <div class="footer">
+            <span>Astral Vanguard Defender</span>
+            <span>Moteur heuristique actif</span>
           </div>
         </div>
 
@@ -369,7 +448,7 @@ export function showAvastStyleDownloadScan({
             osc.type = 'triangle';
             osc.frequency.setValueAtTime(${isThreat ? 300 : 659.25}, ctx.currentTime);
             osc.frequency.exponentialRampToValueAtTime(${isThreat ? 150 : 880}, ctx.currentTime + 0.18);
-            gain.gain.setValueAtTime(0.08, ctx.currentTime);
+            gain.gain.setValueAtTime(0.06, ctx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
             osc.connect(gain);
             gain.connect(ctx.destination);

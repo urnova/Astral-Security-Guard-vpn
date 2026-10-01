@@ -58,6 +58,7 @@ interface SystemContextType {
   setKillSwitchEnabled: (v: boolean) => void;
   connectVpn: (node: VpnNode) => Promise<boolean>;
   disconnectVpn: () => Promise<void>;
+  toggleRealTimeProtection: (enabled: boolean) => Promise<void>;
   updateMetrics: (m: Partial<MetricsData>) => void;
   updateSecurityStatus: (s: Partial<SecurityStatusData>) => void;
   refreshTelemetry: () => Promise<void>;
@@ -239,12 +240,46 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, [api]);
 
-  // Initial and periodic refresh
+  // Initial and periodic refresh + IPC tray listeners
   useEffect(() => {
     refreshTelemetry();
     const interval = setInterval(refreshTelemetry, 8000);
-    return () => clearInterval(interval);
-  }, [refreshTelemetry]);
+
+    const cleanupSec = api?.on?.('security:status-changed', (event: any) => {
+      if (event) {
+        setSecurityStatus((prev) => ({
+          ...prev,
+          realTimeProtection: event.realTimeProtection ?? prev.realTimeProtection,
+          antivirusEnabled: event.antivirusEnabled ?? prev.antivirusEnabled,
+        }));
+      }
+    });
+
+    const cleanupVpnQuick = api?.on?.('vpn:quick-connect', (nodeId: string) => {
+      let foundNode: VpnNode | null = null;
+      for (const group of INITIAL_VPN_COUNTRIES) {
+        const n = group.nodes.find((item) => item.id === nodeId);
+        if (n) {
+          foundNode = n;
+          break;
+        }
+      }
+      if (foundNode) {
+        connectVpn(foundNode);
+      }
+    });
+
+    const cleanupVpnDisc = api?.on?.('vpn:quick-disconnect', () => {
+      disconnectVpn();
+    });
+
+    return () => {
+      clearInterval(interval);
+      if (typeof cleanupSec === 'function') cleanupSec();
+      if (typeof cleanupVpnQuick === 'function') cleanupVpnQuick();
+      if (typeof cleanupVpnDisc === 'function') cleanupVpnDisc();
+    };
+  }, [refreshTelemetry, api]);
 
   // VPN Data simulation & timer when connected
   useEffect(() => {
@@ -270,9 +305,10 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
       if (api?.vpnConnect) {
         await api.vpnConnect(node.id);
       } else {
-        await new Promise((r) => setTimeout(r, 1200));
+        await new Promise((r) => setTimeout(r, 900));
       }
       setIsVpnConnected(true);
+      setVpnConnectTime(0);
       setVpnBytesIn(1024 * 512);
       setVpnBytesOut(1024 * 128);
       return true;
@@ -289,12 +325,26 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
       if (api?.vpnDisconnect) {
         await api.vpnDisconnect();
       } else {
-        await new Promise((r) => setTimeout(r, 600));
+        await new Promise((r) => setTimeout(r, 500));
       }
       setIsVpnConnected(false);
+      setActiveVpnNode(null);
     } finally {
       setIsVpnConnecting(false);
     }
+  };
+
+  const toggleRealTimeProtection = async (enabled: boolean) => {
+    setSecurityStatus((prev) => ({
+      ...prev,
+      realTimeProtection: enabled,
+      antivirusEnabled: enabled,
+    }));
+    try {
+      if (api?.toggleRealTime) {
+        await api.toggleRealTime(enabled);
+      }
+    } catch {}
   };
 
   const updateMetrics = (m: Partial<MetricsData>) => {
@@ -325,6 +375,7 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
         setKillSwitchEnabled,
         connectVpn,
         disconnectVpn,
+        toggleRealTimeProtection,
         updateMetrics,
         updateSecurityStatus,
         refreshTelemetry,

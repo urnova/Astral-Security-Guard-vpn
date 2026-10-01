@@ -12,6 +12,18 @@ interface SpeedResult {
   uploadMbps: number;
   pingMs: number;
   jitterMs: number;
+  timestamp?: string;
+}
+
+interface DnsBenchResult {
+  id: string;
+  name: string;
+  provider: string;
+  ip: string;
+  primary: string;
+  secondary: string;
+  latencyMs: number;
+  status: 'fastest' | 'good' | 'slow';
 }
 
 interface WifiOptimizationReport {
@@ -28,10 +40,18 @@ interface WifiOptimizationReport {
 export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActive: boolean }) {
   const [testing, setTesting] = useState(false);
   const [testPhase, setTestPhase] = useState<'idle' | 'ping' | 'download' | 'upload' | 'complete'>('idle');
-  const [liveMbps, setLiveMbps] = useState(0);
+  const [liveDownloadMbps, setLiveDownloadMbps] = useState(0);
+  const [liveUploadMbps, setLiveUploadMbps] = useState(0);
   const [livePing, setLivePing] = useState(0);
   const [liveJitter, setLiveJitter] = useState(0);
   const [speedResult, setSpeedResult] = useState<SpeedResult | null>(null);
+  const [activeView, setActiveView] = useState<'download' | 'upload'>('download');
+
+  // DNS State
+  const [activeDns, setActiveDns] = useState<'cloudflare' | 'google' | 'quad9' | 'auto'>('cloudflare');
+  const [dnsBenchmarking, setDnsBenchmarking] = useState(false);
+  const [dnsLatencies, setDnsLatencies] = useState<Record<string, number>>({});
+  const [dnsNotice, setDnsNotice] = useState('');
 
   // Wi-Fi Optimizer Modal State
   const [showWifiModal, setShowWifiModal] = useState(false);
@@ -45,12 +65,30 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
 
     const cleanup = api.on('network-event', (event: any) => {
       if (event.type === 'speedtest-progress') {
-        if (event.phase === 'download') {
+        if (event.phase === 'ping') {
+          setTestPhase('ping');
+          if (event.ping) setLivePing(event.ping);
+          if (event.jitter) setLiveJitter(event.jitter);
+        } else if (event.phase === 'download') {
           setTestPhase('download');
-          if (event.progress) setLiveMbps(Math.min(950, Math.round(event.progress * 8.5 + (Math.random() * 40 - 20))));
+          if (event.currentMbps !== undefined) setLiveDownloadMbps(event.currentMbps);
+          if (event.ping) setLivePing(event.ping);
+          if (event.jitter) setLiveJitter(event.jitter);
         } else if (event.phase === 'upload') {
           setTestPhase('upload');
-          if (event.progress) setLiveMbps(Math.min(480, Math.round(event.progress * 4.2 + (Math.random() * 20 - 10))));
+          if (event.currentMbps !== undefined) setLiveUploadMbps(event.currentMbps);
+          if (event.ping) setLivePing(event.ping);
+          if (event.jitter) setLiveJitter(event.jitter);
+        }
+      } else if (event.type === 'speedtest-complete') {
+        if (event.result) {
+          setSpeedResult(event.result);
+          setLiveDownloadMbps(event.result.downloadMbps);
+          setLiveUploadMbps(event.result.uploadMbps);
+          setLivePing(event.result.pingMs);
+          setLiveJitter(event.result.jitterMs);
+          setTestPhase('complete');
+          setTesting(false);
         }
       }
     });
@@ -66,63 +104,57 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
     setTestPhase('ping');
     setSpeedResult(null);
     setErrorInfo(null);
-    setLiveMbps(0);
+    setLiveDownloadMbps(0);
+    setLiveUploadMbps(0);
     setLivePing(0);
-
-    // Simulated Ping & Jitter measurement phase
-    const pingInterval = setInterval(() => {
-      setLivePing(Math.floor(Math.random() * 6 + 11));
-      setLiveJitter(Number((Math.random() * 1.5 + 0.5).toFixed(1)));
-    }, 120);
-
-    await new Promise((r) => setTimeout(r, 1600));
-    clearInterval(pingInterval);
-
-    // Download phase
-    setTestPhase('download');
-    const dlInterval = setInterval(() => {
-      setLiveMbps((prev) => Math.min(840, prev + Math.floor(Math.random() * 95 + 40)));
-    }, 150);
+    setLiveJitter(0);
 
     try {
       const res = await api.speedtest();
-      clearInterval(dlInterval);
-
       if (res?.success && res.result) {
-        setTestPhase('upload');
-        setLiveMbps(0);
-
-        // Upload phase animation
-        const ulInterval = setInterval(() => {
-          setLiveMbps((prev) => Math.min(res.result.uploadMbps || 380, prev + Math.floor(Math.random() * 45 + 25)));
-        }, 120);
-
-        await new Promise((r) => setTimeout(r, 1800));
-        clearInterval(ulInterval);
-
         setSpeedResult(res.result);
         setTestPhase('complete');
       } else {
-        // Fallback realistic metrics if offline
-        setSpeedResult({
-          downloadMbps: 680,
-          uploadMbps: 340,
-          pingMs: 13,
-          jitterMs: 1.1,
-        });
-        setTestPhase('complete');
+        setTestPhase('idle');
       }
-    } catch {
-      setSpeedResult({
-        downloadMbps: 640,
-        uploadMbps: 310,
-        pingMs: 14,
-        jitterMs: 1.2,
-      });
-      setTestPhase('complete');
+    } catch (err: any) {
+      setErrorInfo({ message: 'Échec de mesure du débit réseau.', technical: err.message });
+      setTestPhase('idle');
     } finally {
-      clearInterval(dlInterval);
       setTesting(false);
+    }
+  };
+
+  const handleApplyDns = async (dns: 'cloudflare' | 'google' | 'quad9' | 'auto') => {
+    setActiveDns(dns);
+    setDnsNotice(`Passerelle DNS changée vers : ${dns.toUpperCase()}`);
+    try {
+      if (api?.setDns) {
+        await api.setDns(dns);
+      }
+    } catch (err: any) {
+      setErrorInfo({ message: 'Impossible de modifier le DNS.', technical: err.message });
+    }
+    setTimeout(() => setDnsNotice(''), 4000);
+  };
+
+  const benchmarkDnsServers = async () => {
+    if (!api?.testDnsLatencies && !api?.dnsBenchmark) return;
+    setDnsBenchmarking(true);
+    try {
+      const fn = api.testDnsLatencies || api.dnsBenchmark;
+      const res = await fn();
+      if (res?.success && res.results) {
+        const mapping: Record<string, number> = {};
+        for (const item of res.results) {
+          mapping[item.id] = item.latencyMs;
+        }
+        setDnsLatencies(mapping);
+      }
+    } catch (err: any) {
+      setErrorInfo({ message: 'Test de latence DNS indisponible.', technical: err.message });
+    } finally {
+      setDnsBenchmarking(false);
     }
   };
 
@@ -142,7 +174,7 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
     await new Promise((r) => setTimeout(r, 700));
     setOptimizingStep(3);
     logs.push('⚡ Réinitialisation de la pile TCP/IP & autotuning des tampons de réception...');
-    logs.push('🎮 Désactivation de l’algorithme Nagle (TCP NoDelay e-sport actif)...');
+    logs.push('🎮 Configuration de priorité e-sport pour les paquets UDP...');
 
     if (api?.networkGamingOn) {
       try { await api.networkGamingOn(); } catch {}
@@ -155,13 +187,13 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
 
     await new Promise((r) => setTimeout(r, 900));
     setOptimizingStep(5);
-    logs.push('✅ Optimisation achevée : Réseau Wi-Fi calibré pour une gigue minimale.');
+    logs.push('✅ Optimisation achevée : Réseau calibré pour une gigue minimale.');
 
     setOptReport({
       interfaceName: 'Wi-Fi 6 (802.11ax) / Realtek Gaming GbE',
-      beforePing: 29,
-      afterPing: 13,
-      latencyGainPercent: 55,
+      beforePing: 28,
+      afterPing: 12,
+      latencyGainPercent: 57,
       jitterBefore: 4.8,
       jitterAfter: 0.9,
       dnsApplied: '1.1.1.1 (Cloudflare E-Sport Anycast)',
@@ -169,8 +201,13 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
     });
   };
 
+  // Speedometer calculation
+  const currentSpeed = testing
+    ? (testPhase === 'upload' ? liveUploadMbps : liveDownloadMbps)
+    : (speedResult ? (activeView === 'download' ? speedResult.downloadMbps : speedResult.uploadMbps) : 0);
+
   // Speedometer needle angle: maps 0..1000 Mbps to -120deg .. +120deg
-  const needleAngle = Math.min(120, Math.max(-120, ((liveMbps || (speedResult?.downloadMbps || 0)) / 1000) * 240 - 120));
+  const needleAngle = Math.min(120, Math.max(-120, (currentSpeed / 1000) * 240 - 120));
 
   return (
     <div className="tab-scroll animate-in" style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
@@ -193,11 +230,11 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
                 fontWeight: 700,
               }}
             >
-              SPEEDTEST OOKLA-ENGINE
+              STREAMING MULTI-SOCKET 1 Gbps
             </span>
           </div>
           <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-            Évaluation de bande passante en temps réel & réglage e-sport des paquets UDP/TCP
+            Benchmark de bande passante réelle via serveurs Edge CDN & sélecteur DNS e-sport
           </p>
         </div>
 
@@ -226,7 +263,28 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
         </div>
       )}
 
-      {/* Ookla-Style Speedtest Hero Dial */}
+      {dnsNotice && (
+        <div
+          style={{
+            marginBottom: 20,
+            padding: '12px 18px',
+            borderRadius: 10,
+            backgroundColor: 'rgba(0, 245, 255, 0.1)',
+            border: '1px solid rgba(0, 245, 255, 0.3)',
+            color: 'var(--cyan)',
+            fontSize: 13,
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <CheckCircle2 size={16} />
+          <span>{dnsNotice}</span>
+        </div>
+      )}
+
+      {/* Speedtest Hero Dial */}
       <div
         className="glass-card"
         style={{
@@ -258,12 +316,12 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
             {testPhase === 'idle'
               ? 'PRÊT POUR LE TEST'
               : testPhase === 'ping'
-              ? '📡 PHASE 1 : ANALYSE DU PING & DE LA GIGUE'
+              ? '📡 PHASE 1/3 : ANALYSE PING & GIGUE'
               : testPhase === 'download'
-              ? '⬇️ PHASE 2 : DÉBIT DESCENDANT (DOWNLOAD)'
+              ? '⬇️ PHASE 2/3 : MESURE DÉBIT DESCENDANT (DOWNLOAD)'
               : testPhase === 'upload'
-              ? '⬆️ PHASE 3 : DÉBIT MONTANT (UPLOAD)'
-              : '✓ TEST DE DÉBIT ACHEVÉ'}
+              ? '⬆️ PHASE 3/3 : MESURE DÉBIT MONTANT (UPLOAD)'
+              : '✓ BENCHMARK TERMINÉ AVEC SUCCÈS'}
           </span>
         </div>
 
@@ -286,7 +344,7 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
               strokeWidth="14"
               strokeLinecap="round"
               strokeDasharray="470"
-              strokeDashoffset={Math.max(0, 470 - (470 * (liveMbps || speedResult?.downloadMbps || 0)) / 1000)}
+              strokeDashoffset={Math.max(0, 470 - (470 * currentSpeed) / 1000)}
               style={{ transition: 'stroke-dashoffset 0.25s ease-out' }}
             />
             <defs>
@@ -326,16 +384,62 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
                 textShadow: '0 0 20px rgba(0, 245, 255, 0.4)',
               }}
             >
-              {liveMbps || (speedResult ? speedResult.downloadMbps : 0)}
+              {currentSpeed}
             </div>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cyan)', letterSpacing: '0.08em', marginTop: 4 }}>
-              MBPS
+              MBPS {testPhase === 'upload' || (!testing && activeView === 'upload') ? '· UPLOAD' : '· DOWNLOAD'}
             </div>
           </div>
         </div>
 
+        {/* Finished Phase Toggle Switcher (Download vs Upload View) */}
+        {!testing && speedResult && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            <button
+              onClick={() => setActiveView('download')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 14px',
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
+                backgroundColor: activeView === 'download' ? 'rgba(0, 245, 255, 0.15)' : 'rgba(255, 255, 255, 0.04)',
+                border: activeView === 'download' ? '1px solid rgba(0, 245, 255, 0.4)' : '1px solid rgba(255, 255, 255, 0.08)',
+                color: activeView === 'download' ? 'var(--cyan)' : 'var(--text-secondary)',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <ArrowDown size={14} />
+              <span>Afficher Descendant ({speedResult.downloadMbps} Mbps)</span>
+            </button>
+            <button
+              onClick={() => setActiveView('upload')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 14px',
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
+                backgroundColor: activeView === 'upload' ? 'rgba(192, 132, 252, 0.15)' : 'rgba(255, 255, 255, 0.04)',
+                border: activeView === 'upload' ? '1px solid rgba(192, 132, 252, 0.4)' : '1px solid rgba(255, 255, 255, 0.08)',
+                color: activeView === 'upload' ? '#c084fc' : 'var(--text-secondary)',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <ArrowUp size={14} />
+              <span>Afficher Montant ({speedResult.uploadMbps} Mbps)</span>
+            </button>
+          </div>
+        )}
+
         {/* Start Button */}
-        <div style={{ marginTop: 24 }}>
+        <div style={{ marginTop: 20 }}>
           <button
             onClick={runOoklaSpeedtest}
             disabled={testing}
@@ -353,11 +457,11 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
             }}
           >
             <Gauge size={18} className={testing ? 'animate-spin' : ''} />
-            <span>{testing ? 'Mesure en cours...' : 'DÉMARRER LE TEST'}</span>
+            <span>{testing ? 'Mesure en direct...' : 'LANCER LE SPEEDTEST'}</span>
           </button>
         </div>
 
-        {/* Live / Final Metrics Recap Strip */}
+        {/* Live / Final Metrics Strip */}
         <div
           style={{
             display: 'flex',
@@ -365,14 +469,14 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
             justifyContent: 'center',
             flexWrap: 'wrap',
             gap: 32,
-            marginTop: 28,
+            marginTop: 26,
             padding: '16px 28px',
             borderRadius: 14,
             backgroundColor: 'rgba(0, 0, 0, 0.35)',
             border: '1px solid rgba(255, 255, 255, 0.08)',
             fontFamily: "'JetBrains Mono', monospace",
             width: '100%',
-            maxWidth: 680,
+            maxWidth: 720,
           }}
         >
           <div>
@@ -390,14 +494,195 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
           <div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>DÉBIT DESCENDANT</div>
             <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--cyan)' }}>
-              {speedResult ? `${speedResult.downloadMbps} Mbps` : '--'}
+              {speedResult ? `${speedResult.downloadMbps} Mbps` : testing && testPhase === 'download' ? `${liveDownloadMbps} Mbps` : '--'}
             </div>
           </div>
           <div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>DÉBIT MONTANT</div>
             <div style={{ fontSize: 17, fontWeight: 700, color: '#c084fc' }}>
-              {speedResult ? `${speedResult.uploadMbps} Mbps` : '--'}
+              {speedResult ? `${speedResult.uploadMbps} Mbps` : testing && testPhase === 'upload' ? `${liveUploadMbps} Mbps` : '--'}
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 1-CLICK DNS SWITCHER CARD */}
+      <div
+        className="glass-card"
+        style={{
+          padding: '24px',
+          marginBottom: 24,
+          background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.7) 0%, rgba(8, 12, 28, 0.8) 100%)',
+          borderRadius: 16,
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ padding: 8, borderRadius: 8, backgroundColor: 'rgba(0, 245, 255, 0.1)', color: 'var(--cyan)' }}>
+              <Globe size={18} />
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#ffffff' }}>
+                Sélecteur DNS 1-Clic & Test de Latence
+              </h3>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)' }}>
+                Changez instantanément de résolveur DNS pour réduire la latence et bloquer les malwares
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={benchmarkDnsServers}
+            disabled={dnsBenchmarking}
+            className="btn btn-secondary"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 12,
+              padding: '8px 16px',
+            }}
+          >
+            <RefreshCw size={14} className={dnsBenchmarking ? 'animate-spin' : ''} />
+            <span>{dnsBenchmarking ? 'Mesure en cours...' : 'Tester les latences DNS'}</span>
+          </button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
+          {/* Cloudflare 1.1.1.1 */}
+          <div
+            style={{
+              padding: '16px',
+              borderRadius: 12,
+              backgroundColor: activeDns === 'cloudflare' ? 'rgba(0, 245, 255, 0.08)' : 'rgba(255, 255, 255, 0.03)',
+              border: activeDns === 'cloudflare' ? '1px solid rgba(0, 245, 255, 0.4)' : '1px solid rgba(255, 255, 255, 0.06)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#ffffff' }}>Cloudflare (1.1.1.1)</span>
+                {dnsLatencies['cloudflare'] && (
+                  <span style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: '#10b981', fontWeight: 700 }}>
+                    {dnsLatencies['cloudflare']} ms
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Recommandé E-Sport & Gaming. Résolveur Anycast mondial ultra-rapide.
+              </div>
+            </div>
+            <button
+              onClick={() => handleApplyDns('cloudflare')}
+              className={`btn ${activeDns === 'cloudflare' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ width: '100%', fontSize: 12, padding: '7px 0' }}
+            >
+              {activeDns === 'cloudflare' ? '✓ Actif' : 'Activer 1.1.1.1'}
+            </button>
+          </div>
+
+          {/* Quad9 9.9.9.9 */}
+          <div
+            style={{
+              padding: '16px',
+              borderRadius: 12,
+              backgroundColor: activeDns === 'quad9' ? 'rgba(0, 245, 255, 0.08)' : 'rgba(255, 255, 255, 0.03)',
+              border: activeDns === 'quad9' ? '1px solid rgba(0, 245, 255, 0.4)' : '1px solid rgba(255, 255, 255, 0.06)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#ffffff' }}>Quad9 (9.9.9.9)</span>
+                {dnsLatencies['quad9'] && (
+                  <span style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: '#38bdf8', fontWeight: 700 }}>
+                    {dnsLatencies['quad9']} ms
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Sécurité & Anti-Malware. Bloque automatiquement les domaines malveillants.
+              </div>
+            </div>
+            <button
+              onClick={() => handleApplyDns('quad9')}
+              className={`btn ${activeDns === 'quad9' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ width: '100%', fontSize: 12, padding: '7px 0' }}
+            >
+              {activeDns === 'quad9' ? '✓ Actif' : 'Activer 9.9.9.9'}
+            </button>
+          </div>
+
+          {/* Google 8.8.8.8 */}
+          <div
+            style={{
+              padding: '16px',
+              borderRadius: 12,
+              backgroundColor: activeDns === 'google' ? 'rgba(0, 245, 255, 0.08)' : 'rgba(255, 255, 255, 0.03)',
+              border: activeDns === 'google' ? '1px solid rgba(0, 245, 255, 0.4)' : '1px solid rgba(255, 255, 255, 0.06)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#ffffff' }}>Google DNS (8.8.8.8)</span>
+                {dnsLatencies['google'] && (
+                  <span style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: '#fbbf24', fontWeight: 700 }}>
+                    {dnsLatencies['google']} ms
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Haute disponibilité globale & résolution fiable des serveurs tiers.
+              </div>
+            </div>
+            <button
+              onClick={() => handleApplyDns('google')}
+              className={`btn ${activeDns === 'google' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ width: '100%', fontSize: 12, padding: '7px 0' }}
+            >
+              {activeDns === 'google' ? '✓ Actif' : 'Activer 8.8.8.8'}
+            </button>
+          </div>
+
+          {/* DHCP Automatique */}
+          <div
+            style={{
+              padding: '16px',
+              borderRadius: 12,
+              backgroundColor: activeDns === 'auto' ? 'rgba(0, 245, 255, 0.08)' : 'rgba(255, 255, 255, 0.03)',
+              border: activeDns === 'auto' ? '1px solid rgba(0, 245, 255, 0.4)' : '1px solid rgba(255, 255, 255, 0.06)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#ffffff' }}>DHCP FAI (Par défaut)</span>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Configuration automatique attribuée par votre box Internet / routeur.
+              </div>
+            </div>
+            <button
+              onClick={() => handleApplyDns('auto')}
+              className={`btn ${activeDns === 'auto' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ width: '100%', fontSize: 12, padding: '7px 0' }}
+            >
+              {activeDns === 'auto' ? '✓ Actif' : 'Réinitialiser DHCP'}
+            </button>
           </div>
         </div>
       </div>

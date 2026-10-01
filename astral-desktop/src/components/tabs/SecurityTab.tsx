@@ -13,12 +13,13 @@ const api = (window as any).vanguard;
 type ScanState = 'idle' | 'scanning' | 'done';
 
 export default function SecurityTab() {
-  const { securityStatus: ctxSec, updateSecurityStatus } = useSystem();
+  const { securityStatus: ctxSec, toggleRealTimeProtection, updateSecurityStatus } = useSystem();
   const [scanState, setScanState] = useState<ScanState>('idle');
   const [scanType, setScanType] = useState<'quick' | 'full'>('quick');
   const [scanProgress, setScanProgress] = useState<number>(0);
   const [currentScanFile, setCurrentScanFile] = useState<string>('');
   const [filesScanned, setFilesScanned] = useState<number>(0);
+  const [scannedDrives, setScannedDrives] = useState<string[]>(['C:']);
   const [threats, setThreats] = useState<any[]>([]);
   const [exclusions, setExclusions] = useState<string[]>([]);
   const [newExclusionPath, setNewExclusionPath] = useState('');
@@ -28,10 +29,9 @@ export default function SecurityTab() {
   const [activeSubTab, setActiveSubTab] = useState<'protection' | 'schedule' | 'exclusions'>('protection');
 
   // Protection Toggles
-  const [realTimeGuard, setRealTimeGuard] = useState(true);
   const [downloadShield, setDownloadShield] = useState(true);
   const [memoryHeuristic, setMemoryHeuristic] = useState(true);
-  const [scheduledFrequency, setScheduledFrequency] = useState<'daily' | 'weekly'>('weekly');
+  const [scheduledFrequency, setScheduledFrequency] = useState<'2h' | '6h' | 'daily' | 'weekly'>('weekly');
   const [scheduledEnabled, setScheduledEnabled] = useState(true);
 
   useEffect(() => {
@@ -39,15 +39,19 @@ export default function SecurityTab() {
     api.getExclusions?.().then((r: any) => setExclusions(r.paths || []));
 
     const cleanup = api.on?.('security:scan-event', (event: any) => {
-      if (event.type === 'scan-progress') {
+      if (event.type === 'scan-started') {
+        if (event.drives) setScannedDrives(event.drives);
+      } else if (event.type === 'scan-progress') {
         setScanProgress(event.percent);
         if (event.currentFile) setCurrentScanFile(event.currentFile);
         if (event.filesScanned) setFilesScanned(event.filesScanned);
+        if (event.drives) setScannedDrives(event.drives);
       } else if (event.type === 'scan-complete') {
         setScanProgress(100);
         setScanState('done');
         setThreats(event.threats || []);
         if (event.filesScanned) setFilesScanned(event.filesScanned);
+        if (event.drives) setScannedDrives(event.drives);
       } else if (event.type === 'scan-error') {
         setScanState('idle');
         setErrorInfo({ message: 'Échec de l’analyse.', technical: event.error });
@@ -67,7 +71,7 @@ export default function SecurityTab() {
     setScanState('scanning');
     setScanProgress(5);
     setFilesScanned(0);
-    setCurrentScanFile('Initialisation des flux de mémoire...');
+    setCurrentScanFile('Initialisation de l\'audit forensique multi-couches...');
     setErrorInfo(null);
     setThreats([]);
 
@@ -89,12 +93,12 @@ export default function SecurityTab() {
   const updateSignatures = async () => {
     if (!api) return;
     setUpdatingSignatures(true);
-    setNotice('Mise à jour des signatures en cours...');
+    setNotice('Synchronisation des signatures Microsoft Defender & Astral Core...');
     try {
       const res = await api.updateSignatures();
       if (res?.success) {
         updateSecurityStatus({ signaturesVersion: res.version || 'v2.4.1026-LIVE' });
-        setNotice('✅ Signatures du moteur Astral Vanguard actualisées.');
+        setNotice('✅ Base virale et heuristique synchronisée avec succès.');
       }
     } finally {
       setUpdatingSignatures(false);
@@ -121,6 +125,8 @@ export default function SecurityTab() {
     }
   };
 
+  const isProtected = ctxSec?.realTimeProtection ?? true;
+
   return (
     <div className="tab-scroll animate-in" style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
       {/* Header */}
@@ -136,17 +142,17 @@ export default function SecurityTab() {
                 fontFamily: "'JetBrains Mono', monospace",
                 padding: '3px 8px',
                 borderRadius: 6,
-                backgroundColor: 'rgba(0, 245, 255, 0.1)',
-                border: '1px solid rgba(0, 245, 255, 0.3)',
-                color: 'var(--cyan)',
+                backgroundColor: 'rgba(16, 217, 160, 0.1)',
+                border: '1px solid rgba(16, 217, 160, 0.3)',
+                color: 'var(--green)',
                 fontWeight: 700,
               }}
             >
-              ASTRAL VANGUARD CORE v2.4
+              DEFENDER ENGINE SYNCHRONISÉ
             </span>
           </div>
           <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-            Moteur de protection heuristique autonome & bouclier e-sport temps réel
+            Supervision heuristique résidente & analyse multi-disques autonome
           </p>
         </div>
 
@@ -158,7 +164,7 @@ export default function SecurityTab() {
             style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
           >
             <RefreshCw size={13} className={updatingSignatures ? 'animate-spin' : ''} />
-            <span>{updatingSignatures ? 'Mise à jour...' : 'Actualiser Signatures'}</span>
+            <span>{updatingSignatures ? 'Actualisation...' : 'Actualiser Signatures'}</span>
           </button>
         </div>
       </div>
@@ -189,15 +195,17 @@ export default function SecurityTab() {
         </div>
       )}
 
-      {/* Main Scan Hero Card with Radar Animation */}
+      {/* Main Scan Hero Card with Radar Animation & Real-Time Shield Toggle */}
       <div
         className="glass-card"
         style={{
           padding: '28px 32px',
           marginBottom: 24,
-          background: 'linear-gradient(135deg, rgba(8, 12, 28, 0.85) 0%, rgba(15, 23, 42, 0.75) 100%)',
-          border: '1px solid rgba(0, 245, 255, 0.2)',
-          boxShadow: '0 12px 36px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
+          background: isProtected
+            ? 'linear-gradient(135deg, rgba(8, 12, 28, 0.85) 0%, rgba(15, 23, 42, 0.75) 100%)'
+            : 'linear-gradient(135deg, rgba(30, 15, 8, 0.9) 0%, rgba(20, 10, 10, 0.85) 100%)',
+          border: isProtected ? '1px solid rgba(0, 245, 255, 0.25)' : '1px solid rgba(245, 158, 11, 0.4)',
+          boxShadow: isProtected ? '0 12px 36px rgba(0, 0, 0, 0.5)' : '0 12px 36px rgba(245, 158, 11, 0.15)',
           borderRadius: 16,
           position: 'relative',
           overflow: 'hidden',
@@ -206,30 +214,93 @@ export default function SecurityTab() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 24 }}>
           {/* Left info & controls */}
           <div style={{ flex: '1 1 340px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span className="badge badge-cyan" style={{ fontSize: 11, padding: '3px 10px' }}>
-                <span className="badge-dot" style={{ animation: 'dotPulse 1.4s infinite' }} />
-                BOUCLIER ACTIF
-              </span>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                Signatures : <strong style={{ color: '#ffffff' }}>{ctxSec.signaturesVersion}</strong>
-              </span>
+            {/* Master Real-Time Shield Switcher Bar */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {isProtected ? (
+                  <span className="badge badge-green" style={{ fontSize: 11, padding: '4px 12px' }}>
+                    <span className="badge-dot" />
+                    BOUCLIER ACTIF · SYSTÈME PROTÉGÉ
+                  </span>
+                ) : (
+                  <span className="badge badge-amber" style={{ fontSize: 11, padding: '4px 12px', border: '1px solid rgba(245, 158, 11, 0.5)' }}>
+                    <span className="badge-dot" style={{ backgroundColor: '#f59e0b' }} />
+                    PROTECTION SUSPENDUE · SYSTÈME EXPOSÉ
+                  </span>
+                )}
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  Signatures : <strong style={{ color: '#ffffff' }}>{ctxSec.signaturesVersion}</strong>
+                </span>
+              </div>
+
+              {/* Instant Manual Deactivation / Reactivation Toggle */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '5px 12px',
+                  borderRadius: 10,
+                  backgroundColor: 'rgba(0, 0, 0, 0.4)',
+                  border: isProtected ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(245, 158, 11, 0.4)',
+                }}
+              >
+                <span style={{ fontSize: 12, fontWeight: 700, color: isProtected ? 'var(--cyan)' : '#f59e0b' }}>
+                  {isProtected ? 'Bouclier Temps Réel' : 'Bouclier Désactivé'}
+                </span>
+                <CyberToggle
+                  checked={isProtected}
+                  onChange={(val) => toggleRealTimeProtection(val)}
+                  glowColor={isProtected ? 'cyan' : 'orange'}
+                  ariaLabel="Basculer la protection en temps réel"
+                />
+              </div>
             </div>
+
+            {!isProtected && (
+              <div
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                  border: '1px solid rgba(245, 158, 11, 0.35)',
+                  marginBottom: 14,
+                  fontSize: 12,
+                  color: '#fbbf24',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <AlertTriangle size={15} />
+                  <span>La protection en temps réel est coupée. Les exécutables ne sont plus filtrés en direct.</span>
+                </div>
+                <button
+                  onClick={() => toggleRealTimeProtection(true)}
+                  className="btn btn-sm btn-primary"
+                  style={{ fontSize: 11, padding: '4px 10px', backgroundColor: '#f59e0b', color: '#000', fontWeight: 800 }}
+                >
+                  Réactiver
+                </button>
+              </div>
+            )}
 
             <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#ffffff' }}>
               {scanState === 'scanning'
-                ? 'Analyse heuristique en cours...'
+                ? `Analyse forensique en cours sur disques [${scannedDrives.join(', ')}]...`
                 : scanState === 'done'
-                ? 'Analyse système terminée'
-                : 'Système intègre et sécurisé'}
+                ? 'Analyse système achevée'
+                : 'Système sous surveillance résidente'}
             </h2>
 
             <p style={{ margin: '6px 0 18px 0', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
               {scanState === 'scanning'
-                ? 'Le moteur examine les flux de mémoire, les entrées système critiques et les bibliothèques d’exécution.'
+                ? 'Le moteur inspecte les processus actifs, entrées de persistance Registre/WMI, tâches cachées et fichiers critiques.'
                 : scanState === 'done'
-                ? `Analyse achevée avec succès. ${filesScanned} cibles vérifiées, ${threats.length} menace(s).`
-                : 'Scannez votre machine pour détecter les anomalies de registre, injecteurs non autorisés et menaces dormantes.'}
+                ? `Analyse achevée avec succès. ${filesScanned} cibles vérifiées sur tous les disques, ${threats.length} anomalie(s).`
+                : `Auditez l'ensemble de vos disques [${scannedDrives.join(', ')}] pour déceler les altérations système, modules non autorisés et processus furtifs.`}
             </p>
 
             {/* Scan Type Selector & Action Buttons */}
@@ -241,14 +312,14 @@ export default function SecurityTab() {
                     className={`btn btn-sm ${scanType === 'quick' ? 'btn-primary' : 'btn-ghost'}`}
                     style={{ fontSize: 12, padding: '6px 14px' }}
                   >
-                    Rapide (Mémoire & Registres)
+                    Rapide (Mémoire & Run)
                   </button>
                   <button
                     onClick={() => setScanType('full')}
                     className={`btn btn-sm ${scanType === 'full' ? 'btn-primary' : 'btn-ghost'}`}
                     style={{ fontSize: 12, padding: '6px 14px' }}
                   >
-                    Approfondie (Système Entier)
+                    Forensique (Tous Disques {scannedDrives.join(', ')})
                   </button>
                 </div>
 
@@ -399,22 +470,28 @@ export default function SecurityTab() {
       {/* SUBTAB 1: PROTECTION MODULES */}
       {activeSubTab === 'protection' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
-          {/* Card 1: File Guard */}
+          {/* Card 1: File Guard & Real-Time Shield */}
           <div className="glass-card" style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ padding: 8, borderRadius: 8, backgroundColor: 'rgba(0, 245, 255, 0.1)', color: 'var(--cyan)' }}>
+                <div style={{ padding: 8, borderRadius: 8, backgroundColor: isProtected ? 'rgba(0, 245, 255, 0.1)' : 'rgba(245, 158, 11, 0.1)', color: isProtected ? 'var(--cyan)' : '#f59e0b' }}>
                   <FileCheck size={20} />
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#ffffff' }}>Bouclier de Fichiers</h3>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Interception I/O en temps réel</div>
+                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#ffffff' }}>Bouclier Temps Réel</h3>
+                  <div style={{ fontSize: 11, color: isProtected ? 'var(--text-muted)' : '#f59e0b' }}>
+                    {isProtected ? 'Surveillance active des I/O fichiers' : 'Désactivé par l’utilisateur'}
+                  </div>
                 </div>
               </div>
-              <CyberToggle checked={realTimeGuard} onChange={setRealTimeGuard} />
+              <CyberToggle
+                checked={isProtected}
+                onChange={(val) => toggleRealTimeProtection(val)}
+                glowColor={isProtected ? 'cyan' : 'orange'}
+              />
             </div>
             <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Vérifie l'intégrité de chaque fichier accédé ou exécuté par vos applications et jeux.
+              Interception en temps réel de chaque fichier accédé ou exécuté. Désactivable à tout moment selon vos besoins.
             </p>
           </div>
 
@@ -433,7 +510,7 @@ export default function SecurityTab() {
               <CyberToggle checked={downloadShield} onChange={setDownloadShield} glowColor="purple" />
             </div>
             <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Déclenche le modal cyber instantané dès qu'une archive ou un exécutable est reçu.
+              Déclenche le modal cyber instantané dès qu'une archive ou un exécutable est reçu dans vos téléchargements.
             </p>
           </div>
 
@@ -452,7 +529,7 @@ export default function SecurityTab() {
               <CyberToggle checked={memoryHeuristic} onChange={setMemoryHeuristic} glowColor="green" />
             </div>
             <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Surveille la table d'adresses pour bloquer les tentatives de hollowing ou de crochet DLL.
+              Surveille la table d'adresses pour bloquer les tentatives de hollowing ou d'injection de DLL clandestine.
             </p>
           </div>
         </div>
@@ -460,7 +537,7 @@ export default function SecurityTab() {
 
       {/* SUBTAB 2: SCHEDULED SCANS */}
       {activeSubTab === 'schedule' && (
-        <div className="glass-card" style={{ padding: 24, maxWidth: 650 }}>
+        <div className="glass-card" style={{ padding: 24, maxWidth: 720 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <Calendar size={22} style={{ color: 'var(--cyan)' }} />
@@ -469,27 +546,59 @@ export default function SecurityTab() {
                 <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Exécution silencieuse en arrière-plan sans ralentir vos jeux</div>
               </div>
             </div>
-            <CyberToggle checked={scheduledEnabled} onChange={setScheduledEnabled} />
+            <CyberToggle
+              checked={scheduledEnabled}
+              onChange={(val) => {
+                setScheduledEnabled(val);
+                api?.setSchedule?.({ enabled: val, frequency: scheduledFrequency });
+              }}
+            />
           </div>
 
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 20px 0' }}>
             Astral Vanguard planifie une inspection de sécurité périodique. Si un jeu est en cours d'exécution, l'analyse attend automatiquement la fermeture du jeu pour ne pas impacter votre FPS.
           </p>
 
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <button
-              onClick={() => setScheduledFrequency('daily')}
+              onClick={() => {
+                setScheduledFrequency('2h');
+                api?.setSchedule?.({ frequency: '2h', enabled: scheduledEnabled });
+              }}
+              className={`btn btn-sm ${scheduledFrequency === '2h' ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ fontSize: 12 }}
+            >
+              Toutes les 2 heures
+            </button>
+            <button
+              onClick={() => {
+                setScheduledFrequency('6h');
+                api?.setSchedule?.({ frequency: '6h', enabled: scheduledEnabled });
+              }}
+              className={`btn btn-sm ${scheduledFrequency === '6h' ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ fontSize: 12 }}
+            >
+              Toutes les 6 heures
+            </button>
+            <button
+              onClick={() => {
+                setScheduledFrequency('daily');
+                api?.setSchedule?.({ frequency: 'daily', enabled: scheduledEnabled });
+              }}
               className={`btn btn-sm ${scheduledFrequency === 'daily' ? 'btn-primary' : 'btn-ghost'}`}
               style={{ fontSize: 12 }}
             >
               Tous les jours (03:00)
             </button>
             <button
-              onClick={() => setScheduledFrequency('weekly')}
+              onClick={() => {
+                setScheduledFrequency('weekly');
+                api?.setSchedule?.({ frequency: 'weekly', enabled: scheduledEnabled });
+              }}
               className={`btn btn-sm ${scheduledFrequency === 'weekly' ? 'btn-primary' : 'btn-ghost'}`}
               style={{ fontSize: 12 }}
             >
-              Toutes les semaines (Dimanche 03:00)
+              Toutes les semaines
             </button>
           </div>
         </div>

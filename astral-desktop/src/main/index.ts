@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut, Notification } from 'electron';
 import path from 'path';
+import fs from 'fs';
 import { logger } from './logger';
 import { isAdmin, getWindowsBuildInfo, relaunchElevated } from './adminHelper';
 import { setupAutoUpdater } from './updater';
@@ -41,16 +42,7 @@ import { showAvastStyleToast } from './notificationWindow';
 
 // ── Avast-Style & Native Windows Notification Dispatcher ─────────────────────
 export function notifyUser(title: string, body: string, isCritical = false) {
-  if (mainWin && !mainWin.isDestroyed()) {
-    mainWin.webContents.send('notification:trigger', {
-      type: isCritical ? 'threat' : 'info',
-      title,
-      message: body,
-      critical: isCritical,
-    });
-  }
-
-  // Always show Avast-style custom desktop popup window
+  let desktopToastShown = false;
   try {
     showAvastStyleToast({
       title,
@@ -64,8 +56,19 @@ export function notifyUser(title: string, body: string, isCritical = false) {
         }
       },
     });
+    desktopToastShown = true;
   } catch (err: any) {
-    logger.warn('[Notification] Error showing Avast-style popup:', err.message);
+    logger.warn('[Notification] Error showing Avast-style popup, falling back:', err.message);
+  }
+
+  // Fallback to in-app bottom toaster ONLY if desktop toast could not be shown
+  if (!desktopToastShown && mainWin && !mainWin.isDestroyed()) {
+    mainWin.webContents.send('notification:trigger', {
+      type: isCritical ? 'threat' : 'info',
+      title,
+      message: body,
+      critical: isCritical,
+    });
   }
 }
 
@@ -186,77 +189,210 @@ export function toggleOverlay() {
 }
 
 // ── System Tray ─────────────────────────────────────────────────────────────
+let trayGamingActive = false;
+let trayRealTimeShield = true;
+let trayVpnConnected = false;
+let trayVpnNodeName = '';
+
+function getTrayIconImage(): Electron.NativeImage {
+  const possiblePaths = [
+    path.join(__dirname, '../../dist/icon.ico'),
+    path.join(__dirname, '../../public/icon.ico'),
+    path.join(process.resourcesPath || '', 'app.asar/dist/icon.ico'),
+    path.join(process.resourcesPath || '', 'dist/icon.ico'),
+    path.join(process.resourcesPath || '', 'public/icon.ico'),
+    path.join(process.env.PUBLIC || '', 'icon.ico'),
+    path.join(process.env.DIST || '', 'icon.ico'),
+    path.join(__dirname, '../../dist/logo.png'),
+    path.join(__dirname, '../../public/logo.png'),
+  ];
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      try {
+        const img = nativeImage.createFromPath(p);
+        if (!img.isEmpty()) return img;
+      } catch {}
+    }
+  }
+  return nativeImage.createEmpty();
+}
+
+export function updateTrayState(opts: {
+  gamingActive?: boolean;
+  realTimeShield?: boolean;
+  vpnConnected?: boolean;
+  vpnNodeName?: string;
+}) {
+  if (opts.gamingActive !== undefined) trayGamingActive = opts.gamingActive;
+  if (opts.realTimeShield !== undefined) trayRealTimeShield = opts.realTimeShield;
+  if (opts.vpnConnected !== undefined) trayVpnConnected = opts.vpnConnected;
+  if (opts.vpnNodeName !== undefined) trayVpnNodeName = opts.vpnNodeName;
+
+  if (!tray) return;
+
+  const showAndFocus = () => {
+    if (mainWin) {
+      if (mainWin.isMinimized()) mainWin.restore();
+      if (!mainWin.isVisible()) mainWin.show();
+      mainWin.focus();
+    }
+  };
+
+  const menu = Menu.buildFromTemplate([
+    {
+      label: '⚡ Astral Vanguard v2.4',
+      enabled: false,
+    },
+    {
+      label: 'Ouvrir Astral Vanguard',
+      click: showAndFocus,
+    },
+    { type: 'separator' },
+    {
+      label: trayRealTimeShield
+        ? '🛡️ Bouclier Temps Réel : ACTIF (Suspendre)'
+        : '⚠️ Bouclier Temps Réel : SUSPENDU (Réactiver)',
+      click: () => {
+        trayRealTimeShield = !trayRealTimeShield;
+        mainWin?.webContents.send('security:status-changed', {
+          realTimeProtection: trayRealTimeShield,
+          antivirusEnabled: trayRealTimeShield,
+        });
+        updateTrayState({ realTimeShield: trayRealTimeShield });
+      },
+    },
+    {
+      label: '🌐 VPN Astral Security',
+      submenu: [
+        {
+          label: `Statut : ${trayVpnConnected ? `Connecté (${trayVpnNodeName || 'Tunnel Actif'})` : 'Déconnecté'}`,
+          enabled: false,
+        },
+        { type: 'separator' },
+        {
+          label: '⚡ Connexion Rapide (Paris, FR - 12ms)',
+          click: () => {
+            showAndFocus();
+            mainWin?.webContents.send('vpn:quick-connect', 'fr-par-01');
+          },
+        },
+        {
+          label: '🇩🇪 Francfort, Allemagne (18ms)',
+          click: () => {
+            showAndFocus();
+            mainWin?.webContents.send('vpn:quick-connect', 'de-fra-01');
+          },
+        },
+        {
+          label: '🇨🇭 Zurich, Suisse (19ms)',
+          click: () => {
+            showAndFocus();
+            mainWin?.webContents.send('vpn:quick-connect', 'ch-zur-01');
+          },
+        },
+        {
+          label: '🇺🇸 New York, USA (78ms)',
+          click: () => {
+            showAndFocus();
+            mainWin?.webContents.send('vpn:quick-connect', 'us-nyc-01');
+          },
+        },
+        {
+          label: '🇯🇵 Tokyo, Japon (185ms)',
+          click: () => {
+            showAndFocus();
+            mainWin?.webContents.send('vpn:quick-connect', 'jp-tyo-01');
+          },
+        },
+        { type: 'separator' },
+        {
+          label: '🔴 Déconnecter le VPN',
+          enabled: trayVpnConnected,
+          click: () => {
+            mainWin?.webContents.send('vpn:quick-disconnect');
+          },
+        },
+      ],
+    },
+    {
+      label: '🔍 Sécurité & Antivirus',
+      submenu: [
+        {
+          label: '⚡ Lancer une Analyse Rapide (Heuristique)',
+          click: () => {
+            showAndFocus();
+            mainWin?.webContents.send('navigation:go-to', 'security');
+            mainWin?.webContents.send('action:trigger-scan', 'quick');
+          },
+        },
+        {
+          label: '🖥️ Lancer une Analyse Approfondie Multi-Disques',
+          click: () => {
+            showAndFocus();
+            mainWin?.webContents.send('navigation:go-to', 'security');
+            mainWin?.webContents.send('action:trigger-scan', 'full');
+          },
+        },
+      ],
+    },
+    {
+      label: trayGamingActive ? '🎮 Désactiver le Mode E-Sport' : '🎮 Activer le Mode E-Sport Gaming',
+      click: () => {
+        mainWin?.webContents.send('gaming:toggle-manual');
+      },
+    },
+    {
+      label: '🖥️ Afficher / Masquer HUD (Ctrl+Shift+O)',
+      click: () => toggleOverlay(),
+    },
+    {
+      label: '🧹 Purger la Mémoire RAM Express',
+      click: () => {
+        mainWin?.webContents.send('perf:trigger-clean-ram');
+      },
+    },
+    { type: 'separator' },
+    {
+      label: '⚙️ Paramètres',
+      click: () => {
+        showAndFocus();
+        mainWin?.webContents.send('navigation:go-to', 'settings');
+      },
+    },
+    {
+      label: 'Quitter Définitivement',
+      click: () => {
+        minimizeToTray = false;
+        app.exit(0);
+      },
+    },
+  ]);
+
+  tray.setContextMenu(menu);
+  tray.setToolTip(
+    `Astral Vanguard — ${trayGamingActive ? 'Mode Gaming Actif' : trayRealTimeShield ? 'Bouclier Actif' : 'Protection Suspendue'} | VPN ${trayVpnConnected ? 'Sécurisé' : 'Inactif'}`
+  );
+}
+
 function createTray() {
   try {
-    const iconPath = path.join(process.env.PUBLIC!, 'icon.ico');
-    const icon = nativeImage.createFromPath(iconPath);
-    tray = new Tray(icon.resize({ width: 16, height: 16 }));
+    const icon = getTrayIconImage();
+    tray = new Tray(icon);
 
-    const updateMenu = (gamingActive = false) => {
-      const menu = Menu.buildFromTemplate([
-        {
-          label: 'Ouvrir Astral Vanguard',
-          click: () => {
-            if (mainWin) {
-              if (mainWin.isMinimized()) mainWin.restore();
-              mainWin.show();
-              mainWin.focus();
-            }
-          },
-        },
-        { type: 'separator' },
-        {
-          label: '🛡️ Lancer une analyse rapide Defender',
-          click: () => {
-            if (mainWin) {
-              if (mainWin.isMinimized()) mainWin.restore();
-              mainWin.show();
-              mainWin.focus();
-              mainWin.webContents.send('action:trigger-scan');
-            }
-          },
-        },
-        {
-          label: gamingActive ? '🎮 Désactiver le mode Gaming' : '🎮 Activer le mode Gaming manuel',
-          click: () => {
-            mainWin?.webContents.send('gaming:toggle-manual');
-          },
-        },
-        {
-          label: '🖥️ Afficher / Masquer HUD (Ctrl+Shift+O)',
-          click: () => toggleOverlay(),
-        },
-        {
-          label: '⚙️ Paramètres',
-          click: () => {
-            if (mainWin) {
-              if (mainWin.isMinimized()) mainWin.restore();
-              mainWin.show();
-              mainWin.focus();
-              mainWin.webContents.send('navigation:go-to', 'settings');
-            }
-          },
-        },
-        { type: 'separator' },
-        {
-          label: 'Quitter Définitivement',
-          click: () => {
-            minimizeToTray = false;
-            app.exit(0);
-          },
-        },
-      ]);
+    updateTrayState({});
 
-      tray?.setContextMenu(menu);
-      tray?.setToolTip(`Astral Vanguard — ${gamingActive ? 'Mode Gaming Actif' : 'Protection résidente active'}`);
-    };
-
-    updateMenu(false);
+    tray.on('click', () => {
+      if (mainWin) {
+        if (mainWin.isMinimized()) mainWin.restore();
+        if (!mainWin.isVisible()) mainWin.show();
+        mainWin.focus();
+      }
+    });
 
     tray.on('double-click', () => {
       if (mainWin) {
         if (mainWin.isMinimized()) mainWin.restore();
-        mainWin.show();
+        if (!mainWin.isVisible()) mainWin.show();
         mainWin.focus();
       }
     });
