@@ -2,7 +2,7 @@
   "name": "astral-vanguard",
   "version": "2.4.0",
   "description": "Astral Vanguard - Gaming, Security & Anti-Lag Suite",
-  "author": "urnova",
+  "author": "Astral Security",
   "private": true,
   "main": "dist-electron/main/index.js",
   "scripts": {
@@ -14,12 +14,14 @@
   "build": {
     "appId": "com.astral.vanguard",
     "productName": "Astral Vanguard",
+    "copyright": "Copyright © 2026 Astral Security. Tous droits réservés.",
     "directories": {
       "output": "dist-electron/release"
     },
     "win": {
       "target": "nsis",
       "icon": "public/icon.ico",
+      "publisherName": "Astral Security",
       "requestedExecutionLevel": "requireAdministrator"
     },
     "nsis": {
@@ -30,6 +32,7 @@
       "allowElevation": true,
       "installerIcon": "public/installer.ico",
       "uninstallerIcon": "public/uninstaller.ico",
+      "installerHeaderIcon": "public/installer.ico",
       "deleteAppDataOnUninstall": true
     },
     "extraResources": [
