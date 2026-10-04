@@ -148,7 +148,7 @@ export default function DownloadScanModal() {
   const handleDelete = async () => {
     if (!api || !currentScan) return;
     try {
-      const res = await api.deleteScannedFile(currentScan.filePath);
+      const res = await api.deleteScannedFile(currentScan.id, true);
       if (res?.success) {
         setActionNotice('✅ Fichier supprimé définitivement.');
         setTimeout(() => setCurrentScan(null), 1800);
@@ -163,7 +163,7 @@ export default function DownloadScanModal() {
   const handleQuarantine = async () => {
     if (!api || !currentScan) return;
     try {
-      const res = await api.quarantineScannedFile(currentScan.filePath);
+      const res = await api.quarantineScannedFile(currentScan.id);
       if (res?.success) {
         setActionNotice('🛡️ Fichier isolé et placé en quarantaine.');
         setTimeout(() => setCurrentScan(null), 1800);
@@ -176,8 +176,8 @@ export default function DownloadScanModal() {
   };
 
   const handleOpenFolder = () => {
-    if (api && currentScan?.filePath) {
-      api.openScannedFolder(currentScan.filePath);
+    if (api && currentScan?.id) {
+      api.openScannedFolder(currentScan.id);
     }
   };
 

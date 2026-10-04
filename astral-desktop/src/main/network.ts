@@ -330,47 +330,63 @@ export function setupNetworkIPC(win: BrowserWindow) {
   ipcMain.handle('network:dns-benchmark', handleDnsBenchmark);
 
 
-  // ── Apply DNS (With Virtual & Third-Party Adapter Exclusion) ──────────────
+  // ── Apply DNS (With Virtual & Third-Party Adapter Exclusion - Hardened Phase 1)
   ipcMain.handle('network:set-dns', async (_, dnsType: string) => {
-    logger.info(`Application du DNS : ${dnsType}`);
+    const cleanDns = typeof dnsType === 'string' ? dnsType.trim().toLowerCase() : '';
+    const ALLOWED_DNS_TYPES = new Set(['cloudflare', 'google', 'quad9', 'opendns', 'auto']);
+    if (!ALLOWED_DNS_TYPES.has(cleanDns)) {
+      logger.warn(`[Security] network:set-dns: Type de DNS rejeté (${dnsType})`);
+      return { success: false, error: 'Type de DNS non autorisé ou invalide.' };
+    }
 
+    logger.info(`Application du DNS : ${cleanDns}`);
     const vpnCoex = await detectThirdPartyVpn();
 
     let primary = '1.1.1.1';
     let secondary = '1.0.0.1';
 
-    if (dnsType === 'google') {
+    if (cleanDns === 'google') {
       primary = '8.8.8.8';
       secondary = '8.8.4.4';
-    } else if (dnsType === 'quad9') {
+    } else if (cleanDns === 'quad9') {
       primary = '9.9.9.9';
       secondary = '149.112.112.112';
-    } else if (dnsType === 'opendns') {
+    } else if (cleanDns === 'opendns') {
       primary = '208.67.222.222';
       secondary = '208.67.220.220';
     }
 
-    const script = `
-      # Cibler UNIQUEMENT les adaptateurs physiques et exclure les tunnels VPN (Nord, TAP, Wintun, WireGuard...)
-      $adapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {
-        $_.Status -eq 'Up' -and
-        $_.InterfaceDescription -notmatch 'Nord|TAP|Wintun|WireGuard|Tailscale|Proton|Express|Surfshark|Mullvad|Cloudflare|Virtual|Hyper-V|VMware|VPN' -and
-        $_.Name -notmatch 'Nord|TAP|Wintun|WireGuard|Tailscale|Proton|Express|Surfshark|Mullvad|vEthernet'
-      }
-      foreach ($a in $adapters) {
-        if ('${dnsType}' -eq 'auto') {
-          Set-DnsClientServerAddress -InterfaceIndex $a.InterfaceIndex -ResetServerAddresses -ErrorAction SilentlyContinue
-        } else {
-          Set-DnsClientServerAddress -InterfaceIndex $a.InterfaceIndex -ServerAddresses ("${primary}", "${secondary}") -ErrorAction SilentlyContinue
+    const isAuto = cleanDns === 'auto';
+    const script = isAuto
+      ? `
+        $adapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {
+          $_.Status -eq 'Up' -and
+          $_.InterfaceDescription -notmatch 'Nord|TAP|Wintun|WireGuard|Tailscale|Proton|Express|Surfshark|Mullvad|Cloudflare|Virtual|Hyper-V|VMware|VPN' -and
+          $_.Name -notmatch 'Nord|TAP|Wintun|WireGuard|Tailscale|Proton|Express|Surfshark|Mullvad|vEthernet'
         }
-      }
-      Clear-DnsClientCache
-      ipconfig /flushdns | Out-Null
-      [PSCustomObject]@{ applied = $true; adapterCount = @($adapters).Count } | ConvertTo-Json -Compress
-    `;
+        foreach ($a in $adapters) {
+          Set-DnsClientServerAddress -InterfaceIndex $a.InterfaceIndex -ResetServerAddresses -ErrorAction SilentlyContinue
+        }
+        Clear-DnsClientCache
+        ipconfig /flushdns | Out-Null
+        [PSCustomObject]@{ applied = $true; adapterCount = @($adapters).Count } | ConvertTo-Json -Compress
+      `
+      : `
+        $adapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {
+          $_.Status -eq 'Up' -and
+          $_.InterfaceDescription -notmatch 'Nord|TAP|Wintun|WireGuard|Tailscale|Proton|Express|Surfshark|Mullvad|Cloudflare|Virtual|Hyper-V|VMware|VPN' -and
+          $_.Name -notmatch 'Nord|TAP|Wintun|WireGuard|Tailscale|Proton|Express|Surfshark|Mullvad|vEthernet'
+        }
+        foreach ($a in $adapters) {
+          Set-DnsClientServerAddress -InterfaceIndex $a.InterfaceIndex -ServerAddresses ('${primary}', '${secondary}') -ErrorAction SilentlyContinue
+        }
+        Clear-DnsClientCache
+        ipconfig /flushdns | Out-Null
+        [PSCustomObject]@{ applied = $true; adapterCount = @($adapters).Count } | ConvertTo-Json -Compress
+      `;
 
     const res = await runPowerShell(script, { asJson: true });
-    let message = dnsType === 'auto' ? 'DNS réinitialisé en mode automatique (DHCP)' : `DNS ${dnsType.toUpperCase()} appliqué (${primary}) !`;
+    let message = isAuto ? 'DNS réinitialisé en mode automatique (DHCP)' : `DNS ${cleanDns.toUpperCase()} appliqué (${primary}) !`;
     if (vpnCoex.thirdPartyActive) {
       message += ` (Tunnels ${vpnCoex.vpnName} préservés sans altération)`;
     }

@@ -13,6 +13,12 @@ import cp from 'child_process';
 import { logger } from './logger';
 import { runPowerShell } from './psHelper';
 import { showAvastStyleDownloadScan } from './notificationWindow';
+import {
+  createScanSession,
+  quarantineSessionFile,
+  deleteSessionFile,
+  openSessionFolder,
+} from './scanSession';
 
 export interface DownloadScannerConfig {
   enabled: boolean;
@@ -25,6 +31,7 @@ export interface DownloadScannerConfig {
 
 export interface ScanResult {
   id: string;
+  scanId?: string;
   filePath: string;
   fileName: string;
   sizeBytes: number;
@@ -245,11 +252,65 @@ async function waitForFileStabilization(filePath: string, maxWaitMs = 20000): Pr
   return fs.existsSync(filePath);
 }
 
+function buildAndStoreScanResult(
+  filePath: string,
+  data: {
+    status: 'safe' | 'suspect' | 'threat' | 'unavailable' | 'error';
+    threatName?: string;
+    errorReason?: string;
+    isUnsigned?: boolean;
+    scanDurationMs: number;
+  }
+): ScanResult {
+  const fileName = path.basename(filePath);
+  const ext = path.extname(filePath).toLowerCase();
+  let sizeBytes = 0;
+  try {
+    if (fs.existsSync(filePath)) {
+      sizeBytes = fs.statSync(filePath).size;
+    }
+  } catch {}
+
+  let sessionScanId: string | null = null;
+  try {
+    if (fs.existsSync(filePath)) {
+      const session = createScanSession(filePath, {
+        status: data.status,
+        threatName: data.threatName,
+        isUnsigned: data.isUnsigned,
+      });
+      sessionScanId = session.scanId;
+    }
+  } catch (err: any) {
+    logger.warn('[DownloadScanner] Could not register scan session:', err.message);
+  }
+
+  const finalId = sessionScanId || (Date.now().toString() + Math.random().toString().slice(2, 6));
+
+  const res: ScanResult = {
+    id: finalId,
+    scanId: finalId,
+    filePath,
+    fileName,
+    sizeBytes,
+    ext,
+    status: data.status,
+    threatName: data.threatName,
+    errorReason: data.errorReason,
+    isUnsigned: data.isUnsigned,
+    scanDurationMs: data.scanDurationMs,
+    timestamp: new Date().toISOString(),
+  };
+
+  recentScans.unshift(res);
+  if (recentScans.length > 50) recentScans.pop();
+  return res;
+}
+
 /**
  * Executes targeted scan of a single file using MpCmdRun.exe
  */
 export async function scanSingleFile(filePath: string): Promise<ScanResult> {
-  const id = Date.now().toString() + Math.random().toString().slice(2, 6);
   const fileName = path.basename(filePath);
   const ext = path.extname(filePath).toLowerCase();
   let sizeBytes = 0;
@@ -290,20 +351,11 @@ export async function scanSingleFile(filePath: string): Promise<ScanResult> {
       if (code === 2 || combinedOutput.includes('threats detected') || combinedOutput.includes('found threats')) {
         const puaCheck = checkAmbiguousDefenderOutput(combinedOutput);
         if (puaCheck.isAmbiguous) {
-          const res: ScanResult = {
-            id,
-            filePath,
-            fileName,
-            sizeBytes,
-            ext,
+          return resolve(buildAndStoreScanResult(filePath, {
             status: 'suspect',
             threatName: `Application potentiellement indésirable (${puaCheck.name})`,
             scanDurationMs,
-            timestamp: new Date().toISOString(),
-          };
-          recentScans.unshift(res);
-          if (recentScans.length > 50) recentScans.pop();
-          return resolve(res);
+          }));
         }
 
         let threatName = 'Menace détectée par Windows Defender';
@@ -312,20 +364,11 @@ export async function scanSingleFile(filePath: string): Promise<ScanResult> {
           threatName = match[1].trim();
         }
 
-        const res: ScanResult = {
-          id,
-          filePath,
-          fileName,
-          sizeBytes,
-          ext,
+        return resolve(buildAndStoreScanResult(filePath, {
           status: 'threat',
           threatName,
           scanDurationMs,
-          timestamp: new Date().toISOString(),
-        };
-        recentScans.unshift(res);
-        if (recentScans.length > 50) recentScans.pop();
-        return resolve(res);
+        }));
       }
 
       // 2. Strong Suspicious Signals (Double extension, spoofed system binary, or PUA warning)
@@ -358,103 +401,56 @@ export async function scanSingleFile(filePath: string): Promise<ScanResult> {
 
       if (isMasqueraded) {
         logger.warn(`[DownloadScanner] Double extension masquée détectée: ${fileName}`);
-        const res: ScanResult = {
-          id,
-          filePath,
-          fileName,
-          sizeBytes,
-          ext,
+        return resolve(buildAndStoreScanResult(filePath, {
           status: 'suspect',
           threatName: 'Extension masquée trompeuse détectée (ex: .pdf.exe)',
           isUnsigned,
           scanDurationMs,
-          timestamp: new Date().toISOString(),
-        };
-        recentScans.unshift(res);
-        if (recentScans.length > 50) recentScans.pop();
-        return resolve(res);
+        }));
       }
 
       if (isSpoofedSys) {
         logger.warn(`[DownloadScanner] Nom d'exécutable système trompeur dans Téléchargements: ${fileName}`);
-        const res: ScanResult = {
-          id,
-          filePath,
-          fileName,
-          sizeBytes,
-          ext,
+        return resolve(buildAndStoreScanResult(filePath, {
           status: 'suspect',
           threatName: `Nom trompeur imitant un binaire système Windows (${fileName})`,
           isUnsigned,
           scanDurationMs,
-          timestamp: new Date().toISOString(),
-        };
-        recentScans.unshift(res);
-        if (recentScans.length > 50) recentScans.pop();
-        return resolve(res);
+        }));
       }
 
       if (puaCheck.isAmbiguous) {
         logger.warn(`[DownloadScanner] Signal PUA/PUP ambigu: ${puaCheck.name}`);
-        const res: ScanResult = {
-          id,
-          filePath,
-          fileName,
-          sizeBytes,
-          ext,
+        return resolve(buildAndStoreScanResult(filePath, {
           status: 'suspect',
           threatName: `Application potentiellement indésirable (${puaCheck.name})`,
           isUnsigned,
           scanDurationMs,
-          timestamp: new Date().toISOString(),
-        };
-        recentScans.unshift(res);
-        if (recentScans.length > 50) recentScans.pop();
-        return resolve(res);
+        }));
       }
 
       // 3. Clean File (Including unsigned indie dev software/tools)
-      // Unsigned alone is marked as safe with isUnsigned info badge: ZERO intrusive popups!
-      const res: ScanResult = {
-        id,
-        filePath,
-        fileName,
-        sizeBytes,
-        ext,
+      return resolve(buildAndStoreScanResult(filePath, {
         status: 'safe',
         threatName: undefined,
         isUnsigned,
         scanDurationMs,
-        timestamp: new Date().toISOString(),
-      };
-      recentScans.unshift(res);
-      if (recentScans.length > 50) recentScans.pop();
-      return resolve(res);
+      }));
     });
 
     proc.on('error', (err) => {
       clearTimeout(timeout);
       logger.warn('[DownloadScanner] Error spawning MpCmdRun:', err.message);
       const isNotFound = err.message.includes('ENOENT');
-      const res: ScanResult = {
-        id,
-        filePath,
-        fileName,
-        sizeBytes,
-        ext,
+      resolve(buildAndStoreScanResult(filePath, {
         status: isNotFound ? 'unavailable' : 'error',
         errorReason: isNotFound
           ? 'Moteur Microsoft Defender (MpCmdRun.exe) introuvable sur cette machine Windows.'
           : `Erreur d'accès au service antivirus : ${err.message}`,
         scanDurationMs: Date.now() - startTime,
-        timestamp: new Date().toISOString(),
-      };
-      recentScans.unshift(res);
-      if (recentScans.length > 50) recentScans.pop();
-      resolve(res);
+      }));
     });
   });
-
 }
 
 /**
@@ -567,7 +563,10 @@ async function handleFileEvent(folderPath: string, filename: string) {
       } else if (result.status === 'safe') {
         // Auto-unblock Windows Zone.Identifier ADS for verified clean files
         try {
-          runPowerShell(`Unblock-File -LiteralPath "${filePath.replace(/"/g, '`"')}" -ErrorAction SilentlyContinue`, { timeout: 3000 });
+          const adsPath = `${filePath}:Zone.Identifier`;
+          if (fs.existsSync(adsPath)) {
+            fs.unlinkSync(adsPath);
+          }
         } catch {}
 
         activeMainWindow.webContents.send('notification:trigger', {
@@ -751,74 +750,40 @@ export function setupDownloadScannerIPC(win: BrowserWindow) {
     return { success: true, result };
   });
 
-  // ── Action: Delete File ──────────────────────────────────────────────────
-  ipcMain.handle('download-scanner:delete-file', async (_, targetPath: string) => {
-    logger.info(`[DownloadScanner] Deleting infected/suspicious file: ${targetPath}`);
-    try {
-      if (fs.existsSync(targetPath)) {
-        fs.unlinkSync(targetPath);
-        return { success: true, message: 'Fichier supprimé définitivement.' };
-      }
-      return { success: false, error: 'Fichier introuvable ou déjà supprimé.' };
-    } catch (err: any) {
-      // If permission denied, attempt elevated PowerShell delete
-      try {
-        const res = await runPowerShell(
-          `Remove-Item -Path "${targetPath.replace(/"/g, '`"')}" -Force -ErrorAction Stop`
-        );
-        if (res.success) {
-          return { success: true, message: 'Fichier supprimé avec succès.' };
-        }
-      } catch {}
-      logger.error(`[DownloadScanner] Failed to delete file ${targetPath}:`, err.message);
-      return { success: false, error: `Erreur lors de la suppression : ${err.message}` };
-    }
+  // ── Action: Delete File via scanId (Requires explicit confirmation) ──────
+  ipcMain.handle('download-scanner:delete', async (_, args: { scanId: string; confirmed?: boolean }) => {
+    const scanId = typeof args === 'object' && args !== null ? args.scanId : String(args || '');
+    const confirmed = typeof args === 'object' && args !== null ? Boolean(args.confirmed) : false;
+    return await deleteSessionFile(scanId, confirmed);
   });
 
-  // ── Action: Quarantine File ──────────────────────────────────────────────
-  ipcMain.handle('download-scanner:quarantine-file', async (_, targetPath: string) => {
-    logger.info(`[DownloadScanner] Quarantining file: ${targetPath}`);
-    try {
-      if (!fs.existsSync(targetPath)) {
-        return { success: false, error: 'Fichier introuvable.' };
-      }
-      const quarantineDir = path.join(
-        process.env.APPDATA || 'C:\\',
-        'AstralVanguard',
-        'quarantine'
-      );
-      if (!fs.existsSync(quarantineDir)) {
-        fs.mkdirSync(quarantineDir, { recursive: true });
-      }
-
-      const dest = path.join(
-        quarantineDir,
-        `${Date.now()}_${path.basename(targetPath)}.vanguard_locked`
-      );
-      fs.renameSync(targetPath, dest);
-
-      return {
-        success: true,
-        message: 'Fichier isolé et placé dans le dossier de quarantaine sécurisé de Vanguard.',
-        quarantinePath: dest,
-      };
-    } catch (err: any) {
-      logger.error(`[DownloadScanner] Quarantine failed for ${targetPath}:`, err.message);
-      return { success: false, error: `Échec de la mise en quarantaine : ${err.message}` };
-    }
+  // ── Action: Quarantine File via scanId ─────────────────────────────────────
+  ipcMain.handle('download-scanner:quarantine', async (_, args: { scanId: string }) => {
+    const scanId = typeof args === 'object' && args !== null ? args.scanId : String(args || '');
+    return await quarantineSessionFile(scanId);
   });
 
-  // ── Action: Open File Location in Windows Explorer ────────────────────────
-  ipcMain.handle('download-scanner:open-folder', (_, targetPath: string) => {
-    try {
-      if (fs.existsSync(targetPath)) {
-        shell.showItemInFolder(targetPath);
-        return { success: true };
-      }
-      return { success: false, error: 'Fichier introuvable.' };
-    } catch (err: any) {
-      return { success: false, error: err.message };
-    }
+  // ── Action: Open File Location via scanId ──────────────────────────────────
+  ipcMain.handle('download-scanner:open-folder', (_, args: { scanId: string } | string) => {
+    const scanId = typeof args === 'object' && args !== null ? (args as any).scanId : String(args || '');
+    return openSessionFolder(scanId);
+  });
+
+  // ── Legacy handlers: explicitly rejected for security (Phase 1) ────────────
+  ipcMain.handle('download-scanner:delete-file', async () => {
+    logger.warn('[Security] Refus de suppression : tentative d’appel via chemin arbitraire bloquée.');
+    return {
+      success: false,
+      error: 'Refus de sécurité (V3) : la suppression par chemin arbitraire est désactivée. Utilisez download-scanner:delete avec scanId et confirmation explicite.'
+    };
+  });
+
+  ipcMain.handle('download-scanner:quarantine-file', async () => {
+    logger.warn('[Security] Refus de mise en quarantaine : tentative d’appel via chemin arbitraire bloquée.');
+    return {
+      success: false,
+      error: 'Refus de sécurité (V3) : la mise en quarantaine par chemin arbitraire est désactivée. Utilisez download-scanner:quarantine avec scanId.'
+    };
   });
 
   // ── Rolling Scan History ──────────────────────────────────────────────────

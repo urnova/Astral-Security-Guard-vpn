@@ -1,5 +1,24 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+// Explicit whitelist of authorized renderer event channels (Phase 1 Security Hardening)
+const ALLOWED_EVENT_CHANNELS = new Set([
+  'notification:trigger',
+  'security:status-changed',
+  'security:scan-event',
+  'download-scanner:scan-start',
+  'download-scanner:scan-complete',
+  'admin:status',
+  'vpn-event',
+  'vpn:quick-connect',
+  'vpn:quick-disconnect',
+  'action:trigger-scan',
+  'navigation:go-to',
+  'gaming-event',
+  'gaming:toggle-manual',
+  'perf:trigger-clean-ram',
+  'updater:status'
+]);
+
 const api = {
   // App controls
   quit: () => ipcRenderer.invoke('app:quit'),
@@ -28,15 +47,11 @@ const api = {
   toggleRealTime: (enabled: boolean) => ipcRenderer.invoke('security:toggle-realtime', enabled),
   getSecurityStatus: () => ipcRenderer.invoke('security:get-status'),
   aiAnalyze: (threats: any[]) => ipcRenderer.invoke('security:ai-analyze', threats),
-  runRemediation: (script: string) => ipcRenderer.invoke('security:run-remediation', script),
   addExclusion: (path: string) => ipcRenderer.invoke('security:add-exclusion', path),
   removeExclusion: (path: string) => ipcRenderer.invoke('security:remove-exclusion', path),
   getExclusions: () => ipcRenderer.invoke('security:get-exclusions'),
   getThreats: () => ipcRenderer.invoke('security:get-threats'),
   updateSignatures: () => ipcRenderer.invoke('security:update-signatures'),
-  unblockDownloads: () => ipcRenderer.invoke('security:unblock-downloads'),
-  unblockFile: (filePath: string) => ipcRenderer.invoke('security:unblock-file', filePath),
-  selectAndUnblock: () => ipcRenderer.invoke('security:select-and-unblock'),
 
   // Performance
   getMetrics: () => ipcRenderer.invoke('perf:get-metrics'),
@@ -96,14 +111,17 @@ const api = {
   openSystemRestore: () => ipcRenderer.invoke('rollback:open-system-restore'),
   listSystemRestore: () => ipcRenderer.invoke('rollback:list-system'),
 
-  // Real-Time Download Scanner & USB Sentinel
+  // Real-Time Download Scanner & USB Sentinel (Secured via scanId tokens)
   getScannerConfig: () => ipcRenderer.invoke('download-scanner:get-config'),
   saveScannerConfig: (cfg: any) => ipcRenderer.invoke('download-scanner:save-config', cfg),
   selectScannerFolder: () => ipcRenderer.invoke('download-scanner:select-folder'),
   scanFile: (filePath: string) => ipcRenderer.invoke('download-scanner:scan-file', filePath),
-  deleteScannedFile: (filePath: string) => ipcRenderer.invoke('download-scanner:delete-file', filePath),
-  quarantineScannedFile: (filePath: string) => ipcRenderer.invoke('download-scanner:quarantine-file', filePath),
-  openScannedFolder: (filePath: string) => ipcRenderer.invoke('download-scanner:open-folder', filePath),
+  deleteScannedFile: (scanId: string, confirmed = true) =>
+    ipcRenderer.invoke('download-scanner:delete', { scanId, confirmed }),
+  quarantineScannedFile: (scanId: string) =>
+    ipcRenderer.invoke('download-scanner:quarantine', { scanId }),
+  openScannedFolder: (scanId: string) =>
+    ipcRenderer.invoke('download-scanner:open-folder', { scanId }),
   getScannerHistory: () => ipcRenderer.invoke('download-scanner:get-history'),
 
   // User Profile
@@ -114,14 +132,21 @@ const api = {
   testNotification: (title?: string, body?: string) => ipcRenderer.invoke('notification:test', { title, body }),
   sendNotification: (options: { title: string; body: string; critical?: boolean }) => ipcRenderer.invoke('notification:send', options),
 
-
-  // Event listeners
+  // Hardened Event Listeners with Strict Whitelist
   on: (channel: string, fn: (...args: any[]) => void) => {
+    if (!ALLOWED_EVENT_CHANNELS.has(channel)) {
+      console.warn(`[Security Preload] Événement IPC non autorisé refusé : ${channel}`);
+      return () => {};
+    }
     const sub = (_: any, ...args: any[]) => fn(...args);
     ipcRenderer.on(channel, sub);
     return () => ipcRenderer.removeListener(channel, sub);
   },
   once: (channel: string, fn: (...args: any[]) => void) => {
+    if (!ALLOWED_EVENT_CHANNELS.has(channel)) {
+      console.warn(`[Security Preload] Événement IPC non autorisé refusé : ${channel}`);
+      return;
+    }
     ipcRenderer.once(channel, (_, ...args) => fn(...args));
   },
 };

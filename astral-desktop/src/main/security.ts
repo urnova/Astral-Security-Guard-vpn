@@ -366,10 +366,35 @@ export function setupSecurityIPC(win: BrowserWindow) {
     }
   });
 
+  // Validation stricte du chemin d'exclusion (Phase 1 Security Hardening)
+  function validateExclusionPath(rawPath: string): { valid: boolean; normalizedPath?: string; error?: string } {
+    if (!rawPath || typeof rawPath !== 'string') {
+      return { valid: false, error: 'Chemin vide ou invalide.' };
+    }
+    const trimmed = rawPath.trim();
+    // Interdire strictement les métacaractères d'injection shell et PowerShell
+    if (/[\$`";&|<>{}()'\r\n]/.test(trimmed)) {
+      return { valid: false, error: 'Caractères non autorisés détectés dans le chemin.' };
+    }
+    // Doit être un chemin absolu Windows (ex: C:\...)
+    if (!/^[a-zA-Z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]*$/.test(trimmed)) {
+      return { valid: false, error: 'Format de chemin Windows absolu non valide.' };
+    }
+    const resolved = path.resolve(trimmed);
+    if (!fs.existsSync(resolved)) {
+      return { valid: false, error: 'Le dossier ou fichier spécifié n’existe pas sur le système.' };
+    }
+    return { valid: true, normalizedPath: resolved };
+  }
+
   ipcMain.handle('security:add-exclusion', async (_, folderPath: string) => {
-    if (!folderPath) return { success: false, error: 'Chemin vide' };
+    const val = validateExclusionPath(folderPath);
+    if (!val.valid || !val.normalizedPath) {
+      return { success: false, error: val.error || 'Chemin non valide' };
+    }
     try {
-      await runPowerShell(`Add-MpPreference -ExclusionPath "${folderPath.replace(/"/g, '')}"`);
+      const escaped = val.normalizedPath.replace(/'/g, "''");
+      await runPowerShell(`Add-MpPreference -ExclusionPath '${escaped}' -ErrorAction Stop`);
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message };
@@ -377,9 +402,13 @@ export function setupSecurityIPC(win: BrowserWindow) {
   });
 
   ipcMain.handle('security:remove-exclusion', async (_, folderPath: string) => {
-    if (!folderPath) return { success: false, error: 'Chemin vide' };
+    const val = validateExclusionPath(folderPath);
+    if (!val.valid || !val.normalizedPath) {
+      return { success: false, error: val.error || 'Chemin non valide' };
+    }
     try {
-      await runPowerShell(`Remove-MpPreference -ExclusionPath "${folderPath.replace(/"/g, '')}"`);
+      const escaped = val.normalizedPath.replace(/'/g, "''");
+      await runPowerShell(`Remove-MpPreference -ExclusionPath '${escaped}' -ErrorAction Stop`);
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message };

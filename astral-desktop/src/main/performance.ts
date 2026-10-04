@@ -137,18 +137,27 @@ export function setupPerformanceIPC(win: BrowserWindow) {
     }
   });
 
-  // ── Toggle Startup Item ───────────────────────────────────────────────────
+  // ── Toggle Startup Item (Hardened Phase 1) ────────────────────────────────
   ipcMain.handle('perf:disable-startup', async (_, arg1: any, arg2?: any) => {
-    const name = typeof arg1 === 'object' && arg1 !== null ? arg1.name : String(arg1 || '');
-    const location = typeof arg1 === 'object' && arg1 !== null ? arg1.location : String(arg2 || 'HKCU');
+    const rawName = typeof arg1 === 'object' && arg1 !== null ? arg1.name : String(arg1 || '');
+    const rawLocation = typeof arg1 === 'object' && arg1 !== null ? arg1.location : String(arg2 || 'HKCU');
 
-    logger.info(`Désactivation du programme de démarrage : ${name} (${location})`);
+    // Validation stricte du nom du programme de démarrage (anti-injection)
+    if (!rawName || typeof rawName !== 'string' || !/^[a-zA-Z0-9_\-\.\s]{1,128}$/.test(rawName.trim())) {
+      logger.warn('[Security] perf:disable-startup: Nom de programme invalide ou contenant des caractères interdits.');
+      return { success: false, error: 'Nom de programme de démarrage invalide.' };
+    }
+
+    const location = rawLocation === 'HKLM' ? 'HKLM' : 'HKCU';
+    const cleanName = rawName.trim().replace(/'/g, "''");
+    logger.info(`Désactivation du programme de démarrage : ${cleanName} (${location})`);
+
     const regPath = location === 'HKLM'
       ? 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run'
       : 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
 
     const script = `
-      Remove-ItemProperty -Path "${regPath}" -Name "${name}" -ErrorAction SilentlyContinue
+      Remove-ItemProperty -Path '${regPath}' -Name '${cleanName}' -ErrorAction SilentlyContinue
       [PSCustomObject]@{ removed = $true } | ConvertTo-Json -Compress
     `;
 
@@ -262,6 +271,11 @@ export function setupPerformanceIPC(win: BrowserWindow) {
   });
 
   ipcMain.handle('perf:kill-process', async (_, pid: number) => {
+    // Validation stricte du PID : entier strictement positif raisonnable (Phase 1)
+    if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 4 || pid > 65535) {
+      logger.warn(`[Security] perf:kill-process: PID invalide rejeté (${pid})`);
+      return { success: false, error: 'Identifiant de processus (PID) invalide.' };
+    }
     logger.info(`Fermeture du processus PID ${pid}...`);
     const script = `
       Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue

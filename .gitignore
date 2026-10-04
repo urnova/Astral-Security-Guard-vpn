@@ -7,6 +7,7 @@ release
 build
 !astral-desktop/build/
 tmp
+scratch/
 out-tsc
 *.tsbuildinfo
 .expo

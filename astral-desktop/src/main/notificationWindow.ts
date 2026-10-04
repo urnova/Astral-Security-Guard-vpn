@@ -36,10 +36,14 @@ export function createOrGetNotificationWindow(): BrowserWindow {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
     },
   });
 
   popupWin.setMenu(null);
+  popupWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   popupWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
   // Navigation interceptor for custom actions

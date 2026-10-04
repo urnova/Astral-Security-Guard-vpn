@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut, Notification } from 'electron';
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut, Notification, session } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { logger } from './logger';
@@ -93,10 +93,40 @@ function createMainWindow() {
       preload: path.join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
     },
   });
 
   mainWin.setMenu(null);
+
+  // Security Hardening: Deny opening new windows by default (Phase 1)
+  mainWin.webContents.setWindowOpenHandler(({ url }) => {
+    logger.warn(`[Security] Rejet ouverture de fenêtre externe non autorisée : ${url}`);
+    return { action: 'deny' };
+  });
+
+  // Security Hardening: Restrict navigations to local bundle or designated dev server
+  mainWin.webContents.on('will-navigate', (event, url) => {
+    const isAllowed = VITE_DEV_SERVER_URL
+      ? url.startsWith(VITE_DEV_SERVER_URL)
+      : url.startsWith('file://');
+    if (!isAllowed) {
+      event.preventDefault();
+      logger.warn(`[Security] Rejet navigation non autorisée : ${url}`);
+    }
+  });
+
+  mainWin.webContents.on('will-redirect', (event, url) => {
+    const isAllowed = VITE_DEV_SERVER_URL
+      ? url.startsWith(VITE_DEV_SERVER_URL)
+      : url.startsWith('file://');
+    if (!isAllowed) {
+      event.preventDefault();
+      logger.warn(`[Security] Rejet redirection non autorisée : ${url}`);
+    }
+  });
 
   // Setup all IPC modules
   setupSecurityIPC(mainWin);
@@ -160,9 +190,16 @@ export function createOverlay() {
       preload: path.join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
     },
   });
   overlayWin.setIgnoreMouseEvents(true, { forward: true });
+
+  overlayWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  overlayWin.webContents.on('will-navigate', (e) => e.preventDefault());
+  overlayWin.webContents.on('will-redirect', (e) => e.preventDefault());
 
   if (VITE_DEV_SERVER_URL) {
     overlayWin.loadURL(`${VITE_DEV_SERVER_URL}#/overlay`);
@@ -417,6 +454,23 @@ app.on('second-instance', () => {
 app.whenReady().then(async () => {
   // Purge any stale firewall rules left by prior sessions or crashes
   await cleanupAstralFirewallRules();
+
+  // Enforce Restrictive Content Security Policy (CSP) & Security Headers (Phase 1)
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const isDev = Boolean(VITE_DEV_SERVER_URL);
+    const csp = isDev
+      ? "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self' ws: http: https:;"
+      : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self';";
+
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [csp],
+        'X-Content-Type-Options': ['nosniff'],
+        'X-Frame-Options': ['DENY'],
+      },
+    });
+  });
 
   createMainWindow();
   createTray();
