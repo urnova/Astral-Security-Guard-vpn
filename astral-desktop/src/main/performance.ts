@@ -2,99 +2,52 @@ import { BrowserWindow, ipcMain } from 'electron';
 import { runPowerShell } from './psHelper';
 import { logger } from './logger';
 import { executePrivilegedAction } from './privilegedHelper';
+import { getFullSystemTelemetry, CRITICAL_SYSTEM_PROCESSES } from './telemetry';
 import os from 'os';
 
-let cachedDiskInfo = { usedGB: 225, freeGB: 13, lastUpdated: 0 };
-let cachedGpuName = '';
-
-async function queryGpuNameOnce(): Promise<string> {
-  if (cachedGpuName) return cachedGpuName;
-  try {
-    const res = await runPowerShell<string>(
-      `Get-CimInstance Win32_VideoController | Where-Object { $_.Name -notmatch 'Virtual|Remote|Basic' } | Select-Object -ExpandProperty Name -First 1`,
-      { timeout: 3000 }
-    );
-    if (res?.data && res.data.trim()) {
-      cachedGpuName = res.data.trim();
-      return cachedGpuName;
-    }
-  } catch {}
-  cachedGpuName = 'GPU Dédié';
-  return cachedGpuName;
-}
-
-async function refreshDiskInfoInBackground() {
-  if (Date.now() - cachedDiskInfo.lastUpdated < 60000) return; // 1 min cache
-  cachedDiskInfo.lastUpdated = Date.now();
-  try {
-    const script = `
-      $drive = Get-PSDrive -Name C -ErrorAction SilentlyContinue
-      if ($drive) {
-        [PSCustomObject]@{
-          usedGB = [Math]::Round(($drive.Used / 1GB), 1)
-          freeGB = [Math]::Round(($drive.Free / 1GB), 1)
-        } | ConvertTo-Json -Compress
-      }
-    `;
-    const diskRes = await runPowerShell<any>(script, { asJson: true, timeout: 2500 });
-    if (diskRes?.data?.usedGB !== undefined) {
-      cachedDiskInfo.usedGB = diskRes.data.usedGB;
-      cachedDiskInfo.freeGB = diskRes.data.freeGB;
-    }
-  } catch {}
-}
-
 export function setupPerformanceIPC(win: BrowserWindow) {
-  // ── Real Live System Metrics (Instant 0ms, Zero CPU lag) ────────────────────
+  // ── Real Live System Metrics (Differential CPU, Real RAM, StatFS, Real GPU) ──
   ipcMain.handle('perf:get-metrics', async () => {
     try {
-      const cpus = os.cpus();
-      const rawTotalBytes = os.totalmem();
-      const rawFreeBytes = os.freemem();
-      const ramTotalGB = Number((rawTotalBytes / (1024 * 1024 * 1024)).toFixed(1));
-      const ramUsedGB = Number(((rawTotalBytes - rawFreeBytes) / (1024 * 1024 * 1024)).toFixed(1));
-
-      // Calculate real CPU usage by sampling tick deltas
-      let idle = 0;
-      let total = 0;
-      for (const cpu of cpus) {
-        for (const type in cpu.times) {
-          total += (cpu.times as any)[type];
-        }
-        idle += cpu.times.idle;
-      }
-      const cpuPercent = Math.min(100, Math.max(1, Math.round(((total - idle) / Math.max(1, total)) * 100)));
-
-      // Real CPU Model and Cores
-      const rawModel = cpus[0]?.model || '';
-      const cpuModel = rawModel.replace(/\s+/g, ' ').trim() || 'Intel(R) Core(TM) i7';
-      const cpuCores = cpus.length;
-
-      // Real GPU Name
-      const gpuName = await queryGpuNameOnce();
-
-      // Trigger background disk refresh without blocking
-      refreshDiskInfoInBackground();
-
-      const uptimeHours = Number((os.uptime() / 3600).toFixed(1));
+      const telemetry = await getFullSystemTelemetry();
+      const primaryDisk = telemetry.disks.find((d) => d.drive.toUpperCase().startsWith('C')) ||
+        telemetry.disks[0] || { usedGB: 0, freeGB: 0 };
 
       return {
         success: true,
         data: {
-          cpuModel,
-          cpuCores,
-          gpuName,
-          cpuPercent,
-          ramTotal: ramTotalGB,
-          ramUsed: ramUsedGB,
-          diskUsedGB: cachedDiskInfo.usedGB,
-          diskFreeGB: cachedDiskInfo.freeGB,
-          uptimeHours,
+          cpuModel: telemetry.cpu.cpuModel,
+          cpuCores: telemetry.cpu.logicalCores,
+          gpuName: telemetry.gpu.gpuName,
+          cpuPercent: telemetry.cpu.overallPercent,
+          cpuSpeedMHz: telemetry.cpu.cpuSpeedMHz,
+          coresPercent: telemetry.cpu.coresPercent,
+          ramTotal: telemetry.memory.totalGB,
+          ramUsed: telemetry.memory.usedGB,
+          ramFree: telemetry.memory.freeGB,
+          ramPercent: telemetry.memory.usedPercent,
+          diskUsedGB: primaryDisk.usedGB,
+          diskFreeGB: primaryDisk.freeGB,
+          disks: telemetry.disks,
+          gpuUtilization: telemetry.gpu.utilizationPercent,
+          gpuTemp: telemetry.gpu.temperatureC,
+          gpuVramUsedMB: telemetry.gpu.vramUsedMB,
+          gpuVramTotalMB: telemetry.gpu.vramTotalMB,
+          gpuStatus: telemetry.gpu.status,
+          uptimeHours: Number((telemetry.uptimeSeconds / 3600).toFixed(1)),
+          topProcesses: telemetry.topProcesses,
         },
       };
     } catch (e: any) {
       return { success: false, error: e.message };
     }
+  });
+
+  ipcMain.handle('perf:get-telemetry-snapshot', async () => {
+    return {
+      success: true,
+      data: await getFullSystemTelemetry(),
+    };
   });
 
   // ── Real Startup Programs (Win32_StartupCommand CIM) ──────────────────────
@@ -287,6 +240,21 @@ export function setupPerformanceIPC(win: BrowserWindow) {
       logger.warn(`[Security] perf:kill-process: PID invalide rejeté (${pid})`);
       return { success: false, error: 'Identifiant de processus (PID) invalide.' };
     }
+
+    // Protection des processus système critiques (Lot 2 / Phase 9)
+    try {
+      const checkScript = `(Get-Process -Id ${pid} -ErrorAction SilentlyContinue).ProcessName`;
+      const checkRes = await runPowerShell<string>(checkScript, { timeout: 2000 });
+      const procName = (checkRes?.data || '').toLowerCase().trim();
+      if (procName && (CRITICAL_SYSTEM_PROCESSES.has(procName) || CRITICAL_SYSTEM_PROCESSES.has(`${procName}.exe`))) {
+        logger.warn(`[Security] perf:kill-process: Tentative d'arrêt d'un processus système critique refusée (${procName}, PID ${pid})`);
+        return {
+          success: false,
+          error: `Le processus système critique [${procName}] ne peut pas être arrêté pour préserver la stabilité de Windows.`,
+        };
+      }
+    } catch {}
+
     logger.info(`Fermeture du processus PID ${pid}...`);
     const script = `
       Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue
