@@ -55,7 +55,7 @@ export default function AppTitlebar({ gamingActive, currentGame }: AppTitlebarPr
             fontFamily: 'var(--mono)',
           }}
         >
-          v2.4.0
+          v2.5.0
         </span>
       </div>
 

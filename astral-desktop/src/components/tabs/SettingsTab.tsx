@@ -279,7 +279,7 @@ export default function SettingsTab({
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 12, padding: '4px 10px', borderRadius: 9999, backgroundColor: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)', color: '#c084fc', fontFamily: 'monospace' }}>
-            v2.4.0
+            v2.5.0
           </span>
         </div>
       </div>
@@ -790,7 +790,7 @@ export default function SettingsTab({
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 600, color: '#f8fafc' }}>Version installée</div>
                     <div style={{ fontSize: 12, color: '#a78bfa', fontFamily: 'monospace', marginTop: 2 }}>
-                      v2.4.0 · Build de production officielle
+                      v2.5.0 · Build de production officielle
                     </div>
                   </div>
                   <button
@@ -861,7 +861,7 @@ export default function SettingsTab({
                 <VanguardLogo size={56} />
                 <div>
                   <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#f8fafc' }}>ASTRAL VANGUARD</h2>
-                  <div style={{ fontSize: 13, color: '#a78bfa', fontFamily: 'monospace' }}>Version 2.4.0 (Production Release)</div>
+                  <div style={{ fontSize: 13, color: '#a78bfa', fontFamily: 'monospace' }}>Version 2.5.0 (Production Release)</div>
                   <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Suite de Protection Cyber-Sécurité, Anti-Lag & Optimisation Gaming</div>
                 </div>
               </div>

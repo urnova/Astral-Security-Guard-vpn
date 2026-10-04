@@ -259,7 +259,7 @@ export default function SplashScreen({ onFinish }: SplashScreenProps) {
             letterSpacing: '0.06em',
           }}
         >
-          Astral Vanguard v2.4.0 · Moteur Autonome
+          Astral Vanguard v2.5.0 · Moteur Autonome
         </div>
       </div>
     </div>
