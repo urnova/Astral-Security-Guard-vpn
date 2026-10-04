@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, Download, AlertTriangle, CheckCircle2, X, ShieldAlert } from 'lucide-react';
+import { Download, AlertTriangle, CheckCircle2, X, ShieldAlert, Sparkles } from 'lucide-react';
 
 const api = (window as any).vanguard;
 
@@ -88,8 +88,8 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(7, 9, 14, 0.85)',
-        backdropFilter: 'blur(8px)',
+        backgroundColor: 'rgba(5, 7, 13, 0.82)',
+        backdropFilter: 'blur(10px)',
         zIndex: 99999,
         display: 'flex',
         alignItems: 'center',
@@ -98,18 +98,16 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
       }}
     >
       <div
+        className="glass-card"
         style={{
           width: '100%',
           maxWidth: 520,
-          backgroundColor: '#0c1017',
-          border: '1px solid rgba(139, 92, 246, 0.4)',
-          boxShadow: '0 0 40px rgba(139, 92, 246, 0.25)',
-          borderRadius: 16,
           padding: 24,
           position: 'relative',
           display: 'flex',
           flexDirection: 'column',
           gap: 16,
+          boxShadow: '0 24px 64px rgba(0, 0, 0, 0.7), 0 0 1px rgba(255, 255, 255, 0.1)',
         }}
       >
         {/* Close Button */}
@@ -121,9 +119,13 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
             right: 18,
             background: 'none',
             border: 'none',
-            color: '#94a3b8',
+            color: 'var(--text-muted)',
             cursor: 'pointer',
             padding: 4,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: 6,
           }}
           title="Fermer"
         >
@@ -137,22 +139,22 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
               width: 44,
               height: 44,
               borderRadius: 12,
-              background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(139, 92, 246, 0.2))',
-              border: '1px solid rgba(139, 92, 246, 0.5)',
+              background: 'rgba(6, 182, 212, 0.15)',
+              border: '1px solid rgba(6, 182, 212, 0.35)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#38bdf8',
+              color: 'var(--cyan)',
             }}
           >
             <Download size={22} />
           </div>
           <div>
-            <h3 style={{ fontSize: 17, fontWeight: 700, color: '#ffffff', margin: 0 }}>
-              Mise à jour Vanguard disponible
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.01em' }}>
+              Mise à jour officielle disponible
             </h3>
-            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 3 }}>
-              Version actuelle : <span style={{ fontFamily: 'monospace', color: '#cbd5e1' }}>v{currentVer}</span> → Nouvelle : <span style={{ fontFamily: 'monospace', color: '#c084fc', fontWeight: 600 }}>v{targetVer}</span>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>
+              Version actuelle : <span style={{ fontFamily: 'var(--mono)', color: 'var(--text-secondary)' }}>v{currentVer}</span> → Nouvelle : <span style={{ fontFamily: 'var(--mono)', color: 'var(--cyan)', fontWeight: 600 }}>v{targetVer}</span>
             </div>
           </div>
         </div>
@@ -169,11 +171,11 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
               alignItems: 'center',
               gap: 10,
               fontSize: 12,
-              color: '#fbbf24',
+              color: 'var(--yellow)',
             }}
           >
             <ShieldAlert size={16} style={{ flexShrink: 0 }} />
-            <span>Partie en cours : l'installation ne sera pas exécutée pour ne pas interrompre votre session.</span>
+            <span>Partie en cours : l'installation ne sera pas exécutée pour ne pas interrompre votre session de jeu.</span>
           </div>
         )}
 
@@ -181,21 +183,24 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
         <div
           style={{
             backgroundColor: 'rgba(0, 0, 0, 0.35)',
-            border: '1px solid rgba(255, 255, 255, 0.06)',
+            border: '1px solid var(--border-subtle)',
             borderRadius: 10,
             padding: 14,
             fontSize: 12,
-            color: '#cbd5e1',
+            color: 'var(--text-secondary)',
             lineHeight: 1.5,
             maxHeight: 140,
             overflowY: 'auto',
           }}
         >
-          <div style={{ fontWeight: 600, color: '#f8fafc', marginBottom: 6 }}>Notes de version :</div>
+          <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Sparkles size={14} style={{ color: 'var(--cyan)' }} />
+            Notes de version
+          </div>
           {info?.releaseNotes ? (
             <div>{info.releaseNotes}</div>
           ) : (
-            <div>Améliorations de performance, design system Vanguard v2.4.0, corrections de sécurité et optimisation réseau.</div>
+            <div>Refonte complète de l'interface graphique, optimisation des performances, mise à jour des signatures de sécurité et maintien des préférences lors de la mise à jour.</div>
           )}
         </div>
 
@@ -203,21 +208,21 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
         {downloading && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-              <span style={{ color: '#38bdf8' }}>Téléchargement du package officiel...</span>
-              <span style={{ fontFamily: 'monospace', color: '#ffffff', fontWeight: 600 }}>{Math.round(progress)}%</span>
+              <span style={{ color: 'var(--cyan)' }}>Téléchargement du package officiel...</span>
+              <span style={{ fontFamily: 'var(--mono)', color: 'var(--text-primary)', fontWeight: 600 }}>{Math.round(progress)}%</span>
             </div>
-            <div style={{ height: 6, borderRadius: 9999, backgroundColor: 'rgba(255, 255, 255, 0.1)', overflow: 'hidden' }}>
+            <div style={{ height: 6, borderRadius: 9999, backgroundColor: 'rgba(255, 255, 255, 0.08)', overflow: 'hidden' }}>
               <div
                 style={{
                   height: '100%',
                   width: `${progress}%`,
-                  background: 'linear-gradient(90deg, #06b6d4, #8b5cf6)',
+                  background: 'linear-gradient(90deg, var(--cyan), var(--purple))',
                   transition: 'width 0.2s ease',
                 }}
               />
             </div>
             {updaterState?.totalBytes > 0 && (
-              <div style={{ fontSize: 11, color: '#64748b', textAlign: 'right' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'right' }}>
                 {formatBytes(updaterState.transferredBytes)} / {formatBytes(updaterState.totalBytes)}
               </div>
             )}
@@ -236,7 +241,7 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
               alignItems: 'center',
               gap: 10,
               fontSize: 12,
-              color: '#f87171',
+              color: 'var(--red)',
             }}
           >
             <AlertTriangle size={16} style={{ flexShrink: 0 }} />
@@ -248,80 +253,35 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
           <button
             onClick={onClose}
-            style={{
-              padding: '9px 16px',
-              borderRadius: 8,
-              backgroundColor: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              color: '#94a3b8',
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: 'pointer',
-            }}
+            className="btn btn-ghost"
+            style={{ fontSize: 13 }}
           >
             Plus tard
           </button>
 
-          {isDownloaded ? (
+          {!isDownloaded ? (
             <button
-              onClick={handleInstallNow}
-              disabled={gamingActive}
-              style={{
-                padding: '9px 18px',
-                borderRadius: 8,
-                backgroundColor: gamingActive ? '#475569' : '#059669',
-                border: 'none',
-                color: '#ffffff',
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: gamingActive ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-              }}
+              onClick={handleStartDownload}
+              disabled={downloading}
+              className="btn btn-primary"
+              style={{ fontSize: 13 }}
             >
-              <CheckCircle2 size={16} />
-              <span>{gamingActive ? 'Installation différée (Jeu actif)' : 'Installer et redémarrer'}</span>
-            </button>
-          ) : downloading ? (
-            <button
-              disabled
-              style={{
-                padding: '9px 18px',
-                borderRadius: 8,
-                backgroundColor: 'rgba(139, 92, 246, 0.3)',
-                border: '1px solid rgba(139, 92, 246, 0.4)',
-                color: '#c084fc',
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: 'not-allowed',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-              }}
-            >
-              <RefreshCw size={15} className="animate-spin" />
-              <span>Téléchargement en cours...</span>
+              <Download size={15} />
+              <span>{downloading ? 'Téléchargement...' : 'Télécharger la mise à jour'}</span>
             </button>
           ) : (
             <button
-              onClick={handleStartDownload}
+              onClick={handleInstallNow}
+              disabled={gamingActive}
+              className="btn btn-primary"
               style={{
-                padding: '9px 18px',
-                borderRadius: 8,
-                backgroundColor: '#7c3aed',
-                border: 'none',
-                color: '#ffffff',
                 fontSize: 13,
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
+                backgroundColor: 'var(--green)',
+                borderColor: 'var(--green)',
               }}
             >
-              <Download size={16} />
-              <span>{downloadError ? 'Réessayer le téléchargement' : 'Télécharger la mise à jour'}</span>
+              <CheckCircle2 size={15} />
+              <span>Redémarrer et installer</span>
             </button>
           )}
         </div>

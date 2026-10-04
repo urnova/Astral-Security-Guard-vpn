@@ -10,6 +10,7 @@
   Sleep 1000
 
   DetailPrint "Nettoyage intégral des données de configuration et profils..."
+  RMDir /r "$APPDATA\Astral Vanguard"
   RMDir /r "$APPDATA\AstralVanguard"
   RMDir /r "$APPDATA\astral-vanguard"
   RMDir /r "$LOCALAPPDATA\astral-vanguard"

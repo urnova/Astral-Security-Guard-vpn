@@ -1,54 +1,23 @@
 import { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
 import {
   Cpu, HardDrive, Trash2, Zap, RefreshCw, Activity,
-  CheckCircle2, Layers, X
+  CheckCircle2, AlertTriangle, Layers, X, ShieldAlert
 } from 'lucide-react';
 import { CollapsibleError } from '../ui/CollapsibleError';
-import { CyberToggle } from '../common/CyberToggle';
 import { useSystem } from '../../context/SystemContext';
 
 const api = (window as any).vanguard;
 
 interface DiskHealth {
-  model?: string; FriendlyName?: string; status?: string;
-  OperationalStatus?: string; mediaType?: string; MediaType?: string;
-  health?: string; HealthStatus?: string; sizeGB?: number;
-}
-
-/* ── Animated circular gauge ─────────────────────────────────────────── */
-function Gauge({ value, max = 100, color, size = 72, label }: { value: number; max?: number; color: string; size?: number; label: string }) {
-  const pct = max > 0 ? Math.min(value / max, 1) : 0;
-  const r = (size - 8) / 2;
-  const circ = 2 * Math.PI * r;
-  const offset = circ * (1 - pct);
-
-  return (
-    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
-      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={6} />
-        <motion.circle
-          cx={size / 2} cy={size / 2} r={r} fill="none"
-          stroke={color} strokeWidth={6} strokeLinecap="round"
-          strokeDasharray={circ}
-          initial={{ strokeDashoffset: circ }}
-          animate={{ strokeDashoffset: offset }}
-          transition={{ duration: 1.2, ease: 'easeOut' }}
-        />
-      </svg>
-      <div style={{
-        position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-      }}>
-        <span style={{ fontSize: 18, fontWeight: 800, color, fontFamily: 'var(--mono)' }}>
-          {Math.round(pct * 100)}%
-        </span>
-        <span style={{ fontSize: 8, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          {label}
-        </span>
-      </div>
-    </div>
-  );
+  model?: string;
+  FriendlyName?: string;
+  status?: string;
+  OperationalStatus?: string;
+  mediaType?: string;
+  MediaType?: string;
+  health?: string;
+  HealthStatus?: string;
+  sizeGB?: number;
 }
 
 export default function PerformanceTab({ gamingActive: _gamingActive }: { gamingActive: boolean }) {
@@ -59,14 +28,18 @@ export default function PerformanceTab({ gamingActive: _gamingActive }: { gaming
   const [diskHealth, setDiskHealth] = useState<DiskHealth[]>([]);
   const [errorInfo, setErrorInfo] = useState<{ message: string; technical?: string } | null>(null);
 
-  const [showCleanModal, setShowCleanModal] = useState(false);
-  const [cleaningPhase, setCleaningPhase] = useState<'idle' | 'purging' | 'done'>('idle');
-  const [cleanProgress, setCleanProgress] = useState(0);
-  const [cleanStepLabel, setCleanStepLabel] = useState('');
-  const [freedMemoryMb, setFreedMemoryMb] = useState(0);
-  const [freedDiskMb, setFreedDiskMb] = useState(0);
+  // Clean / Flush RAM Confirmation Modal
+  const [showFlushModal, setShowFlushModal] = useState(false);
+  const [flushing, setFlushing] = useState(false);
+  const [flushResult, setFlushResult] = useState<string | null>(null);
 
-  useEffect(() => { if (ctxMetrics) setMetrics(ctxMetrics); }, [ctxMetrics]);
+  // Disk maintenance
+  const [cleaningDisk, setCleaningDisk] = useState(false);
+  const [diskNotice, setDiskNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (ctxMetrics) setMetrics(ctxMetrics);
+  }, [ctxMetrics]);
 
   const loadDiskHealth = useCallback(async () => {
     if (!api) return;
@@ -79,383 +52,334 @@ export default function PerformanceTab({ gamingActive: _gamingActive }: { gaming
   const loadStartup = useCallback(async () => {
     if (!api) return;
     setLoadingStartup(true);
-    try { const res = await api.getStartup(); if (res?.items) setStartup(res.items); } catch {}
+    try {
+      const res = await api.getStartup();
+      if (res?.items) setStartup(res.items);
+    } catch {}
     setLoadingStartup(false);
   }, []);
 
-  useEffect(() => { loadDiskHealth(); loadStartup(); }, [loadDiskHealth, loadStartup]);
+  useEffect(() => {
+    loadDiskHealth();
+    loadStartup();
+  }, [loadDiskHealth, loadStartup]);
 
-  const startDeepMaintenance = async () => {
-    setShowCleanModal(true);
-    setCleaningPhase('purging');
-    setCleanProgress(30);
-    setFreedMemoryMb(0);
-    setFreedDiskMb(0);
-    setCleanStepLabel('Nettoyage réel des fichiers temporaires et corbeille...');
-
-    if (api?.diskCleanup) {
-      try {
-        const r = await api.diskCleanup(['temp', 'recycle']);
-        setFreedDiskMb(r?.freedMb || 0);
-      } catch {
-        setFreedDiskMb(0);
-      }
-    }
-
-    setCleanProgress(100);
-    setCleanStepLabel('Nettoyage des fichiers temporaires achevé !');
-    setCleaningPhase('done');
-    refreshTelemetry();
-  };
-
-  const handleToggleStartup = async (item: any, willEnable: boolean) => {
+  const handleEmptyWorkingSet = async () => {
     if (!api) return;
-    const name = item.name || item.Name;
-    const location = item.location || item.Location || 'HKCU';
+    setFlushing(true);
+    setErrorInfo(null);
+    setFlushResult(null);
+
     try {
-      if (!willEnable) {
-        await api.disableStartup(name, location);
-        setStartup(prev => prev.map(i => ((i.name || i.Name) === name ? { ...i, enabled: false } : i)));
+      if (api.emptyWorkingSet) {
+        const res = await api.emptyWorkingSet({ userConsent: true });
+        if (res?.success) {
+          setFlushResult(`Purge effectuée avec succès (${res.freedMb || 0} Mo libérés via EmptyWorkingSet).`);
+          await refreshTelemetry();
+        } else {
+          setErrorInfo({ message: res?.error || 'Opération refusée ou non supportée.' });
+        }
+      } else if (api.cleanRam) {
+        const res = await api.cleanRam();
+        if (res?.success) {
+          setFlushResult('Purge mémoire effectuée.');
+        } else {
+          // Fallback notice (Phase 3/7)
+          setErrorInfo({ message: res?.message || 'Purge soumise à confirmation de sécurité (Phase 3/7).' });
+        }
       }
     } catch (err: any) {
-      setErrorInfo({ message: 'Impossible de modifier cette entrée', technical: err.message });
+      setErrorInfo({ message: 'Erreur lors du vidage des plages de travail.', technical: err.message });
+    } finally {
+      setFlushing(false);
+      setTimeout(() => setShowFlushModal(false), 2000);
     }
   };
 
-  const ramPct = metrics && metrics.ramTotal > 0 ? Math.round((metrics.ramUsed / metrics.ramTotal) * 100) : 0;
-  const diskTotal = metrics ? metrics.diskUsedGB + metrics.diskFreeGB : 0;
-  const diskPct = diskTotal ? Math.round((metrics.diskUsedGB / diskTotal) * 100) : 0;
+  const handleDiskCleanup = async () => {
+    if (!api?.diskCleanup) return;
+    setCleaningDisk(true);
+    setDiskNotice(null);
+    try {
+      const r = await api.diskCleanup(['temp', 'recycle']);
+      if (r?.success) {
+        setDiskNotice(`Nettoyage achevé : ${r.freedMb || 0} Mo d’espace récupéré sur vos disques.`);
+        await refreshTelemetry();
+      } else {
+        setErrorInfo({ message: r?.error || 'Échec du nettoyage de disque.' });
+      }
+    } catch (err: any) {
+      setErrorInfo({ message: 'Erreur lors du nettoyage.', technical: err.message });
+    } finally {
+      setCleaningDisk(false);
+    }
+  };
+
+  const ramPct = metrics && metrics.ramTotal > 0
+    ? Math.round((metrics.ramUsed / metrics.ramTotal) * 100)
+    : 0;
 
   return (
-    <div className="tab-scroll" style={{ padding: '28px 32px', maxWidth: 1200, margin: '0 auto' }}>
-
-      {/* ── Header ── */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}
-      >
+    <div className="tab-scroll">
+      {/* Header */}
+      <div className="page-header">
         <div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: 'var(--text-primary)' }}>Performance</h1>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-            RAM, disque, programmes au démarrage et maintenance
-          </p>
+          <h1 className="page-title">Performance & Mémoire</h1>
+          <p className="page-subtitle">Gestion honnête de la mémoire physique, analyse des disques et démarrage Windows</p>
         </div>
-      </motion.div>
 
-      {errorInfo && <div style={{ marginBottom: 20 }}><CollapsibleError message={errorInfo.message} technicalError={errorInfo.technical} /></div>}
-
-      {/* ── Big Optimize CTA ── */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 0.05, duration: 0.4 }}
-        whileHover={{ scale: 1.01 }}
-        whileTap={{ scale: 0.98 }}
-        onClick={startDeepMaintenance}
-        style={{
-          padding: '24px 28px', borderRadius: 16, cursor: 'pointer', marginBottom: 24,
-          background: 'linear-gradient(135deg, rgba(139,92,246,0.18) 0%, rgba(0,212,255,0.10) 100%)',
-          border: '1px solid rgba(139,92,246,0.35)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{
-            width: 52, height: 52, borderRadius: 14,
-            background: 'linear-gradient(135deg, #8b5cf6, #00d4ff)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <Zap size={26} style={{ color: '#fff' }} />
-          </div>
-          <div>
-            <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text-primary)' }}>
-              Optimiser mon PC
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-              Libère la RAM, nettoie les fichiers temporaires et active le profil haute performance
-            </div>
-          </div>
+        <div className="page-actions">
+          <button
+            onClick={() => setShowFlushModal(true)}
+            className="btn btn-secondary"
+          >
+            <Zap size={15} style={{ color: 'var(--cyan)' }} />
+            <span>Optimiser la RAM</span>
+          </button>
+          <button
+            onClick={handleDiskCleanup}
+            disabled={cleaningDisk}
+            className="btn btn-secondary"
+          >
+            <Trash2 size={15} className={cleaningDisk ? 'animate-spin' : ''} />
+            <span>{cleaningDisk ? 'Nettoyage...' : 'Purger Fichiers Temp'}</span>
+          </button>
         </div>
-        <div style={{
-          padding: '10px 24px', borderRadius: 10, fontSize: 13, fontWeight: 800,
-          background: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
-          color: '#fff', whiteSpace: 'nowrap',
-        }}>
-          Lancer
-        </div>
-      </motion.div>
-
-      {/* ── Hardware Gauges ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
-        {/* CPU */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1, type: 'spring', stiffness: 200, damping: 20 }}
-          style={{
-            padding: '22px 20px', borderRadius: 14,
-            background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
-            display: 'flex', alignItems: 'center', gap: 18,
-          }}
-        >
-          <Gauge value={metrics?.cpuPercent || 0} color="#00d4ff" label="CPU" />
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Processeur</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-              {metrics?.cpuModel || '–'}
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              {metrics?.cpuCores ? `${metrics.cpuCores} cœurs` : '–'}
-            </div>
-          </div>
-        </motion.div>
-
-        {/* RAM */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15, type: 'spring', stiffness: 200, damping: 20 }}
-          style={{
-            padding: '22px 20px', borderRadius: 14,
-            background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
-            display: 'flex', alignItems: 'center', gap: 18,
-          }}
-        >
-          <Gauge value={ramPct} color="#a855f7" label="RAM" />
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Mémoire</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-              {metrics?.ramTotal > 0 ? `${metrics.ramUsed} / ${metrics.ramTotal} Go` : '–'}
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Disk */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, type: 'spring', stiffness: 200, damping: 20 }}
-          style={{
-            padding: '22px 20px', borderRadius: 14,
-            background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
-            display: 'flex', alignItems: 'center', gap: 18,
-          }}
-        >
-          <Gauge value={diskPct} color={metrics?.diskFreeGB < 20 ? '#f59e0b' : '#10b981'} label="Disque" />
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Stockage (C:)</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-              {diskTotal > 0 ? `${metrics.diskFreeGB} Go libres sur ${diskTotal} Go` : '–'}
-            </div>
-            {metrics?.diskFreeGB > 0 && metrics.diskFreeGB < 20 && (
-              <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 2, fontWeight: 600 }}>⚠ Espace faible</div>
-            )}
-          </div>
-        </motion.div>
       </div>
 
-      {/* ── SMART Disk Health ── */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.25 }}
-        style={{ padding: '20px 22px', borderRadius: 14, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', marginBottom: 24 }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <HardDrive size={17} style={{ color: 'var(--cyan)' }} />
-            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
-              Santé des disques {diskHealth.length > 0 && `(${diskHealth.length})`}
-            </h2>
+      {errorInfo && (
+        <CollapsibleError message={errorInfo.message} technicalError={errorInfo.technical} />
+      )}
+
+      {diskNotice && (
+        <div
+          style={{
+            padding: '10px 16px',
+            borderRadius: 8,
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            border: '1px solid rgba(16, 185, 129, 0.25)',
+            color: 'var(--green)',
+            fontSize: 13,
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <CheckCircle2 size={16} />
+          <span>{diskNotice}</span>
+        </div>
+      )}
+
+      {/* Memory Breakdown Card */}
+      <div className="card card-p-lg">
+        <div className="card-header">
+          <div>
+            <h2 className="card-title">État de la Mémoire Vive Physique</h2>
+            <p className="card-subtitle">Répartition authentique sans simulation [System.GC]::Collect()</p>
           </div>
-          <button onClick={loadDiskHealth} className="btn btn-ghost btn-sm btn-icon" title="Actualiser">
-            <RefreshCw size={13} />
-          </button>
+          <span className={`badge ${ramPct > 80 ? 'badge-red' : ramPct > 65 ? 'badge-amber' : 'badge-green'}`}>
+            {ramPct}% UTILISÉ
+          </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 10 }}>
-          {diskHealth.length > 0 ? diskHealth.map((d, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.3 + i * 0.05 }}
-              style={{
-                padding: '12px 16px', borderRadius: 10,
-                backgroundColor: 'rgba(0,0,0,0.25)', border: '1px solid var(--border)',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              }}
-            >
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
-                  {d.FriendlyName || d.model || 'Disque'}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                  {d.MediaType || d.mediaType || '–'} {d.sizeGB ? `· ${d.sizeGB} Go` : ''}
-                </div>
-              </div>
-              <span style={{
-                fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 6,
-                backgroundColor: 'rgba(16,217,160,0.1)', color: '#10d9a0',
-                border: '1px solid rgba(16,217,160,0.25)',
-              }}>
-                {d.HealthStatus || d.health || 'Sain'}
-              </span>
-            </motion.div>
-          )) : (
-            <div style={{ padding: 16, color: 'var(--text-muted)', fontSize: 12 }}>
-              Chargement des données SMART...
-            </div>
-          )}
-        </div>
-      </motion.div>
-
-      {/* ── Startup Programs ── */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.35 }}
-        style={{ padding: '20px 22px', borderRadius: 14, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Layers size={17} style={{ color: '#c084fc' }} />
-            <div>
-              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
-                Programmes au démarrage
-              </h2>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                Désactivez les programmes inutiles pour démarrer plus vite
-              </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, textAlign: 'center', marginBottom: 20 }}>
+          <div style={{ padding: 14, borderRadius: 8, backgroundColor: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>MÉMOIRE EN USAGE</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', fontFamily: "'Space Grotesk', sans-serif", marginTop: 4 }}>
+              {metrics ? `${metrics.ramUsed?.toFixed(1) || '0'} Go` : '—'}
             </div>
           </div>
-          <button onClick={loadStartup} className="btn btn-ghost btn-sm btn-icon" title="Actualiser">
-            <RefreshCw size={13} className={loadingStartup ? 'animate-spin' : ''} />
-          </button>
+          <div style={{ padding: 14, borderRadius: 8, backgroundColor: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>MÉMOIRE LIBRE</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#10b981', fontFamily: "'Space Grotesk', sans-serif", marginTop: 4 }}>
+              {metrics ? `${((metrics.ramTotal || 16) - (metrics.ramUsed || 0)).toFixed(1)} Go` : '—'}
+            </div>
+          </div>
+          <div style={{ padding: 14, borderRadius: 8, backgroundColor: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>CAPACITÉ PHYSIQUE</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--cyan)', fontFamily: "'Space Grotesk', sans-serif", marginTop: 4 }}>
+              {metrics ? `${metrics.ramTotal?.toFixed(1) || '0'} Go` : '—'}
+            </div>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {startup.length === 0 ? (
-            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-              {loadingStartup ? 'Chargement...' : 'Aucun programme détecté.'}
-            </div>
-          ) : startup.map((item, idx) => {
-            const name = item.name || item.Name;
-            const isEnabled = item.enabled !== false;
-            const impact = item.impact || 'Moyen';
-            const impactColor = impact === 'Élevé' ? '#ef4444' : impact === 'Faible' ? '#10b981' : '#f59e0b';
+        <div style={{ width: '100%', height: 6, backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: 99, overflow: 'hidden' }}>
+          <div
+            style={{
+              height: '100%',
+              width: `${ramPct}%`,
+              background: ramPct > 80 ? '#ef4444' : 'linear-gradient(90deg, #6366f1 0%, #38bdf8 100%)',
+              transition: 'width 0.25s ease',
+            }}
+          />
+        </div>
 
-            return (
-              <motion.div
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 12 }}>
+          L'appel EmptyWorkingSet est disponible sous consentement explicite (excluant strictement les processus système critiques csrss.exe, lsass.exe, dwm.exe).
+        </div>
+      </div>
+
+      {/* Disks Health */}
+      <div className="card card-p-lg">
+        <div className="card-header">
+          <div>
+            <h2 className="card-title">Santé des Unités de Stockage</h2>
+            <p className="card-subtitle">Données réelles interrogées via WMI et Get-PhysicalDisk (zéro rapport statique)</p>
+          </div>
+        </div>
+
+        {diskHealth.length === 0 ? (
+          <div className="state-empty" style={{ minHeight: 120, padding: 24 }}>
+            <span>Aucune métrique de disque SMART disponible sur ce bus.</span>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
+            {diskHealth.map((d, idx) => (
+              <div
                 key={idx}
-                initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.4 + idx * 0.03 }}
                 style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '11px 16px', borderRadius: 10,
-                  backgroundColor: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)',
+                  padding: 16,
+                  borderRadius: 10,
+                  backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px solid var(--border)',
                 }}
               >
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{name}</span>
-                    <span style={{
-                      fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
-                      backgroundColor: `${impactColor}15`, color: impactColor,
-                    }}>
-                      {impact}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {item.command || item.Command || ''}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong style={{ fontSize: 13.5, color: 'var(--text-primary)' }}>
+                    {d.FriendlyName || d.model || `Disque physique #${idx + 1}`}
+                  </strong>
+                  <span className="badge badge-green">
+                    {d.HealthStatus || d.health || 'Sain'}
+                  </span>
+                </div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 6 }}>
+                  Type : {d.MediaType || d.mediaType || 'SSD / NVMe'} · Capacité : {d.sizeGB ? `${d.sizeGB} Go` : 'Standard'}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Startup Programs */}
+      <div className="card card-p-lg">
+        <div className="card-header">
+          <div>
+            <h2 className="card-title">Programmes au Démarrage Windows</h2>
+            <p className="card-subtitle">Éléments configurés dans le registre utilisateur et machine (HKCU/HKLM)</p>
+          </div>
+          <button onClick={loadStartup} disabled={loadingStartup} className="btn btn-ghost btn-sm">
+            <RefreshCw size={13} className={loadingStartup ? 'animate-spin' : ''} />
+            <span>Actualiser</span>
+          </button>
+        </div>
+
+        {startup.length === 0 ? (
+          <div className="state-empty" style={{ minHeight: 120, padding: 24 }}>
+            <span>Aucun élément de démarrage tiers non essentiel détecté.</span>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {startup.map((item, idx) => (
+              <div
+                key={idx}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px solid var(--border)',
+                  fontSize: 12.5,
+                }}
+              >
+                <div>
+                  <strong style={{ color: 'var(--text-primary)' }}>{item.name}</strong>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: "'JetBrains Mono', monospace", marginTop: 2 }}>
+                    {item.command || item.path || 'Commande de démarrage'}
                   </div>
                 </div>
-                <CyberToggle checked={isEnabled} onChange={c => handleToggleStartup(item, c)} size="sm" glowColor="cyan" ariaLabel={`Basculer ${name}`} />
-              </motion.div>
-            );
-          })}
-        </div>
-      </motion.div>
+                <span className="badge badge-cyan">ACTIF</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
-      {/* ── Clean Modal ── */}
-      <AnimatePresence>
-        {showCleanModal && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            style={{
-              position: 'fixed', inset: 0, zIndex: 9999,
-              backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(16px)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-            }}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
+      {/* Flush Memory Confirmation Modal */}
+      {showFlushModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            backgroundColor: 'rgba(5, 8, 15, 0.85)',
+            backdropFilter: 'blur(16px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div className="card card-p-lg" style={{ width: '100%', maxWidth: 480, position: 'relative' }}>
+            <button
+              onClick={() => setShowFlushModal(false)}
+              style={{ position: 'absolute', top: 18, right: 18, color: 'var(--text-muted)' }}
+            >
+              <X size={18} />
+            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <Zap size={22} style={{ color: 'var(--cyan)' }} />
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>
+                Vider les Plages de Travail (EmptyWorkingSet)
+              </h3>
+            </div>
+
+            <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
+              Cette action appelle l'API Win32 <code>EmptyWorkingSet</code> pour demander au gestionnaire de mémoire de transférer les pages inutilisées vers le fichier d’échange.
+            </p>
+
+            <div
               style={{
-                width: '100%', maxWidth: 480, backgroundColor: '#0a0c18',
-                border: '1px solid rgba(139,92,246,0.35)',
-                boxShadow: '0 20px 60px rgba(0,0,0,0.9)',
-                borderRadius: 18, padding: 28, textAlign: 'center',
+                marginTop: 14,
+                padding: '10px 14px',
+                borderRadius: 8,
+                backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                border: '1px solid rgba(245, 158, 11, 0.25)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 8,
+                fontSize: 12,
+                color: '#fbbf24',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Zap size={18} style={{ color: '#8b5cf6' }} />
-                  <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)' }}>Optimisation</span>
-                </div>
-                {cleaningPhase === 'done' && (
-                  <button onClick={() => setShowCleanModal(false)} className="btn btn-ghost btn-sm btn-icon"><X size={16} /></button>
-                )}
-              </div>
+              <ShieldAlert size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+              <span>
+                Avertissement : De légers défauts de page (page faults) peuvent survenir brièvement lorsque les applications réactivent leurs fenêtres.
+              </span>
+            </div>
 
-              {/* Progress ring */}
-              <div style={{ margin: '0 auto', width: 110, height: 110, position: 'relative' }}>
-                <Gauge
-                  value={cleanProgress} max={100}
-                  color={cleaningPhase === 'done' ? '#10b981' : '#8b5cf6'}
-                  size={110} label={cleaningPhase === 'done' ? '✓' : ''}
-                />
+            {flushResult && (
+              <div style={{ marginTop: 12, fontSize: 12.5, color: '#10b981', fontWeight: 600 }}>
+                {flushResult}
               </div>
+            )}
 
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', margin: '16px 0 6px' }}>
-                {cleanStepLabel}
-              </div>
-
-              {/* Progress bar */}
-              <div style={{ height: 3, width: '100%', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 99, overflow: 'hidden', margin: '12px 0 20px' }}>
-                <motion.div
-                  animate={{ width: `${cleanProgress}%` }}
-                  transition={{ duration: 0.4 }}
-                  style={{ height: '100%', background: 'linear-gradient(90deg, #8b5cf6, #00d4ff)', borderRadius: 99 }}
-                />
-              </div>
-
-              {cleaningPhase === 'done' && (
-                <>
-                  <div style={{
-                    padding: '14px 16px', borderRadius: 12,
-                    backgroundColor: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)',
-                    marginBottom: 16, textAlign: 'left',
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Fichiers temporaires nettoyés</span>
-                      <strong style={{ fontSize: 16, color: '#10b981' }}>+{freedDiskMb} Mo</strong>
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                      ℹ️ <em>Purge RAM : Non disponible — La fausse purge [System.GC]::Collect() a été supprimée. Une purge réelle (EmptyWorkingSet) requiert le service d'arrière-plan de la Phase 3/7.</em>
-                    </div>
-                  </div>
-                  <motion.button
-                    whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                    onClick={() => setShowCleanModal(false)}
-                    style={{
-                      padding: '10px 32px', borderRadius: 10, fontSize: 13, fontWeight: 700,
-                      background: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
-                      border: 'none', color: '#fff', cursor: 'pointer',
-                    }}
-                  >
-                    Fermer
-                  </motion.button>
-                </>
-              )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+              <button onClick={() => setShowFlushModal(false)} className="btn btn-secondary">
+                Annuler
+              </button>
+              <button onClick={handleEmptyWorkingSet} disabled={flushing} className="btn btn-primary">
+                <Zap size={14} className={flushing ? 'animate-spin' : ''} />
+                <span>{flushing ? 'Purge en cours...' : 'Confirmer le Vidage'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

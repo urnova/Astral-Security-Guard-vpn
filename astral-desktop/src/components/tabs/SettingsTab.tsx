@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   User, Palette, Sliders, Shield, Download, Gamepad2,
   Wifi, Bell, RefreshCw, Cpu, Info, Check, AlertCircle,
-  ExternalLink, Save, FolderPlus, Trash2, Volume2, BellOff,
-  Zap, Keyboard, Monitor, Sparkles
+  ExternalLink, Save, Sparkles, Monitor, ShieldCheck
 } from 'lucide-react';
 import { CollapsibleError } from '../ui/CollapsibleError';
 import { playSound, setMasterVolume } from '../../lib/audioSynth';
@@ -20,7 +19,6 @@ export interface SettingsTabProps {
   currentTheme?: string;
   onThemeChange?: (theme: string) => void;
 }
-
 
 type SettingsSection =
   | 'profile'
@@ -39,15 +37,14 @@ interface NavSectionItem {
   id: SettingsSection;
   label: string;
   icon: React.ElementType;
-  badge?: string;
 }
 
 const SECTIONS: NavSectionItem[] = [
   { id: 'profile',       label: 'Mon Profil',           icon: User },
-  { id: 'appearance',    label: 'Apparence & Thème',    icon: Palette },
+  { id: 'appearance',    label: 'Apparence & Thèmes',   icon: Palette },
   { id: 'general',       label: 'Général & Système',    icon: Sliders },
   { id: 'security',      label: 'Sécurité & Defender',  icon: Shield },
-  { id: 'downloads',     label: 'Scanner Téléchargement', icon: Download },
+  { id: 'downloads',     label: 'Scanner Fichiers',     icon: Download },
   { id: 'gaming',        label: 'Gaming & Overlay HUD', icon: Gamepad2 },
   { id: 'network',       label: 'Réseau & DNS',         icon: Wifi },
   { id: 'notifications', label: 'Notifications & Sons', icon: Bell },
@@ -253,10 +250,10 @@ export default function SettingsTab({
     setTestNotifSending(true);
     try {
       await api.testNotification?.(
-        'Astral Vanguard - Alerte Système',
-        'Notification native Windows opérationnelle. Protection active en arrière-plan.'
+        'Astral Vanguard - Notification',
+        'Notification native Windows opérationnelle. Système protégé.'
       );
-      showNotification('Notification envoyée au système Windows.');
+      showNotification('Notification envoyée au centre Windows.');
     } catch (err: any) {
       setErrorInfo({ message: 'Erreur d’envoi de notification', technical: err.message });
     } finally {
@@ -265,27 +262,27 @@ export default function SettingsTab({
   };
 
   return (
-    <div className="tab-scroll" style={{ maxWidth: 1180, margin: '0 auto', paddingBottom: 40 }}>
+    <div className="tab-scroll" style={{ maxWidth: 1220, margin: '0 auto', padding: '24px 32px 48px' }}>
       {/* Page Title */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, paddingBottom: 16, borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Sliders size={24} style={{ color: '#a78bfa' }} />
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Sliders size={22} style={{ color: 'var(--cyan)' }} />
             Paramètres & Centre de Contrôle
           </h1>
-          <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#94a3b8' }}>
-            Personnalisation du profil, préférences de sécurité, auto-updater et télémétrie locale
+          <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+            Profil persistant, thèmes d'interface, moteur de sécurité et préférences système
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 12, padding: '4px 10px', borderRadius: 9999, backgroundColor: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)', color: '#c084fc', fontFamily: 'monospace' }}>
+          <span className="badge badge-purple" style={{ fontFamily: 'var(--mono)' }}>
             v2.5.0
           </span>
         </div>
       </div>
 
       {notice && (
-        <div style={{ padding: '10px 16px', borderRadius: 8, backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#34d399', fontSize: 13, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="badge badge-green" style={{ width: '100%', boxSizing: 'border-box', padding: '12px 16px', borderRadius: 10, fontSize: 13, marginBottom: 16 }}>
           <Check size={16} />
           <span>{notice}</span>
         </div>
@@ -300,7 +297,7 @@ export default function SettingsTab({
       {/* Main Settings Layout: Sub-Nav on left, Content on right */}
       <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 24, alignItems: 'start' }}>
         {/* Secondary Navigation */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, backgroundColor: 'rgba(15, 23, 42, 0.4)', borderRadius: 12, border: '1px solid rgba(255, 255, 255, 0.05)', padding: 8 }}>
+        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 8 }}>
           {SECTIONS.map((sec) => {
             const Icon = sec.icon;
             const isActive = activeSection === sec.id;
@@ -317,15 +314,15 @@ export default function SettingsTab({
                   borderRadius: 8,
                   fontSize: 13,
                   fontWeight: isActive ? 600 : 500,
-                  color: isActive ? '#ffffff' : '#94a3b8',
-                  backgroundColor: isActive ? 'rgba(139, 92, 246, 0.2)' : 'transparent',
-                  border: isActive ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid transparent',
+                  color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  backgroundColor: isActive ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                  border: isActive ? '1px solid rgba(99, 102, 241, 0.35)' : '1px solid transparent',
                   cursor: 'pointer',
                   textAlign: 'left',
                   transition: 'all 0.15s ease',
                 }}
               >
-                <Icon size={16} style={{ color: isActive ? '#a78bfa' : '#64748b', flexShrink: 0 }} />
+                <Icon size={16} style={{ color: isActive ? 'var(--cyan)' : 'var(--text-muted)', flexShrink: 0 }} />
                 <span style={{ flex: 1 }}>{sec.label}</span>
               </button>
             );
@@ -333,87 +330,75 @@ export default function SettingsTab({
         </div>
 
         {/* Section Content Panel */}
-        <div style={{ backgroundColor: 'rgba(15, 23, 42, 0.4)', borderRadius: 12, border: '1px solid rgba(255, 255, 255, 0.05)', padding: 24, minHeight: 460 }}>
+        <div className="glass-card" style={{ padding: 28, minHeight: 480 }}>
           {/* SECTION 1: PROFIL */}
           {activeSection === 'profile' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>Mon Profil Utilisateur</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#94a3b8' }}>
-                  Ces informations personnalisent l'accueil et le rapport de session de sécurité Vanguard.
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Mon Profil Utilisateur</h2>
+                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+                  Vos coordonnées sont stockées de façon chiffrée et préservées lors de chaque mise à jour applicative.
                 </p>
               </div>
 
-              <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 500 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 8 }}>
-                  <div style={{ width: 56, height: 56, borderRadius: '50%', backgroundColor: 'rgba(139, 92, 246, 0.2)', border: '2px solid rgba(139, 92, 246, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, color: '#c084fc' }}>
+              <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 540 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 4 }}>
+                  <div style={{ width: 54, height: 54, borderRadius: '50%', backgroundColor: 'rgba(99, 102, 241, 0.2)', border: '2px solid rgba(99, 102, 241, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: '#c084fc' }}>
                     {firstName.trim() ? firstName.trim()[0].toUpperCase() : 'V'}
                   </div>
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: '#f8fafc' }}>
-                      {firstName || lastName ? `${firstName} ${lastName}`.trim() : 'Utilisateur Vanguard'}
+                    <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {firstName || lastName ? `${firstName} ${lastName}`.trim() : 'Utilisateur Astral Vanguard'}
                     </div>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>Profil stocké localement · Chiffré sur votre machine</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Stocké dans %APPDATA%\Astral Vanguard\user-profile.json</div>
                   </div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#cbd5e1', marginBottom: 6 }}>Prénom</label>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Prénom</label>
                     <input
                       type="text"
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
-                      placeholder="Votre prénom (ex. Alex)"
-                      style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.3)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#ffffff', fontSize: 13 }}
+                      placeholder="Votre prénom"
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.3)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 13, outline: 'none' }}
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#cbd5e1', marginBottom: 6 }}>Nom</label>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Nom</label>
                     <input
                       type="text"
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
                       placeholder="Votre nom"
-                      style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.3)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#ffffff', fontSize: 13 }}
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.3)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 13, outline: 'none' }}
                     />
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
                   <button
                     type="submit"
                     disabled={savingProfile}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '10px 20px',
-                      borderRadius: 8,
-                      backgroundColor: profileSuccess ? '#059669' : '#7c3aed',
-                      border: 'none',
-                      color: '#ffffff',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: savingProfile ? 'not-allowed' : 'pointer',
-                      transition: 'all 0.2s ease',
-                    }}
+                    className="btn btn-primary"
+                    style={{ padding: '9px 18px' }}
                   >
                     {profileSuccess ? <Check size={16} /> : <Save size={16} />}
                     <span>{savingProfile ? 'Enregistrement...' : profileSuccess ? 'Enregistré !' : 'Enregistrer le profil'}</span>
                   </button>
-                  <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                    Met à jour immédiatement la salutation sur l'Accueil.
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    Actualise immédiatement l'en-tête de bienvenue.
                   </span>
                 </div>
 
                 {/* Assistant Onboarding Launcher */}
-                <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc', marginBottom: 4 }}>
-                    Assistant de bienvenue & configuration initiale
+                <div style={{ marginTop: 24, paddingTop: 18, borderTop: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                    Assistant de configuration pas-à-pas
                   </div>
-                  <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 12px 0' }}>
-                    Relancez l'assistant pas-à-pas pour reconfigurer le démarrage, le thème, le tray et le scanner.
+                  <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 12px 0' }}>
+                    Relancez le guide interactif de bienvenue pour reconfigurer l'application de A à Z.
                   </p>
                   <button
                     type="button"
@@ -425,22 +410,11 @@ export default function SettingsTab({
                         window.location.reload();
                       }
                     }}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '8px 16px',
-                      borderRadius: 8,
-                      backgroundColor: 'rgba(139, 92, 246, 0.15)',
-                      border: '1px solid rgba(139, 92, 246, 0.35)',
-                      color: '#c084fc',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}
+                    className="btn btn-ghost"
+                    style={{ fontSize: 12 }}
                   >
-                    <Sparkles size={14} style={{ color: '#00d4ff' }} />
-                    <span>Relancer la configuration initiale</span>
+                    <Sparkles size={14} style={{ color: 'var(--cyan)' }} />
+                    <span>Relancer l'assistant de configuration</span>
                   </button>
                 </div>
               </form>
@@ -449,20 +423,20 @@ export default function SettingsTab({
 
           {/* SECTION 2: APPARENCE */}
           {activeSection === 'appearance' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>Apparence & Thème Visuel</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#94a3b8' }}>
-                  Quatre thèmes distincts conçus pour sublimer votre environnement de jeu et de sécurité.
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Apparence & Thèmes Professionnels</h2>
+                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+                  Quatre thèmes complets conçus avec une rigueur esthétique absolue, sans halos criards ni fioritures inutiles.
                 </p>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
                 {[
-                  { id: 'vanguard-dark', name: 'Vanguard Void (Défaut)', sub: 'Cyan électrique & améthyste sombre', bg: '#060614', border: '#8b5cf6', c1: '#060614', c2: '#8b5cf6', c3: '#00d4ff' },
-                  { id: 'cyber-cyan', name: 'Cyber Neon', sub: 'Bleu cobalt & cyan haute intensité', bg: '#040914', border: '#00f5ff', c1: '#040914', c2: '#00f5ff', c3: '#38bdf8' },
-                  { id: 'midnight-purple', name: 'Midnight Purple', sub: 'Violet royal mystique & magenta', bg: '#0a0512', border: '#a855f7', c1: '#0a0512', c2: '#a855f7', c3: '#ec4899' },
-                  { id: 'stealth-oled', name: 'Stealth OLED', sub: 'Noir absolu & accent vert émeraude', bg: '#000000', border: '#10d9a0', c1: '#000000', c2: '#10d9a0', c3: '#ffffff' },
+                  { id: 'vanguard-dark', name: 'Obsidian Slate (Défaut)', sub: 'Ardoise sombre, violet cobalt & cyan', bg: '#090d16', border: '#6366f1', c1: '#090d16', c2: '#6366f1', c3: '#06b6d4' },
+                  { id: 'cyber-cyan', name: 'Titanium Minimal', sub: 'Titane sombre épuré & cyan électrique', bg: '#070c14', border: '#06b6d4', c1: '#070c14', c2: '#06b6d4', c3: '#38bdf8' },
+                  { id: 'midnight-purple', name: 'Midnight Cobalt', sub: 'Nuit cobalt profonde & améthyste royale', bg: '#0b0817', border: '#8b5cf6', c1: '#0b0817', c2: '#8b5cf6', c3: '#d946ef' },
+                  { id: 'stealth-oled', name: 'Stealth OLED', sub: 'Noir absolu #000000 & émeraude', bg: '#000000', border: '#10b981', c1: '#000000', c2: '#10b981', c3: '#f8fafc' },
                 ].map((th) => {
                   const isCurrent = (currentTheme || 'vanguard-dark') === th.id;
                   return (
@@ -470,15 +444,15 @@ export default function SettingsTab({
                       key={th.id}
                       onClick={() => onThemeChange?.(th.id)}
                       style={{
-                        padding: 14,
-                        borderRadius: 10,
-                        border: `2px solid ${isCurrent ? th.border : 'rgba(255, 255, 255, 0.08)'}`,
+                        padding: 16,
+                        borderRadius: 12,
+                        border: `2px solid ${isCurrent ? th.border : 'var(--border)'}`,
                         backgroundColor: th.bg,
                         cursor: 'pointer',
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: 10,
-                        boxShadow: isCurrent ? `0 0 16px ${th.border}44` : 'none',
+                        gap: 12,
+                        boxShadow: isCurrent ? `0 0 16px ${th.border}35` : 'none',
                         transition: 'all 0.2s ease',
                       }}
                     >
@@ -491,48 +465,47 @@ export default function SettingsTab({
                         <div style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: th.c2 }} />
                         <div style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: th.c3 }} />
                       </div>
-                      <span style={{ fontSize: 11, color: '#94a3b8' }}>{th.sub}</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{th.sub}</span>
                     </div>
                   );
                 })}
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Réduire les animations</div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>Désactive les transitions pour privilégier la réactivité maximale.</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Mode animations réduites</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Désactive les transitions d'affichage pour une réactivité instantanée.</div>
                 </div>
                 <CyberToggle checked={reduceAnimations} onChange={setReduceAnimations} />
               </div>
             </div>
           )}
 
-
           {/* SECTION 3: GENERAL */}
           {activeSection === 'general' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>Général & Comportement Système</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#94a3b8' }}>
-                  Options de démarrage et gestion de la présence dans la barre des tâches Windows.
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Général & Système</h2>
+                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+                  Comportement en arrière-plan, présence dans le System Tray et démarrage automatique.
                 </p>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Lancer avec Windows</div>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>Démarre automatiquement Vanguard au démarrage de session en arrière-plan.</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Démarrage automatique avec Windows</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Lance Astral Vanguard silencieusement lors de l'ouverture de votre session.</div>
                   </div>
                   <CyberToggle checked={autostart} onChange={handleToggleAutostart} />
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Réduire dans la zone de notification (Tray)</div>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>La fermeture de la fenêtre garde l'application active dans la zone système.</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Réduire dans la zone de notification (Tray)</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Garde la protection active en arrière-plan lors du clic sur la croix.</div>
                   </div>
-                  <CyberToggle checked={minimizeToTray} onChange={handleToggleMinimize} glowColor="purple" />
+                  <CyberToggle checked={minimizeToTray} onChange={handleToggleMinimize} />
                 </div>
               </div>
             </div>
@@ -542,22 +515,22 @@ export default function SettingsTab({
           {activeSection === 'security' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>Sécurité & Microsoft Defender</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#94a3b8' }}>
-                  Supervision native de l'antivirus Windows sans moteurs tiers non audités.
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Sécurité & Multi-Moteurs</h2>
+                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+                  Contrôle direct du sous-système Microsoft Defender et des modules heuristiques locaux.
                 </p>
               </div>
 
-              <div style={{ padding: 16, borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.05)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ padding: 18, borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Shield size={20} style={{ color: '#10b981' }} />
+                  <ShieldCheck size={20} style={{ color: 'var(--green)' }} />
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: '#f8fafc' }}>Protection en temps réel Microsoft Defender</div>
-                    <div style={{ fontSize: 12, color: '#94a3b8' }}>Surveillance active des fichiers et de la mémoire.</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>Protection en temps réel Microsoft Defender</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Moteur natif Windows avec supervision télémétrique directe.</div>
                   </div>
                 </div>
-                <div style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.5, marginTop: 4 }}>
-                  Astral Vanguard s'appuie sur le sous-système natif de sécurité Windows. Toutes les exclusions, scans et mises à jour de signatures sont exécutés via l'API PowerShell sécurisée sous contrôle de l'utilisateur.
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, marginTop: 4 }}>
+                  Toutes les exclusions, analyses et rafraîchissements de définitions s'exécutent via l'API PowerShell sécurisée sans modification opaque du registre.
                 </div>
               </div>
 
@@ -569,10 +542,11 @@ export default function SettingsTab({
                     const res = await api.updateSignatures?.();
                     if (res?.success) showNotification('Signatures Defender à jour.');
                   }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 8, backgroundColor: 'rgba(139, 92, 246, 0.2)', border: '1px solid rgba(139, 92, 246, 0.4)', color: '#c084fc', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                  className="btn btn-ghost"
+                  style={{ fontSize: 13 }}
                 >
                   <RefreshCw size={15} />
-                  <span>Mettre à jour les signatures</span>
+                  <span>Mettre à jour les définitions Defender</span>
                 </button>
               </div>
             </div>
@@ -582,16 +556,16 @@ export default function SettingsTab({
           {activeSection === 'downloads' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>Scanner de Téléchargements</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#94a3b8' }}>
-                  Analyse automatique immédiate des nouveaux exécutables et archives déposés dans vos dossiers.
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Scanner de Fichiers & Sentinelle USB</h2>
+                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+                  Surveillance en temps réel des nouveaux exécutables et supports amovibles.
                 </p>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Activer le scanner de fichiers</div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>Surveille les répertoires configurés et déclenche une analyse ciblée.</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Surveillance des dossiers de téléchargement</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Analyse automatique des extensions critiques (.exe, .zip, .msi, .bat).</div>
                 </div>
                 <CyberToggle
                   checked={scannerConfig.enabled}
@@ -600,14 +574,13 @@ export default function SettingsTab({
                     setScannerConfig(next);
                     api?.saveScannerConfig?.(next);
                   }}
-                  color="purple"
                 />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Surveiller les clés USB (Sentinelle)</div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>Propose l'analyse des périphériques de stockage amovibles connectés.</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Sentinelle périphériques amovibles (USB)</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Propose une vérification d'intégrité lors de l'insertion d'une clé USB.</div>
                 </div>
                 <CyberToggle
                   checked={scannerConfig.usbScanEnabled}
@@ -616,7 +589,6 @@ export default function SettingsTab({
                     setScannerConfig(next);
                     api?.saveScannerConfig?.(next);
                   }}
-                  color="purple"
                 />
               </div>
             </div>
@@ -626,28 +598,27 @@ export default function SettingsTab({
           {activeSection === 'gaming' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>Gaming & Overlay HUD</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#94a3b8' }}>
-                  Configuration des profils et détection (désactivée par défaut pour éviter tout faux positif).
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Gaming & Overlay HUD</h2>
+                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+                  Overlay minimaliste en jeu et détection automatique des processus 3D.
                 </p>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Afficher l'Overlay HUD en jeu</div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>Raccourci global : <kbd style={{ padding: '2px 6px', borderRadius: 4, backgroundColor: 'rgba(255, 255, 255, 0.1)', fontFamily: 'monospace' }}>Ctrl + Shift + O</kbd></div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Afficher l'Overlay HUD en jeu</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Raccourci global : <kbd style={{ padding: '2px 6px', borderRadius: 4, backgroundColor: 'rgba(255, 255, 255, 0.1)', fontFamily: 'var(--mono)' }}>Ctrl + Shift + O</kbd></div>
                 </div>
                 <CyberToggle
                   checked={overlayActive}
                   onChange={(checked) => handleToggleOverlay(checked)}
-                  color="purple"
                 />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Détection automatique des jeux (Expérimental)</div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>Désactivé par défaut. Les navigateurs (Edge, Chrome, Perplexity) et outils de bureau sont strictement exclus.</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Détection automatique des jeux</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Exclut strictement les navigateurs et logiciels bureautiques.</div>
                 </div>
                 <CyberToggle
                   checked={autoDetectGames}
@@ -656,29 +627,28 @@ export default function SettingsTab({
                     await api?.saveGamingAutoDetect?.(checked);
                     showNotification(checked ? 'Détection auto activée' : 'Détection auto désactivée');
                   }}
-                  color="purple"
                 />
               </div>
             </div>
           )}
 
-          {/* SECTION 7: RESEAU & VPN */}
+          {/* SECTION 7: RESEAU & DNS */}
           {activeSection === 'network' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>Réseau, DNS & Anti-Lag</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#94a3b8' }}>
-                  Résolution DNS rapide et surveillance de latence sans modification persistante destructrice.
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Réseau & Fournisseurs DNS</h2>
+                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+                  Bascule instantanée vers des résolveurs chiffrés et rapides sans modifier le registre Windows.
                 </p>
               </div>
 
-              <div style={{ padding: 16, borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.05)', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Sélection du serveur DNS</span>
+              <div style={{ padding: 18, borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Résolveur DNS actif</span>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                   {[
-                    { id: 'auto', label: 'Automatique (DHCP)', desc: 'DNS du fournisseur d’accès' },
-                    { id: 'cloudflare', label: 'Cloudflare DNS', desc: '1.1.1.1 (Haute vitesse)' },
-                    { id: 'google', label: 'Google DNS', desc: '8.8.8.8 (Haute fiabilité)' },
+                    { id: 'auto', label: 'Automatique (DHCP)', desc: 'Fournisseur d’accès (Box)' },
+                    { id: 'cloudflare', label: 'Cloudflare DNS', desc: '1.1.1.1 / 1.0.0.1 (Rapide)' },
+                    { id: 'google', label: 'Google DNS', desc: '8.8.8.8 / 8.8.4.4 (Robuste)' },
                   ].map((d) => (
                     <button
                       key={d.id}
@@ -690,24 +660,25 @@ export default function SettingsTab({
                       style={{
                         padding: 12,
                         borderRadius: 8,
-                        backgroundColor: dnsProvider === d.id ? 'rgba(139, 92, 246, 0.25)' : 'rgba(255, 255, 255, 0.03)',
-                        border: dnsProvider === d.id ? '1px solid #8b5cf6' : '1px solid rgba(255, 255, 255, 0.08)',
-                        color: dnsProvider === d.id ? '#ffffff' : '#94a3b8',
+                        backgroundColor: dnsProvider === d.id ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255, 255, 255, 0.03)',
+                        border: dnsProvider === d.id ? '1px solid var(--cyan)' : '1px solid var(--border)',
+                        color: dnsProvider === d.id ? 'var(--text-primary)' : 'var(--text-secondary)',
                         cursor: 'pointer',
                         textAlign: 'left',
+                        transition: 'all 0.15s ease',
                       }}
                     >
                       <div style={{ fontSize: 13, fontWeight: 600 }}>{d.label}</div>
-                      <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{d.desc}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{d.desc}</div>
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Surveillance Watchdog Latence</div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>Alerte lorsque la latence TCP dépasse le seuil configuré.</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Surveillance Watchdog Anti-Lag</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Déclenche une alerte lors d'un pic de latence anormal ({watchdogThreshold}ms).</div>
                 </div>
                 <CyberToggle
                   checked={watchdogEnabled}
@@ -715,7 +686,6 @@ export default function SettingsTab({
                     setWatchdogEnabled(checked);
                     await api?.setPingWatchdog?.({ enabled: checked, threshold: watchdogThreshold });
                   }}
-                  color="purple"
                 />
               </div>
             </div>
@@ -725,28 +695,27 @@ export default function SettingsTab({
           {activeSection === 'notifications' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>Notifications & Sons</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#94a3b8' }}>
-                  Gestion des alertes sonores et des notifications natives Windows en arrière-plan.
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Notifications & Alertes Sonores</h2>
+                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+                  Ajustez les notifications natives et le volume du synthétiseur Web Audio sans latence.
                 </p>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Mode Ne Pas Déranger (DND)</div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>Désactive les notifications non critiques durant vos parties.</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Mode Ne Pas Déranger (DND)</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Masque les alertes non critiques lors de vos sessions de jeu.</div>
                 </div>
                 <CyberToggle
                   checked={dndEnabled}
                   onChange={(checked) => onDndChange?.(checked)}
-                  color="purple"
                 />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>Volume Sonore des Alertes</div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>Volume du synthétiseur audio procédural.</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Volume des effets audio procéduraux</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Niveau sonore du synthétiseur d'alertes Vanguard.</div>
                 </div>
                 <input
                   type="range"
@@ -758,15 +727,16 @@ export default function SettingsTab({
                     setVolume(v);
                     setMasterVolume(v / 100);
                   }}
-                  style={{ width: 140, accentColor: '#8b5cf6', cursor: 'pointer' }}
+                  style={{ width: 140, accentColor: 'var(--cyan)', cursor: 'pointer' }}
                 />
               </div>
 
-              <div style={{ paddingTop: 8 }}>
+              <div style={{ paddingTop: 6 }}>
                 <button
                   onClick={handleTestNativeNotification}
                   disabled={testNotifSending}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 8, backgroundColor: 'rgba(139, 92, 246, 0.2)', border: '1px solid rgba(139, 92, 246, 0.4)', color: '#c084fc', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                  className="btn btn-ghost"
+                  style={{ fontSize: 13 }}
                 >
                   <Bell size={15} />
                   <span>Tester la notification native Windows</span>
@@ -779,24 +749,25 @@ export default function SettingsTab({
           {activeSection === 'updates' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>Mises à Jour & Auto-Updater</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#94a3b8' }}>
-                  Vérification directe et sécurisée des nouvelles versions publiées sur GitHub Releases.
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Mises à Jour Officielles</h2>
+                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+                  Vérification signée cryptographiquement via les releases officielles GitHub.
                 </p>
               </div>
 
-              <div style={{ padding: 18, borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.05)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ padding: 20, borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: '#f8fafc' }}>Version installée</div>
-                    <div style={{ fontSize: 12, color: '#a78bfa', fontFamily: 'monospace', marginTop: 2 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>Version installée</div>
+                    <div style={{ fontSize: 12, color: 'var(--cyan)', fontFamily: 'var(--mono)', marginTop: 2 }}>
                       v2.5.0 · Build de production officielle
                     </div>
                   </div>
                   <button
                     onClick={handleCheckUpdate}
                     disabled={checkingUpdate}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 8, backgroundColor: '#7c3aed', border: 'none', color: '#ffffff', fontSize: 13, fontWeight: 600, cursor: checkingUpdate ? 'not-allowed' : 'pointer' }}
+                    className="btn btn-primary"
+                    style={{ fontSize: 13 }}
                   >
                     <RefreshCw size={15} className={checkingUpdate ? 'animate-spin' : ''} />
                     <span>{checkingUpdate ? 'Recherche...' : 'Vérifier les mises à jour'}</span>
@@ -804,7 +775,7 @@ export default function SettingsTab({
                 </div>
 
                 {updateMessage && (
-                  <div style={{ padding: '8px 12px', borderRadius: 6, backgroundColor: 'rgba(139, 92, 246, 0.15)', color: '#c084fc', fontSize: 12 }}>
+                  <div className="badge badge-purple" style={{ padding: '8px 12px', borderRadius: 8, fontSize: 12 }}>
                     {updateMessage}
                   </div>
                 )}
@@ -816,36 +787,37 @@ export default function SettingsTab({
           {activeSection === 'diagnostic' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>Diagnostic Système & Privilèges</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#94a3b8' }}>
-                  Informations sur l'exécution Windows et les privilèges d'élévation.
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Diagnostic Système & Privilèges</h2>
+                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+                  Statut d'exécution du processus Vanguard et de l'environnement hôte.
                 </p>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div style={{ padding: 16, borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>Privilèges d'élévation</div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: adminStatus?.isAdmin ? '#34d399' : '#fbbf24', marginTop: 4 }}>
+                <div style={{ padding: 16, borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Privilèges d'élévation</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: adminStatus?.isAdmin ? 'var(--green)' : 'var(--yellow)', marginTop: 4 }}>
                     {adminStatus?.isAdmin ? 'Administrateur (Complet)' : 'Utilisateur standard (Restreint)'}
                   </div>
                 </div>
 
-                <div style={{ padding: 16, borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>Système d'exploitation</div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#f8fafc', marginTop: 4 }}>
+                <div style={{ padding: 16, borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Système d'exploitation</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginTop: 4 }}>
                     {adminStatus?.osInfo?.edition || 'Microsoft Windows 10/11'} (Build {adminStatus?.osInfo?.buildNumber || 'x64'})
                   </div>
                 </div>
               </div>
 
               {!adminStatus?.isAdmin && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 8, backgroundColor: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
-                  <div style={{ fontSize: 13, color: '#fbbf24' }}>
-                    Certaines fonctionnalités (exclusions Defender, optimisation réseau bas niveau) demandent une élévation administrateur.
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 10, backgroundColor: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                  <div style={{ fontSize: 13, color: 'var(--yellow)' }}>
+                    Certaines actions avancées (règles pare-feu, exclusions Defender) requièrent les droits administrateur.
                   </div>
                   <button
                     onClick={() => api?.relaunchElevated?.()}
-                    style={{ padding: '8px 14px', borderRadius: 6, backgroundColor: '#f59e0b', border: 'none', color: '#000000', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                    className="btn btn-warning"
+                    style={{ fontSize: 12 }}
                   >
                     Relancer en Administrateur
                   </button>
@@ -858,16 +830,16 @@ export default function SettingsTab({
           {activeSection === 'about' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <VanguardLogo size={56} />
+                <VanguardLogo size={52} glow={false} />
                 <div>
-                  <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#f8fafc' }}>ASTRAL VANGUARD</h2>
-                  <div style={{ fontSize: 13, color: '#a78bfa', fontFamily: 'monospace' }}>Version 2.5.0 (Production Release)</div>
-                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Suite de Protection Cyber-Sécurité, Anti-Lag & Optimisation Gaming</div>
+                  <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>ASTRAL VANGUARD</h2>
+                  <div style={{ fontSize: 13, color: 'var(--cyan)', fontFamily: 'var(--mono)' }}>Version 2.5.0 (Production Release)</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>Suite de Protection Cyber-Sécurité, Anti-Bufferbloat & Optimisation Gaming</div>
                 </div>
               </div>
 
-              <div style={{ padding: 16, borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.05)', fontSize: 13, color: '#cbd5e1', lineHeight: 1.6 }}>
-                Développé par <strong>Astral Security</strong>. Astral Vanguard intègre la supervision native Microsoft Defender, l'anti-bufferbloat temps réel et des profils gaming dédiés sans télémétrie invasive ni modification agressive du registre système.
+              <div style={{ padding: 18, borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                Développé par <strong>Astral Security</strong>. Astral Vanguard intègre la supervision directe Microsoft Defender, le moteur YARA-X, la mesure de latence en temps réel et des profils système réversibles sans altération destructive de Windows.
               </div>
 
               <div style={{ display: 'flex', gap: 12 }}>
@@ -875,7 +847,7 @@ export default function SettingsTab({
                   href="https://github.com/urnova/Astral-Security-Guard-vpn"
                   target="_blank"
                   rel="noreferrer"
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#38bdf8', textDecoration: 'none' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--cyan)', textDecoration: 'none' }}
                 >
                   <ExternalLink size={14} />
                   <span>Dépôt GitHub Astral Vanguard</span>

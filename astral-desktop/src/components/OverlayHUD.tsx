@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Activity, X, Minus, Move, Zap } from 'lucide-react';
+import { X, Minus, Maximize2, Zap } from 'lucide-react';
 
 const api = (window as any).vanguard;
 
@@ -29,7 +29,7 @@ export default function OverlayHUD() {
           ramPercent: Math.round((res.data.ramUsed / (res.data.ramTotal || 16)) * 100),
         });
       }
-    });
+    }).catch(() => {});
 
     api.getPresentMonStatus?.().then((res: any) => {
       if (res?.data) {
@@ -60,46 +60,62 @@ export default function OverlayHUD() {
     api?.overlayHide?.();
   };
 
-  const cpuColor = metrics.cpu > 80 ? '#ef4444' : metrics.cpu > 60 ? '#f59e0b' : '#00f5ff';
-  const ramColor = metrics.ramPercent > 80 ? '#ef4444' : metrics.ramPercent > 65 ? '#f59e0b' : '#a855f7';
-  const pingColor = ping > 80 ? '#ef4444' : ping > 40 ? '#f59e0b' : '#10b981';
+  const cpuColor = metrics.cpu > 80 ? '#f87171' : metrics.cpu > 60 ? '#fbbf24' : '#38bdf8';
+  const ramColor = metrics.ramPercent > 80 ? '#f87171' : metrics.ramPercent > 65 ? '#fbbf24' : '#818cf8';
+  const pingColor = ping > 80 ? '#f87171' : ping > 40 ? '#fbbf24' : '#34d399';
 
   return (
     <div
       style={{
-        padding: compact ? '6px 12px' : '12px 14px',
-        backgroundColor: 'rgba(5, 7, 14, 0.92)',
-        backdropFilter: 'blur(28px)',
-        WebkitBackdropFilter: 'blur(28px)',
-        border: '1px solid rgba(0, 245, 255, 0.35)',
-        boxShadow: '0 12px 40px rgba(0, 0, 0, 0.85), 0 0 20px rgba(0, 245, 255, 0.25)',
-        borderRadius: 14,
-        fontFamily: "'JetBrains Mono', monospace",
-        color: '#ffffff',
+        padding: compact ? '7px 14px' : '14px 16px',
+        backgroundColor: 'rgba(9, 13, 22, 0.90)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        border: '1px solid rgba(255, 255, 255, 0.12)',
+        boxShadow: '0 16px 40px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+        borderRadius: 12,
+        fontFamily: "'JetBrains Mono', -apple-system, monospace",
+        color: '#f8fafc',
         userSelect: 'none',
         display: 'flex',
         flexDirection: 'column',
-        gap: compact ? 0 : 8,
-        width: compact ? 340 : 210,
-        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+        gap: compact ? 0 : 10,
+        width: compact ? 360 : 230,
+        transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
       }}
     >
-      {/* Draggable Titlebar Strip */}
+      {/* Draggable Titlebar Bar */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          paddingBottom: compact ? 0 : 6,
+          paddingBottom: compact ? 0 : 8,
           borderBottom: compact ? 'none' : '1px solid rgba(255, 255, 255, 0.08)',
           cursor: 'grab',
           // @ts-ignore
           WebkitAppRegion: 'drag',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#10b981', boxShadow: '0 0 8px #10b981' }} />
-          <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.12em', color: 'var(--cyan)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              backgroundColor: '#10b981',
+              boxShadow: '0 0 8px #10b981',
+            }}
+          />
+          <span
+            style={{
+              fontSize: 10.5,
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              color: '#f8fafc',
+              fontFamily: "'Space Grotesk', sans-serif",
+            }}
+          >
             VANGUARD HUD
           </span>
         </div>
@@ -107,17 +123,18 @@ export default function OverlayHUD() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, ...({ WebkitAppRegion: 'no-drag' } as any) }}>
           <button
             onClick={() => setCompact(!compact)}
-            title={compact ? 'Agrandir' : 'Mode barre compacte'}
+            title={compact ? 'Agrandir' : 'Mode bandeau compact'}
             style={{
               background: 'none',
               border: 'none',
-              color: 'rgba(255, 255, 255, 0.5)',
+              color: 'rgba(255, 255, 255, 0.45)',
               cursor: 'pointer',
-              padding: 2,
+              padding: 3,
+              borderRadius: 4,
               lineHeight: 1,
             }}
           >
-            <Minus size={12} />
+            {compact ? <Maximize2 size={11} /> : <Minus size={11} />}
           </button>
           <button
             onClick={handleClose}
@@ -125,9 +142,10 @@ export default function OverlayHUD() {
             style={{
               background: 'none',
               border: 'none',
-              color: 'rgba(255, 255, 255, 0.5)',
+              color: 'rgba(255, 255, 255, 0.45)',
               cursor: 'pointer',
-              padding: 2,
+              padding: 3,
+              borderRadius: 4,
               lineHeight: 1,
             }}
           >
@@ -136,71 +154,91 @@ export default function OverlayHUD() {
         </div>
       </div>
 
-      {/* Expanded Grid or Compact Strip */}
+      {/* Main metrics display */}
       {!compact ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: 11 }}>
-          {/* FPS Row */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingBottom: 2 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 9, fontSize: 11.5 }}>
+          {/* FPS & 1% Low Section */}
+          <div
+            style={{
+              padding: '8px 10px',
+              borderRadius: 8,
+              backgroundColor: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.06)',
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 10 }}>IPS (FPS)</span>
+              <span style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 10, fontWeight: 600 }}>IPS (FPS)</span>
               {presentmon.isCapturing && presentmon.fps !== null ? (
-                <span style={{ color: '#10b981', fontSize: 12, fontWeight: 800 }}>{Math.round(presentmon.fps)} IPS</span>
+                <span style={{ color: '#10b981', fontSize: 13, fontWeight: 800 }}>
+                  {Math.round(presentmon.fps)} IPS
+                </span>
               ) : (
                 <span style={{ color: '#f59e0b', fontSize: 10, fontWeight: 700 }}>INDISPONIBLE</span>
               )}
             </div>
+
             {presentmon.isCapturing && presentmon.onePercentLowFps !== null ? (
-              <div style={{ fontSize: 9, color: 'rgba(255, 255, 255, 0.7)', lineHeight: 1.2 }}>
+              <div style={{ fontSize: 9.5, color: 'rgba(255, 255, 255, 0.65)', marginTop: 3 }}>
                 1% Low : {Math.round(presentmon.onePercentLowFps)} IPS
               </div>
             ) : (
-              <div style={{ fontSize: 9, color: 'rgba(255, 255, 255, 0.4)', lineHeight: 1.2 }}>
+              <div style={{ fontSize: 9, color: 'rgba(255, 255, 255, 0.4)', marginTop: 3, lineHeight: 1.3 }}>
                 FPS indisponibles — PresentMon non installé
               </div>
             )}
           </div>
 
-          {/* CPU Row */}
+          {/* CPU Metric */}
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-              <span style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 10 }}>PROCESSEUR</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+              <span style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 10, fontWeight: 600 }}>PROCESSEUR</span>
               <span style={{ color: cpuColor, fontWeight: 700 }}>{metrics.cpu}%</span>
             </div>
             <div style={{ height: 3, width: '100%', backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: 2, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${metrics.cpu}%`, backgroundColor: cpuColor }} />
+              <div style={{ height: '100%', width: `${metrics.cpu}%`, backgroundColor: cpuColor, transition: 'width 0.2s ease' }} />
             </div>
           </div>
 
-          {/* RAM Row */}
+          {/* RAM Metric */}
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-              <span style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 10 }}>MÉMOIRE VIVE</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+              <span style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 10, fontWeight: 600 }}>MÉMOIRE VIVE</span>
               <span style={{ color: ramColor, fontWeight: 700 }}>{metrics.ramPercent}%</span>
             </div>
             <div style={{ height: 3, width: '100%', backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: 2, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${metrics.ramPercent}%`, backgroundColor: ramColor }} />
+              <div style={{ height: '100%', width: `${metrics.ramPercent}%`, backgroundColor: ramColor, transition: 'width 0.2s ease' }} />
             </div>
           </div>
 
-          {/* Ping Row */}
+          {/* Latency Metric */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 2 }}>
-            <span style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 10 }}>LATENCE</span>
+            <span style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 10, fontWeight: 600 }}>LATENCE</span>
             <span style={{ color: pingColor, fontWeight: 800 }}>{ping} ms</span>
           </div>
         </div>
       ) : (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11, paddingTop: 4 }}>
+        /* Compact horizontal ribbon */
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11, gap: 12, paddingTop: 4 }}>
           <div>
-            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>FPS </span>
+            <span style={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: 9.5 }}>FPS </span>
             {presentmon.isCapturing && presentmon.fps !== null ? (
-              <strong style={{ color: '#10b981', fontSize: 9 }}>{Math.round(presentmon.fps)}</strong>
+              <strong style={{ color: '#10b981' }}>{Math.round(presentmon.fps)}</strong>
             ) : (
-              <span style={{ color: '#f59e0b', fontSize: 9 }}>N/D</span>
+              <span style={{ color: '#f59e0b' }}>N/D</span>
             )}
           </div>
-          <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>CPU </span><strong style={{ color: cpuColor }}>{metrics.cpu}%</strong></div>
-          <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>RAM </span><strong style={{ color: ramColor }}>{metrics.ramPercent}%</strong></div>
-          <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>PING </span><strong style={{ color: pingColor }}>{ping}ms</strong></div>
+          <div>
+            <span style={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: 9.5 }}>CPU </span>
+            <strong style={{ color: cpuColor }}>{metrics.cpu}%</strong>
+          </div>
+          <div>
+            <span style={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: 9.5 }}>RAM </span>
+            <strong style={{ color: ramColor }}>{metrics.ramPercent}%</strong>
+          </div>
+          <div>
+            <span style={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: 9.5 }}>PING </span>
+            <strong style={{ color: pingColor }}>{ping}ms</strong>
+          </div>
         </div>
       )}
     </div>

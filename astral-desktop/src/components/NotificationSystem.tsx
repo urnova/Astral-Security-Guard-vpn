@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { ShieldAlert, Zap, Radio, CheckCircle2, Info, X } from 'lucide-react';
 import { playSound, SoundEffectType } from '../lib/audioSynth';
 
@@ -27,7 +27,7 @@ export const NotificationSystem: React.FC<{ dndEnabled?: boolean }> = ({ dndEnab
       : `toast-${Date.now()}`;
     const newToast: ToastNotification = { ...toast, id };
 
-    setToasts((prev) => [...prev.slice(-2), newToast]); // max 3 toasts
+    setToasts((prev) => [...prev.slice(-2), newToast]); // max 3 concurrent toasts
 
     let soundType: SoundEffectType = 'scan_complete';
     if (toast.type === 'threat') soundType = 'threat_blocked';
@@ -76,7 +76,7 @@ export const NotificationSystem: React.FC<{ dndEnabled?: boolean }> = ({ dndEnab
       addToast({
         type: 'game',
         title: 'Mode Gaming Actif',
-        message: `Jeu détecté : ${data.gameName || 'Processus plein écran'}. Latence et priorité CPU optimisées.`,
+        message: `Jeu détecté : ${data.gameName || 'Processus plein écran'}. Optimisations actives.`,
         critical: false,
       });
     });
@@ -98,102 +98,86 @@ export const NotificationSystem: React.FC<{ dndEnabled?: boolean }> = ({ dndEnab
         display: 'flex',
         flexDirection: 'column',
         gap: 10,
-        maxWidth: 360,
+        maxWidth: 380,
         width: '100%',
         pointerEvents: 'none',
       }}
     >
       <AnimatePresence>
         {toasts.map((toast) => {
-          let accentColor = '#8b5cf6';
-          let icon = <Info size={16} style={{ color: accentColor }} />;
+          let accentColor = 'var(--cyan)';
+          let icon = <Info size={16} style={{ color: 'var(--cyan)' }} />;
 
           if (toast.type === 'threat') {
-            accentColor = '#ff4b4b';
-            icon = <ShieldAlert size={16} style={{ color: accentColor }} />;
+            accentColor = 'var(--red)';
+            icon = <ShieldAlert size={16} style={{ color: 'var(--red)' }} />;
           } else if (toast.type === 'lag') {
-            accentColor = '#ff9f1c';
-            icon = <Radio size={16} style={{ color: accentColor }} />;
+            accentColor = 'var(--yellow)';
+            icon = <Radio size={16} style={{ color: 'var(--yellow)' }} />;
           } else if (toast.type === 'game') {
-            accentColor = '#00d4ff';
-            icon = <Zap size={16} style={{ color: accentColor }} />;
+            accentColor = 'var(--cyan)';
+            icon = <Zap size={16} style={{ color: 'var(--cyan)' }} />;
           } else if (toast.type === 'sos' || toast.type === 'report' || toast.type === 'success') {
-            accentColor = '#10d9a0';
-            icon = <CheckCircle2 size={16} style={{ color: accentColor }} />;
+            accentColor = 'var(--green)';
+            icon = <CheckCircle2 size={16} style={{ color: 'var(--green)' }} />;
           }
 
           return (
             <motion.div
               key={toast.id}
-              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              initial={{ opacity: 0, y: 16, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+              exit={{ opacity: 0, scale: 0.94, transition: { duration: 0.15 } }}
+              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
               style={{
                 pointerEvents: 'auto',
-                backgroundColor: 'rgba(10, 10, 26, 0.95)',
-                backdropFilter: 'blur(20px)',
-                border: `1px solid ${accentColor}40`,
-                boxShadow: `0 10px 30px rgba(0, 0, 0, 0.6), 0 0 15px ${accentColor}25`,
-                borderRadius: 14,
+                backgroundColor: 'rgba(9, 13, 22, 0.94)',
+                backdropFilter: 'blur(16px)',
+                border: '1px solid var(--border)',
+                borderLeft: `3px solid ${accentColor}`,
+                boxShadow: '0 12px 32px rgba(0, 0, 0, 0.5), 0 0 1px rgba(255, 255, 255, 0.1)',
+                borderRadius: 12,
                 padding: '12px 14px',
-                color: '#ffffff',
+                color: 'var(--text-primary)',
                 position: 'relative',
                 overflow: 'hidden',
               }}
             >
-              {/* Top Accent Strip */}
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 3,
-                  backgroundColor: accentColor,
-                  boxShadow: `0 0 8px ${accentColor}`,
-                }}
-              />
-
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                 <div
                   style={{
                     padding: 6,
                     borderRadius: 8,
-                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid var(--border-subtle)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexShrink: 0,
-                    marginTop: 2,
+                    marginTop: 1,
                   }}
                 >
                   {icon}
                 </div>
 
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <h4 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#f3f4f6' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
                     {toast.title}
-                  </h4>
-                  <p style={{ margin: '3px 0 0 0', fontSize: 11, color: '#9ca3af', lineHeight: 1.4, wordBreak: 'break-word' }}>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2, lineHeight: 1.4, wordBreak: 'break-word' }}>
                     {toast.message}
-                  </p>
+                  </div>
                   {toast.actionLabel && (
                     <button
                       onClick={() => {
                         toast.onAction?.();
                         removeToast(toast.id);
                       }}
+                      className="btn btn-primary"
                       style={{
                         marginTop: 8,
                         fontSize: 11,
-                        fontWeight: 600,
                         padding: '4px 10px',
-                        borderRadius: 6,
-                        backgroundColor: accentColor,
-                        color: '#ffffff',
-                        border: 'none',
-                        cursor: 'pointer',
                       }}
                     >
                       {toast.actionLabel}
@@ -206,13 +190,15 @@ export const NotificationSystem: React.FC<{ dndEnabled?: boolean }> = ({ dndEnab
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: 'rgba(255, 255, 255, 0.4)',
+                    color: 'var(--text-muted)',
                     cursor: 'pointer',
                     padding: 4,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
+                    borderRadius: 4,
                   }}
+                  title="Fermer"
                 >
                   <X size={14} />
                 </button>

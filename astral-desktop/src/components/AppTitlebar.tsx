@@ -22,7 +22,7 @@ export default function AppTitlebar({ gamingActive, currentGame }: AppTitlebarPr
         justifyContent: 'space-between',
         paddingLeft: 16,
         paddingRight: 140, // Reserved for Windows native caption buttons
-        backgroundColor: '#07071a',
+        backgroundColor: 'var(--bg-void)',
         borderBottom: '1px solid var(--border)',
         userSelect: 'none',
         zIndex: 100,
