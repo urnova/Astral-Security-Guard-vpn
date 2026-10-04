@@ -27,6 +27,7 @@ const api = {
   // Admin & Elevation
   getAdminStatus: () => ipcRenderer.invoke('admin:get-status'),
   relaunchElevated: () => ipcRenderer.invoke('admin:relaunch-elevated'),
+  getHelperStatus: () => ipcRenderer.invoke('helper:get-status'),
 
   // Settings & System Tray
   getSettings: () => ipcRenderer.invoke('settings:get'),

@@ -3,6 +3,7 @@ import { runPowerShell } from './psHelper';
 import { logger } from './logger';
 import { createRollbackSnapshot } from './rollback';
 import { detectThirdPartyVpn } from './vpn';
+import { executePrivilegedAction } from './privilegedHelper';
 
 export type SystemMode = 'gaming' | 'office' | 'shield' | 'eco';
 
@@ -52,6 +53,11 @@ export async function executeSosPing(): Promise<{
   // They require explicit user opt-in from Settings > Advanced Network Options.
   const vpnCoex = await detectThirdPartyVpn();
   const arpCommand = vpnCoex.thirdPartyActive ? '# VPN tiers actif: table ARP préservée pour maintenir le tunnel' : 'arp -d * 2>$null';
+
+  // Purge DNS via le Helper privilégié
+  try {
+    await executePrivilegedAction('FLUSH_DNS');
+  } catch {}
 
   const repairScript = `
     # 1. Vider le cache DNS (non-destructif)

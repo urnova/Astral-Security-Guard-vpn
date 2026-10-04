@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import { runPowerShell } from './psHelper';
 import { logger } from './logger';
+import { executePrivilegedAction } from './privilegedHelper';
 import os from 'os';
 
 let cachedDiskInfo = { usedGB: 225, freeGB: 13, lastUpdated: 0 };
@@ -151,6 +152,19 @@ export function setupPerformanceIPC(win: BrowserWindow) {
     const location = rawLocation === 'HKLM' ? 'HKLM' : 'HKCU';
     const cleanName = rawName.trim().replace(/'/g, "''");
     logger.info(`Désactivation du programme de démarrage : ${cleanName} (${location})`);
+
+    // Pour HKLM, déléguer au Helper sécurisé avec élévation ponctuelle
+    if (location === 'HKLM') {
+      try {
+        const helperRes = await executePrivilegedAction('DISABLE_STARTUP_ENTRY', {
+          hive: 'HKLM',
+          entryName: rawName.trim(),
+        });
+        return { success: helperRes.success, deleted: helperRes.deleted };
+      } catch (err: any) {
+        logger.warn('[Performance] Échec Helper pour startup HKLM, fallback PowerShell:', err.message);
+      }
+    }
 
     const regPath = location === 'HKLM'
       ? 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run'

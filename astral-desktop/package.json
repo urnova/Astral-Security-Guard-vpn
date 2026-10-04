@@ -22,7 +22,7 @@
       "target": "nsis",
       "icon": "public/icon.ico",
       "publisherName": "Astral Security",
-      "requestedExecutionLevel": "requireAdministrator"
+      "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
       "oneClick": false,

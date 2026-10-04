@@ -13,6 +13,7 @@ import { setupRollbackIPC } from './rollback';
 import { setupDoctorIPC, executeSosPing } from './doctor';
 import { setupDownloadScannerIPC } from './downloadScanner';
 import { setupProfileIPC, loadPreferences, savePreferences } from './profile';
+import { executePrivilegedAction } from './privilegedHelper';
 
 // ── Single Instance Lock ───────────────────────────────────────────────────────
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -536,6 +537,11 @@ ipcMain.handle('admin:relaunch-elevated', () => {
   logger.info('[App] User requested elevated relaunch');
   relaunchElevated();
   return { success: true };
+});
+
+// Privileged Helper IPC (Phase 3)
+ipcMain.handle('helper:get-status', async () => {
+  return await executePrivilegedAction('GET_HELPER_STATUS');
 });
 
 // IPC: overlay & window control

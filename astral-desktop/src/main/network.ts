@@ -4,6 +4,7 @@ import http from 'http';
 import { runPowerShell } from './psHelper';
 import { logger } from './logger';
 import { detectThirdPartyVpn } from './vpn';
+import { executePrivilegedAction } from './privilegedHelper';
 
 
 export function setupNetworkIPC(win: BrowserWindow) {
@@ -333,6 +334,17 @@ export function setupNetworkIPC(win: BrowserWindow) {
     }
 
     logger.info(`Application du DNS : ${cleanDns}`);
+
+    // Délégation au Helper sécurisé avec élévation ponctuelle
+    try {
+      const helperRes = await executePrivilegedAction('SET_DNS_PROVIDER', { provider: cleanDns });
+      if (helperRes.success) {
+        return { success: true, dns: cleanDns, servers: helperRes.servers };
+      }
+    } catch (err: any) {
+      logger.warn('[Network] Helper indisponible pour DNS, tentative de secours:', err.message);
+    }
+
     const vpnCoex = await detectThirdPartyVpn();
 
     let primary = '1.1.1.1';
