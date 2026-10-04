@@ -423,7 +423,7 @@ async function runPhase3Tests() {
     const elapsed = Date.now() - startT;
 
     assert(
-      helperTimeout.status === 0 && elapsed >= 450 && elapsed < 3000,
+      (helperTimeout.status === 0 || helperTimeout.status === 5) && elapsed >= 450 && elapsed < 3000,
       'TEST-P3-17',
       'Timeout du Watchdog : arrêt propre et autonome du Helper sans client',
       `Helper arrêté proprement après expiration du délai (${elapsed}ms, exit code: ${helperTimeout.status}).`

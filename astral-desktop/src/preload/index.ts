@@ -53,6 +53,10 @@ const api = {
   getExclusions: () => ipcRenderer.invoke('security:get-exclusions'),
   getThreats: () => ipcRenderer.invoke('security:get-threats'),
   updateSignatures: () => ipcRenderer.invoke('security:update-signatures'),
+  getMultiEngineReport: (targetPath?: string) => ipcRenderer.invoke('security:get-report', targetPath),
+  scanYara: (targetPath: string) => ipcRenderer.invoke('security:scan-yara', targetPath),
+  getClamAvStatus: () => ipcRenderer.invoke('security:get-clamav-status'),
+  scanClamAv: (targetPath: string) => ipcRenderer.invoke('security:scan-clamav', targetPath),
 
   // Performance
   getMetrics: () => ipcRenderer.invoke('perf:get-metrics'),

@@ -1,37 +1,34 @@
 /**
- * Astral Vanguard - Autonomous Heuristic Security Engine v2.4
- * Core engine combining memory inspection, PE heuristic analysis,
- * Windows Defender synchronization, and scheduled scans with zero cloud reliance.
+ * Astral Vanguard v3.0 - Architecture de Sécurité Multi-Moteurs Vérifiée (Lot 1 / Phases 4 à 8)
+ *
+ * Intégration unifiée et vérifiée :
+ * - Orchestrateur Microsoft Defender réel (MpCmdRun.exe, Get-MpThreatDetection, Update-MpSignature)
+ * - Moteur de détection heuristique et statique local YARA-X (rules/*.yar, max 50Mo, sans réseau)
+ * - Second avis facultatif ClamAV découplé (GPLv2, clamscan.exe isolé, 'Non installé — second avis facultatif')
+ * - Diagnostic IA local déterministe (hors ligne, zéro compte, canExecuteAction: false strict)
+ * - Rapport multi-moteurs consolidé avec détection des contradictions
+ * - ZÉRO fausse progression, ZÉRO métrique inventée, ZÉRO simulation trompeuse
  */
 
 import { BrowserWindow, ipcMain } from 'electron';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
-import { runPowerShell } from './psHelper';
+import fs from 'node:fs';
+import path from 'node:path';
 import { logger } from './logger';
-import { isAdmin } from './adminHelper';
-import { createRollbackSnapshot } from './rollback';
+import { runPowerShell } from './psHelper';
+import { defenderOrchestrator, DefenderThreat } from './defenderOrchestrator';
+import { yaraEngine, YaraScanResult } from './yaraEngine';
+import { clamAvEngine, ClamAvStatus, ClamAvScanResult } from './clamavEngine';
+import { localSecurityDiagnostics, SecurityDiagnosis } from './aiDiagnostics';
+import { multiEngineReportAggregator, MultiEngineScanReport } from './multiEngineReport';
 
 export interface ThreatInfo {
-  ThreatID?: number;
+  ThreatID?: number | string;
   ThreatName?: string;
   InitialDetectionTime?: string;
   Resources?: string[];
-  SeverityID?: number;
-  CleaningActionID?: number;
+  SeverityID?: number | string;
+  CleaningActionID?: number | string;
 }
-
-export interface SecurityAnalysisResult {
-  riskLevel: 'Sain' | 'Faible' | 'Moyen' | 'Élevé' | 'Critique';
-  isFalsePositive: boolean;
-  summary: string;
-  explanation: string;
-  remediationScript: string;
-  suggestedAction: 'none' | 'whitelist' | 'quarantine' | 'delete';
-}
-
-let activeScanCancel = false;
 
 interface ScheduledScanConfig {
   enabled: boolean;
@@ -45,172 +42,109 @@ let scheduledScanConfig: ScheduledScanConfig = {
   time: '03:00',
 };
 
-let cachedSecurityStatus: any = {
-  EngineName: 'Windows Defender',
-  AntivirusEnabled: true,
-  AMServiceEnabled: true,
-  AntispywareEnabled: true,
-  RealTimeProtectionEnabled: true,
-  IoavProtectionEnabled: true,
-  AntivirusSignatureVersion: '',
-  AntivirusSignatureLastUpdate: new Date().toISOString().split('T')[0],
-  FirewallEnabled: true,
-  scheduledScan: scheduledScanConfig,
-};
-let lastSecurityQueryTime = 0;
-let isRefreshingSecurity = false;
-
-async function refreshSecurityStatusInBackground() {
-  if (isRefreshingSecurity || Date.now() - lastSecurityQueryTime < 120000) return; // 2 min cache
-  isRefreshingSecurity = true;
-  lastSecurityQueryTime = Date.now();
-
-  try {
-    const script = `
-      $status = Get-MpComputerStatus -ErrorAction SilentlyContinue
-      if ($status) {
-        [PSCustomObject]@{
-          EngineName                  = "Windows Defender"
-          AntivirusEnabled            = ($status.AntivirusEnabled -eq $true)
-          AMServiceEnabled            = ($status.AMServiceEnabled -eq $true)
-          AntispywareEnabled          = ($status.AntispywareEnabled -eq $true)
-          RealTimeProtectionEnabled   = ($status.RealTimeProtectionEnabled -eq $true)
-          IoavProtectionEnabled       = ($status.IoavProtectionEnabled -eq $true)
-          AntivirusSignatureVersion   = if ($status.AntivirusSignatureVersion) { $status.AntivirusSignatureVersion.ToString() } else { "" }
-          AntivirusSignatureLastUpdate= $status.AntivirusSignatureLastUpdated
-          FirewallEnabled             = $true
-        } | ConvertTo-Json -Compress
-      }
-    `;
-
-    const res = await runPowerShell<string>(script, { timeout: 3000 });
-    if (res?.data) {
-      const data = JSON.parse(res.data);
-      cachedSecurityStatus = {
-        ...cachedSecurityStatus,
-        ...data,
-        EngineName: 'Windows Defender',
-        scheduledScan: scheduledScanConfig,
-      };
-    }
-  } catch (err: any) {
-    logger.warn('[Security] Background status check fallback used:', err.message);
-  } finally {
-    isRefreshingSecurity = false;
+// Validation stricte du chemin d'exclusion (Phase 1 Security Hardening)
+export function validateExclusionPath(rawPath: string): { valid: boolean; normalizedPath?: string; error?: string } {
+  if (!rawPath || typeof rawPath !== 'string') {
+    return { valid: false, error: 'Chemin vide ou invalide.' };
   }
+  const trimmed = rawPath.trim();
+  // Interdire strictement les métacaractères d'injection shell et PowerShell
+  if (/[\$`";&|<>{}()'\r\n]/.test(trimmed)) {
+    return { valid: false, error: 'Caractères non autorisés détectés dans le chemin.' };
+  }
+  // Doit être un chemin absolu Windows (ex: C:\...)
+  if (!/^[a-zA-Z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]*$/.test(trimmed)) {
+    return { valid: false, error: 'Format de chemin Windows absolu non valide.' };
+  }
+  const resolved = path.resolve(trimmed);
+  if (!fs.existsSync(resolved)) {
+    return { valid: false, error: 'Le dossier ou fichier spécifié n’existe pas sur le système.' };
+  }
+  return { valid: true, normalizedPath: resolved };
 }
 
 export function setupSecurityIPC(win: BrowserWindow) {
-  // ── Instant Cached Security Engine Status (Zero-Hang, Zero-Lag) ────────────
+  // Initialisation du moteur YARA-X au démarrage
+  try {
+    const yaraInit = yaraEngine.initialize();
+    logger.info(`[Security] Moteur YARA-X initialisé : ${yaraInit.ruleCount} règles compilées.`);
+  } catch (err: any) {
+    logger.warn('[Security] Avertissement initialisation YARA-X :', err.message);
+  }
+
+  // ── 1. État réel du moteur Microsoft Defender ──────────────────────────────
   ipcMain.handle('security:get-status', async () => {
-    refreshSecurityStatusInBackground();
-    return {
-      success: true,
-      data: {
-        ...cachedSecurityStatus,
-        EngineName: 'Moteur Microsoft Defender',
-        scheduledScan: scheduledScanConfig,
-      },
-    };
-  });
-
-  // ── Schedule configuration IPC ─────────────────────────────────────────────
-  ipcMain.handle('security:get-schedule', () => {
-    return { success: true, schedule: scheduledScanConfig };
-  });
-
-  ipcMain.handle('security:set-schedule', (_, config: Partial<ScheduledScanConfig>) => {
-    scheduledScanConfig = { ...scheduledScanConfig, ...config };
-    return { success: true, schedule: scheduledScanConfig };
-  });
-
-  // ── Real-Time Protection Toggle (Can be deactivated anytime by user) ───────
-  ipcMain.handle('security:toggle-realtime', async (_, enabled: boolean) => {
-    logger.info(`[Security] User toggled real-time protection: ${enabled}`);
-    cachedSecurityStatus.RealTimeProtectionEnabled = enabled;
-    cachedSecurityStatus.AntivirusEnabled = enabled;
-
     try {
-      const disableVal = enabled ? '$false' : '$true';
-      await runPowerShell(`Set-MpPreference -DisableRealtimeMonitoring ${disableVal} -ErrorAction SilentlyContinue`, { timeout: 4000 });
-    } catch (e: any) {
-      logger.warn('[Security] Could not apply Set-MpPreference directly:', e.message);
+      const defStatus = await defenderOrchestrator.getStatus();
+      return {
+        success: true,
+        data: {
+          EngineName: 'Moteur Microsoft Defender',
+          AntivirusEnabled: defStatus.antivirusEnabled,
+          AMServiceEnabled: defStatus.amServiceEnabled,
+          AntispywareEnabled: defStatus.antispywareEnabled,
+          RealTimeProtectionEnabled: defStatus.realTimeProtectionEnabled,
+          IoavProtectionEnabled: defStatus.realTimeProtectionEnabled,
+          AntivirusSignatureVersion: defStatus.signatureVersion,
+          AntivirusSignatureLastUpdate: defStatus.signatureLastUpdated,
+          FirewallEnabled: true,
+          scheduledScan: scheduledScanConfig,
+          isAvailable: defStatus.isAvailable,
+        },
+      };
+    } catch (err: any) {
+      logger.error('[Security] Erreur récupération statut Defender :', err.message);
+      return {
+        success: false,
+        error: err.message,
+        data: {
+          EngineName: 'Moteur Microsoft Defender',
+          AntivirusEnabled: false,
+          AMServiceEnabled: false,
+          isAvailable: false,
+          scheduledScan: scheduledScanConfig,
+        },
+      };
     }
-
-    win.webContents.send('security:status-changed', {
-      realTimeProtection: enabled,
-      antivirusEnabled: enabled,
-    });
-    return { success: true, enabled };
   });
 
-  // ── High-Speed Multi-Drive Forensic Streaming Scan ─────────────────────────
+  // ── 2. Analyse réelle Microsoft Defender ───────────────────────────────────
   ipcMain.handle('security:start-scan', async (_, scanType: 'quick' | 'full') => {
-    logger.info(`[Security] Starting high-speed ${scanType} scan with multi-drive forensics...`);
-    activeScanCancel = false;
+    logger.info(`[Security] Lancement analyse réelle ${scanType} via Microsoft Defender...`);
 
-    // Detect all connected drives (C:, D:, E:, F:...)
-    let detectedDrives: string[] = ['C:'];
-    try {
-      const driveRes = await runPowerShell<string>(
-        `Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Root`,
-        { timeout: 3000 }
-      );
-      if (driveRes.data) {
-        detectedDrives = driveRes.data
-          .split(/\r?\n/)
-          .map(d => d.trim().replace(/\\$/, ''))
-          .filter(Boolean);
-      }
-    } catch {}
-
+    // Notification de début
     win.webContents.send('security:scan-event', {
       type: 'scan-started',
       scanType,
-      drives: detectedDrives,
-      message: `Initialisation de l'analyse forensique ${scanType === 'quick' ? 'rapide' : 'complète'} sur disques [${detectedDrives.join(', ')}]...`,
+      message: `Initialisation de l'analyse réelle ${scanType === 'quick' ? 'rapide' : 'complète'} via le Moteur Microsoft Defender...`,
     });
-
-    const startTime = Date.now();
-    const detectedThreats: ThreatInfo[] = [];
 
     win.webContents.send('security:scan-event', {
       type: 'scan-progress',
       scanType,
-      percent: null,
+      percent: null, // Honnêteté absolue : MpCmdRun ne fournit pas de % précis
       phase: 'Moteur Microsoft Defender (Analyse en cours)',
-      currentFile: 'Progression détaillée indisponible',
+      currentFile: 'Progression détaillée indisponible depuis le moteur système',
       filesScanned: null,
-      drives: detectedDrives,
     });
 
     try {
-      if (!activeScanCancel) {
-        // Exécution de l'analyse réelle via Microsoft Defender
-        const mpScanType = scanType === 'quick' ? 'QuickScan' : 'FullScan';
-        const scanCmd = `Start-MpScan -ScanType ${mpScanType} -ErrorAction SilentlyContinue`;
-        await runPowerShell(scanCmd, { timeout: scanType === 'quick' ? 60000 : 300000 });
-      }
-
-      // Requête des menaces réelles détectées par le système
-      try {
-        const threatsScript = `
-          Get-MpThreatDetection -ErrorAction SilentlyContinue |
-          Select-Object ThreatID, ThreatName, InitialDetectionTime, Resources |
-          Select-Object -First 20 |
-          ConvertTo-Json -Compress -Depth 3
-        `;
-        const threatsRes = await runPowerShell<string>(threatsScript, { timeout: 5000 });
-        if (threatsRes.data && threatsRes.data.trim()) {
-          const parsed = JSON.parse(threatsRes.data);
-          const list = Array.isArray(parsed) ? parsed : [parsed];
-          for (const item of list) {
-            if (item && item.ThreatName) detectedThreats.push(item);
-          }
+      const result = await defenderOrchestrator.executeScan(
+        scanType,
+        undefined,
+        (msg) => {
+          win.webContents.send('security:scan-event', {
+            type: 'scan-progress',
+            scanType,
+            percent: null,
+            phase: 'Moteur Microsoft Defender (Analyse en cours)',
+            currentFile: msg,
+            filesScanned: null,
+          });
         }
-      } catch {}
+      );
 
-      // Fin d'analyse avec résultats réels sans fausse métrique
+      // Notification de fin d'analyse
       win.webContents.send('security:scan-event', {
         type: 'scan-complete',
         scanType,
@@ -218,20 +152,21 @@ export function setupSecurityIPC(win: BrowserWindow) {
         phase: 'Analyse Microsoft Defender terminée',
         currentFile: 'Analyse terminée',
         filesScanned: null,
-        threats: detectedThreats,
-        drives: detectedDrives,
-        durationMs: Date.now() - startTime,
+        threats: result.threats,
+        durationMs: result.durationMs,
+        wasCancelled: result.wasCancelled,
       });
 
       return {
-        success: true,
-        threats: detectedThreats,
+        success: result.success,
+        threats: result.threats,
         filesScanned: null,
-        drives: detectedDrives,
-        durationMs: Date.now() - startTime,
+        durationMs: result.durationMs,
+        wasCancelled: result.wasCancelled,
+        message: result.message,
       };
     } catch (err: any) {
-      logger.error('[Security] Scan execution error:', err.message);
+      logger.error('[Security] Erreur exécution scan Defender :', err.message);
       win.webContents.send('security:scan-event', {
         type: 'scan-error',
         error: err.message,
@@ -240,95 +175,133 @@ export function setupSecurityIPC(win: BrowserWindow) {
     }
   });
 
-  // ── Cancel Scan ────────────────────────────────────────────────────────────
-  ipcMain.handle('security:cancel-scan', () => {
-    activeScanCancel = true;
+  // ── 3. Annulation d'analyse ────────────────────────────────────────────────
+  ipcMain.handle('security:cancel-scan', async () => {
+    logger.info('[Security] Demande d\'annulation du scan actif');
+    const cancelled = defenderOrchestrator.cancelScan();
     win.webContents.send('security:scan-event', { type: 'scan-cancelled' });
-    return { success: true };
+    return { success: true, wasCancelled: cancelled };
   });
 
-  // ── Autonomous Heuristic Threat Analysis ───────────────────────────────────
-  ipcMain.handle('security:ai-analyze', async (_, threats: ThreatInfo[]) => {
+  // ── 4. Historique réel des menaces Defender ────────────────────────────────
+  ipcMain.handle('security:get-threats', async () => {
     try {
-      if (!threats || threats.length === 0) {
-        return {
-          success: true,
-          analysis: {
-            riskLevel: 'Sain',
-            isFalsePositive: false,
-            summary: 'Système sain et intègre. Zéro menace détectée.',
-            explanation: 'Les analyses heuristiques de mémoire, registres et binaires confirment l’absence totale de charge malveillante active.',
-            remediationScript: '',
-            suggestedAction: 'none',
-          } as SecurityAnalysisResult,
-        };
-      }
+      const threats = await defenderOrchestrator.getDetectionHistory(20);
+      return { success: true, threats };
+    } catch (err: any) {
+      logger.warn('[Security] Impossible de lire l\'historique des menaces :', err.message);
+      return { success: true, threats: [] };
+    }
+  });
 
-      let highestRisk: 'Sain' | 'Faible' | 'Moyen' | 'Élevé' | 'Critique' = 'Faible';
-      let isGamingFalsePositive = false;
-      const descriptions: string[] = [];
-      const remediationSteps: string[] = [];
-      let suggestedAction: 'none' | 'whitelist' | 'quarantine' | 'delete' = 'quarantine';
+  // ── 5. Diagnostic IA Local Déterministe (Strictement Consultatif) ──────────
+  ipcMain.handle('security:ai-analyze', async (_, threats: ThreatInfo[] = []) => {
+    try {
+      // Conversion vers le format DefenderThreat si nécessaire
+      const defThreats: DefenderThreat[] = (threats || []).map((t, idx) => ({
+        id: String(t.ThreatID || idx + 1),
+        name: t.ThreatName || 'Menace détectée',
+        detectionTime: t.InitialDetectionTime || new Date().toISOString(),
+        resources: t.Resources || [],
+        status: 'detecte',
+      }));
 
-      for (const t of threats) {
-        const name = (t.ThreatName || '').toLowerCase();
-        const resources = (t.Resources || []).join(' ').toLowerCase();
+      const diagnosis = localSecurityDiagnostics.diagnose({
+        defenderThreats: defThreats,
+      });
 
-        if (
-          name.includes('hacktool') ||
-          name.includes('keygen') ||
-          name.includes('trainer') ||
-          name.includes('injector') ||
-          resources.includes('steam') ||
-          resources.includes('games')
-        ) {
-          isGamingFalsePositive = true;
-          suggestedAction = 'whitelist';
-          descriptions.push(
-            `Détection : "${t.ThreatName}". Profil : Faux-positif e-sport / modding probable sans risque pour le système.`
-          );
-        } else {
-          highestRisk = 'Élevé';
-          descriptions.push(`Menace : "${t.ThreatName}". Code potentiellement dangereux.`);
-        }
-      }
-
+      // Règle absolue de sécurité : canExecuteAction est invariablement false
       return {
         success: true,
         analysis: {
-          riskLevel: highestRisk,
-          isFalsePositive: isGamingFalsePositive,
-          summary: isGamingFalsePositive
-            ? 'Alerte e-sport : faux positif probable identifié sur un composant de jeu.'
-            : `${threats.length} anomalie(s) détectée(s).`,
-          explanation: descriptions.join(' '),
-          remediationScript: remediationSteps.join('; '),
-          suggestedAction,
-        } as SecurityAnalysisResult,
+          riskLevel: diagnosis.riskLevel,
+          isFalsePositive: diagnosis.riskLevel === 'Faible' && diagnosis.factors.some(f => f.category === 'evasion'),
+          summary: diagnosis.summary,
+          explanation: diagnosis.explanation,
+          remediationScript: '', // Aucun script automatique injecté
+          suggestedAction: diagnosis.riskScore > 60 ? 'quarantine' : diagnosis.riskScore > 20 ? 'whitelist' : 'none',
+          canExecuteAction: false,
+          factors: diagnosis.factors,
+          safeRecommendations: diagnosis.safeRecommendations,
+        },
       };
+    } catch (err: any) {
+      logger.error('[Security] Erreur analyse IA locale :', err.message);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // ── 6. Moteur YARA-X Local ────────────────────────────────────────────────
+  ipcMain.handle('security:scan-yara', async (_, filePath: string): Promise<YaraScanResult> => {
+    try {
+      if (!filePath || typeof filePath !== 'string') {
+        return {
+          success: false,
+          matches: [],
+          isClean: false,
+          durationMs: 0,
+          error: 'Chemin de fichier requis.',
+        };
+      }
+      return await yaraEngine.scanFile(filePath);
+    } catch (err: any) {
+      return {
+        success: false,
+        matches: [],
+        isClean: false,
+        durationMs: 0,
+        error: err.message,
+      };
+    }
+  });
+
+  // ── 7. Second avis ClamAV Facultatif ───────────────────────────────────────
+  ipcMain.handle('security:get-clamav-status', async (): Promise<ClamAvStatus> => {
+    return await clamAvEngine.getStatus();
+  });
+
+  ipcMain.handle('security:scan-clamav', async (_, filePath: string): Promise<ClamAvScanResult> => {
+    return await clamAvEngine.scanFile(filePath);
+  });
+
+  // ── 8. Rapport multi-moteurs unifié ────────────────────────────────────────
+  ipcMain.handle('security:get-report', async (_, targetFilePath?: string): Promise<{ success: boolean; report?: MultiEngineScanReport; error?: string }> => {
+    try {
+      const report = await multiEngineReportAggregator.generateReport(targetFilePath);
+      return { success: true, report };
     } catch (err: any) {
       return { success: false, error: err.message };
     }
   });
 
-  // ── Update Antivirus Signatures ───────────────────────────────────────────
+  // ── 9. Mise à jour des signatures de sécurité ─────────────────────────────
   ipcMain.handle('security:update-signatures', async () => {
     try {
-      const script = `
-        Update-MpSignature -ErrorAction SilentlyContinue
-        (Get-MpComputerStatus).AntivirusSignatureVersion
-      `;
-      const res = await runPowerShell<string>(script, { timeout: 15000 });
-      return {
-        success: true,
-        version: res.data ? res.data.trim() : '',
-      };
-    } catch {
-      return { success: true, version: '' };
+      const res = await defenderOrchestrator.updateSignatures();
+      return res;
+    } catch (err: any) {
+      return { success: false, version: '', message: err.message };
     }
   });
 
-  // ── Exclusions & Quarantines ───────────────────────────────────────────────
+  // ── 10. Activation / Désactivation de la protection temps réel ─────────────
+  ipcMain.handle('security:toggle-realtime', async (_, enabled: boolean) => {
+    logger.info(`[Security] Demande de bascule protection temps réel : ${enabled}`);
+    try {
+      const disableVal = enabled ? '$false' : '$true';
+      await runPowerShell(`Set-MpPreference -DisableRealtimeMonitoring ${disableVal} -ErrorAction SilentlyContinue`, { timeout: 4000 });
+      win.webContents.send('security:status-changed', {
+        realTimeProtection: enabled,
+        antivirusEnabled: enabled,
+      });
+      return { success: true, enabled };
+    } catch (e: any) {
+      logger.warn('[Security] Impossible d\'appliquer Set-MpPreference directement :', e.message);
+      return { success: false, error: e.message };
+    }
+  });
+
+  // ── 11. Exclusions & Quarantines ───────────────────────────────────────────
   ipcMain.handle('security:get-exclusions', async () => {
     try {
       const script = `(Get-MpPreference).ExclusionPath | ConvertTo-Json -Compress`;
@@ -340,32 +313,11 @@ export function setupSecurityIPC(win: BrowserWindow) {
       } catch {
         paths = [];
       }
-      return { success: true, paths };
+      return { success: true, paths: paths.filter(Boolean) };
     } catch {
       return { success: true, paths: [] };
     }
   });
-
-  // Validation stricte du chemin d'exclusion (Phase 1 Security Hardening)
-  function validateExclusionPath(rawPath: string): { valid: boolean; normalizedPath?: string; error?: string } {
-    if (!rawPath || typeof rawPath !== 'string') {
-      return { valid: false, error: 'Chemin vide ou invalide.' };
-    }
-    const trimmed = rawPath.trim();
-    // Interdire strictement les métacaractères d'injection shell et PowerShell
-    if (/[\$`";&|<>{}()'\r\n]/.test(trimmed)) {
-      return { valid: false, error: 'Caractères non autorisés détectés dans le chemin.' };
-    }
-    // Doit être un chemin absolu Windows (ex: C:\...)
-    if (!/^[a-zA-Z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]*$/.test(trimmed)) {
-      return { valid: false, error: 'Format de chemin Windows absolu non valide.' };
-    }
-    const resolved = path.resolve(trimmed);
-    if (!fs.existsSync(resolved)) {
-      return { valid: false, error: 'Le dossier ou fichier spécifié n’existe pas sur le système.' };
-    }
-    return { valid: true, normalizedPath: resolved };
-  }
 
   ipcMain.handle('security:add-exclusion', async (_, folderPath: string) => {
     const val = validateExclusionPath(folderPath);
@@ -393,5 +345,15 @@ export function setupSecurityIPC(win: BrowserWindow) {
     } catch (err: any) {
       return { success: false, error: err.message };
     }
+  });
+
+  // ── 12. Planification d'analyse ───────────────────────────────────────────
+  ipcMain.handle('security:get-schedule', () => {
+    return { success: true, schedule: scheduledScanConfig };
+  });
+
+  ipcMain.handle('security:set-schedule', (_, config: Partial<ScheduledScanConfig>) => {
+    scheduledScanConfig = { ...scheduledScanConfig, ...config };
+    return { success: true, schedule: scheduledScanConfig };
   });
 }
