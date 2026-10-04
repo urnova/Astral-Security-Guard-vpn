@@ -29,11 +29,8 @@ function getInitials(first: string, last: string) {
 export default function Sidebar({ activeTab, onTabChange, gamingActive, firstName = '', lastName = '' }: Props) {
   return (
     <aside className="sidebar">
-      {/* Navigation Links directly at top */}
-      <nav className="sidebar-nav" style={{ paddingTop: 16 }}>
-        <div className="sidebar-section-label" style={{ padding: '0 16px 8px 16px', fontSize: 10, letterSpacing: '0.08em', color: 'var(--text-faint)', textTransform: 'uppercase', fontWeight: 700 }}>
-          Navigation
-        </div>
+      {/* Navigation — directly at top, no duplicate logo */}
+      <nav className="sidebar-nav" style={{ paddingTop: 12 }}>
         {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
           const isGaming = id === 'gaming' && gamingActive;
           const isActive = activeTab === id;
@@ -54,7 +51,7 @@ export default function Sidebar({ activeTab, onTabChange, gamingActive, firstNam
         })}
       </nav>
 
-      {/* Unified User Profile & Settings Hub */}
+      {/* Profile & Settings */}
       <div className="sidebar-footer" style={{ padding: '12px 14px', borderTop: '1px solid var(--border)' }}>
         <div
           onClick={() => onTabChange('settings')}
@@ -103,7 +100,7 @@ export default function Sidebar({ activeTab, onTabChange, gamingActive, firstNam
             >
               {firstName || lastName ? `${firstName} ${lastName}`.trim() : 'Mon Profil'}
             </div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Profil Joueur</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Paramètres</div>
           </div>
 
           <button

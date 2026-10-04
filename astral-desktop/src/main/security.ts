@@ -46,13 +46,13 @@ let scheduledScanConfig: ScheduledScanConfig = {
 };
 
 let cachedSecurityStatus: any = {
-  EngineName: 'Astral Vanguard Core v2.4',
+  EngineName: 'Windows Defender',
   AntivirusEnabled: true,
   AMServiceEnabled: true,
   AntispywareEnabled: true,
   RealTimeProtectionEnabled: true,
   IoavProtectionEnabled: true,
-  AntivirusSignatureVersion: 'v2.4.1026-LIVE',
+  AntivirusSignatureVersion: '',
   AntivirusSignatureLastUpdate: new Date().toISOString().split('T')[0],
   FirewallEnabled: true,
   scheduledScan: scheduledScanConfig,
@@ -70,13 +70,13 @@ async function refreshSecurityStatusInBackground() {
       $status = Get-MpComputerStatus -ErrorAction SilentlyContinue
       if ($status) {
         [PSCustomObject]@{
-          EngineName                  = "Astral Vanguard Core v2.4"
+          EngineName                  = "Windows Defender"
           AntivirusEnabled            = ($status.AntivirusEnabled -eq $true)
           AMServiceEnabled            = ($status.AMServiceEnabled -eq $true)
           AntispywareEnabled          = ($status.AntispywareEnabled -eq $true)
           RealTimeProtectionEnabled   = ($status.RealTimeProtectionEnabled -eq $true)
           IoavProtectionEnabled       = ($status.IoavProtectionEnabled -eq $true)
-          AntivirusSignatureVersion   = if ($status.AntivirusSignatureVersion) { $status.AntivirusSignatureVersion.ToString() } else { "v2.4.1026-LIVE" }
+          AntivirusSignatureVersion   = if ($status.AntivirusSignatureVersion) { $status.AntivirusSignatureVersion.ToString() } else { "" }
           AntivirusSignatureLastUpdate= $status.AntivirusSignatureLastUpdated
           FirewallEnabled             = $true
         } | ConvertTo-Json -Compress
@@ -89,7 +89,7 @@ async function refreshSecurityStatusInBackground() {
       cachedSecurityStatus = {
         ...cachedSecurityStatus,
         ...data,
-        EngineName: 'Astral Vanguard Core v2.4',
+        EngineName: 'Windows Defender',
         scheduledScan: scheduledScanConfig,
       };
     }
@@ -341,10 +341,10 @@ export function setupSecurityIPC(win: BrowserWindow) {
       const res = await runPowerShell<string>(script, { timeout: 15000 });
       return {
         success: true,
-        version: res.data ? res.data.trim() : 'v2.4.1026-LIVE',
+        version: res.data ? res.data.trim() : '',
       };
     } catch {
-      return { success: true, version: 'v2.4.1026-LIVE' };
+      return { success: true, version: '' };
     }
   });
 

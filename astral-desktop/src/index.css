@@ -506,6 +506,38 @@ img, svg { display: block; }
 .card-p { padding: 20px; }
 .card-p-lg { padding: 24px; }
 
+/* ── Glass Card (used in Dashboard/tabs for elevated glassmorphism panels) ─── */
+.glass-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: background var(--transition), border-color var(--transition), box-shadow var(--transition);
+}
+
+.glass-card:hover {
+  background: rgba(255,255,255,0.05);
+  border-color: var(--border-strong);
+}
+
+/* ── Hover Glow (subtle border glow on hover) ────────────────────────────── */
+.hover-glow {
+  transition: all 0.25s ease;
+}
+.hover-glow:hover {
+  border-color: var(--border-violet) !important;
+  box-shadow: 0 4px 20px rgba(139,92,246,0.12), 0 0 0 1px rgba(139,92,246,0.08);
+  transform: translateY(-2px);
+}
+
+/* ── Badge Amber ─────────────────────────────────────────────────────────── */
+.badge-amber {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
 /* ══════════════════════════════════════════════════════════════════════════════
    BUTTONS
    ══════════════════════════════════════════════════════════════════════════════ */

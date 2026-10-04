@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { motion } from 'motion/react';
 import {
   Wifi, Globe, Activity, Cpu, CheckCircle2, RefreshCw, Radio,
   Zap, ShieldCheck, Sparkles, ArrowDown, ArrowUp, Gauge, Terminal, X
@@ -174,7 +175,7 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
     await new Promise((r) => setTimeout(r, 700));
     setOptimizingStep(3);
     logs.push('⚡ Réinitialisation de la pile TCP/IP & autotuning des tampons de réception...');
-    logs.push('🎮 Configuration de priorité e-sport pour les paquets UDP...');
+    logs.push('🎮 Configuration de priorité gaming pour les paquets UDP...');
 
     if (api?.networkGamingOn) {
       try { await api.networkGamingOn(); } catch {}
@@ -182,7 +183,7 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
 
     await new Promise((r) => setTimeout(r, 800));
     setOptimizingStep(4);
-    logs.push('🌐 Application des passerelles DNS e-sport Cloudflare 1.1.1.1 & Google 8.8.8.8...');
+    logs.push('🌐 Application des passerelles DNS gaming Cloudflare 1.1.1.1 & Google 8.8.8.8...');
     logs.push('📊 Exécution du benchmark de validation Avant / Après...');
 
     await new Promise((r) => setTimeout(r, 900));
@@ -196,7 +197,7 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
       latencyGainPercent: 57,
       jitterBefore: 4.8,
       jitterAfter: 0.9,
-      dnsApplied: '1.1.1.1 (Cloudflare E-Sport Anycast)',
+      dnsApplied: '1.1.1.1 (Cloudflare Gaming Anycast)',
       logs,
     });
   };
@@ -210,31 +211,17 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
   const needleAngle = Math.min(120, Math.max(-120, (currentSpeed / 1000) * 240 - 120));
 
   return (
-    <div className="tab-scroll animate-in" style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
+    <div className="tab-scroll" style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-              Optimisation Réseau & Test de Débit
+              Réseau
             </h1>
-            <span
-              style={{
-                fontSize: 11,
-                fontFamily: "'JetBrains Mono', monospace",
-                padding: '3px 8px',
-                borderRadius: 6,
-                backgroundColor: 'rgba(0, 245, 255, 0.1)',
-                border: '1px solid rgba(0, 245, 255, 0.3)',
-                color: 'var(--cyan)',
-                fontWeight: 700,
-              }}
-            >
-              STREAMING MULTI-SOCKET 1 Gbps
-            </span>
           </div>
           <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-            Benchmark de bande passante réelle via serveurs Edge CDN & sélecteur DNS e-sport
+            Testez votre connexion, changez de DNS et optimisez le Wi-Fi
           </p>
         </div>
 
@@ -255,7 +242,7 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
           <Sparkles size={16} />
           <span>Optimiser le Wi-Fi & Réseau</span>
         </button>
-      </div>
+      </motion.div>
 
       {errorInfo && (
         <div style={{ marginBottom: 20 }}>
@@ -573,7 +560,7 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
                 )}
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                Recommandé E-Sport & Gaming. Résolveur Anycast mondial ultra-rapide.
+                Recommandé Gaming & Gaming. Résolveur Anycast mondial ultra-rapide.
               </div>
             </div>
             <button
@@ -723,7 +710,7 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#ffffff' }}>
-                    Optimiseur Wi-Fi & Réseau E-Sport
+                    Optimiseur Wi-Fi & Réseau Gaming
                   </h3>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                     Calibrage haute performance sans interruption

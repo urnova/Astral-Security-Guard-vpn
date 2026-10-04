@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { motion } from 'motion/react';
 import {
   Shield, ShieldCheck, Globe, Lock, Power, RefreshCw,
   ChevronDown, ChevronUp, Zap, Sparkles, Activity, ArrowDown, ArrowUp, Info, CheckCircle2
@@ -91,31 +92,17 @@ export default function VpnTab() {
   const currentNode = isVpnConnected ? activeVpnNode || selectedNode : selectedNode;
 
   return (
-    <div className="tab-scroll animate-in" style={{ padding: '24px 32px', maxWidth: 1260, margin: '0 auto' }}>
+    <div className="tab-scroll" style={{ padding: '24px 32px', maxWidth: 1260, margin: '0 auto' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 16 }}>
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 16 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-              Réseau Privé Virtuel (Astral VPN)
+              VPN
             </h1>
-            <span
-              style={{
-                fontSize: 11,
-                fontFamily: "'JetBrains Mono', monospace",
-                padding: '3px 8px',
-                borderRadius: 6,
-                backgroundColor: 'rgba(0, 245, 255, 0.1)',
-                border: '1px solid rgba(0, 245, 255, 0.3)',
-                color: 'var(--cyan)',
-                fontWeight: 700,
-              }}
-            >
-              WIREGUARD PROTOCOL
-            </span>
           </div>
           <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-            Chiffrement de trafic haute vitesse avec sélection dynamique des relais à faible latence
+            Tunnel chiffré avec relais internationaux
           </p>
         </div>
 
@@ -139,7 +126,7 @@ export default function VpnTab() {
             <span>{coexistenceInfo}</span>
           </div>
         )}
-      </div>
+      </motion.div>
 
       {errorInfo && (
         <div style={{ marginBottom: 20 }}>

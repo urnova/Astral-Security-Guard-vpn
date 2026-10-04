@@ -1,23 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
+import { motion } from 'motion/react';
 import {
   Shield, ShieldCheck, Zap, Activity,
-  HardDrive, Clock, Cpu, Wifi, Gamepad2, RefreshCw,
-  ArrowUpRight, CheckCircle2, AlertTriangle, ChevronRight, Sparkles
+  HardDrive, Clock, Cpu, Wifi, Lock, RefreshCw,
+  ArrowUpRight, CheckCircle2, AlertTriangle, Gamepad2
 } from 'lucide-react';
 import { CollapsibleError } from '../ui/CollapsibleError';
-import { VanguardLogo } from '../common/VanguardLogo';
 import { useSystem } from '../../context/SystemContext';
 
 const api = (window as any).vanguard;
-
-interface Metrics {
-  cpuPercent: number;
-  ramTotal: number;
-  ramUsed: number;
-  diskUsedGB: number;
-  diskFreeGB: number;
-  uptimeHours: number;
-}
 
 interface Props {
   gamingActive: boolean;
@@ -29,18 +20,64 @@ interface Props {
 function greeting(name: string) {
   const h = new Date().getHours();
   const time = h < 12 ? 'Bonjour' : h < 18 ? 'Bon après-midi' : 'Bonsoir';
-  return name ? `${time} ${name}` : 'Tableau de bord';
+  return name ? `${time}, ${name}` : 'Tableau de bord';
 }
 
 function fmtUptime(h: number) {
+  if (!h) return '–';
   if (h < 1) return `${Math.round(h * 60)} min`;
   const d = Math.floor(h / 24), hh = Math.floor(h % 24);
   return d > 0 ? `${d}j ${hh}h` : `${hh}h`;
 }
 
-function fmtGB(gb: number) {
-  return gb >= 1 ? `${gb.toFixed(1)} Go` : `${(gb * 1024).toFixed(0)} Mo`;
-}
+/* ── Quick-access module cards ─────────────────────────────────────────── */
+const MODULES = [
+  {
+    id: 'security',
+    label: 'Sécurité',
+    desc: 'Antivirus, analyses et protection temps réel',
+    icon: Shield,
+    color: '#10d9a0',
+    bg: 'rgba(16, 217, 160, 0.10)',
+    border: 'rgba(16, 217, 160, 0.25)',
+  },
+  {
+    id: 'performance',
+    label: 'Performance',
+    desc: 'RAM, disque, démarrage et maintenance',
+    icon: Zap,
+    color: '#8b5cf6',
+    bg: 'rgba(139, 92, 246, 0.10)',
+    border: 'rgba(139, 92, 246, 0.25)',
+  },
+  {
+    id: 'gaming',
+    label: 'Gaming',
+    desc: 'Optimisation pour vos sessions de jeu',
+    icon: Gamepad2,
+    color: '#f59e0b',
+    bg: 'rgba(245, 158, 11, 0.10)',
+    border: 'rgba(245, 158, 11, 0.25)',
+  },
+  {
+    id: 'network',
+    label: 'Réseau',
+    desc: 'Speedtest, DNS et optimisation Wi-Fi',
+    icon: Wifi,
+    color: '#00d4ff',
+    bg: 'rgba(0, 212, 255, 0.10)',
+    border: 'rgba(0, 212, 255, 0.25)',
+  },
+  {
+    id: 'vpn',
+    label: 'VPN',
+    desc: 'Tunnel chiffré et relais internationaux',
+    icon: Lock,
+    color: '#ff8c42',
+    bg: 'rgba(255, 140, 66, 0.10)',
+    border: 'rgba(255, 140, 66, 0.25)',
+  },
+];
 
 export default function Dashboard({ gamingActive, currentGame, onTabChange, firstName = '' }: Props) {
   const { metrics: ctxMetrics, securityStatus: ctxSec, toggleRealTimeProtection, refreshTelemetry } = useSystem();
@@ -48,68 +85,54 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
   const [refreshing, setRefreshing] = useState(false);
   const [errorInfo, setErrorInfo] = useState<{ message: string; technical?: string } | null>(null);
 
-  // Sync with context
-  useEffect(() => {
-    if (ctxMetrics) setMetrics(ctxMetrics);
-  }, [ctxMetrics]);
+  useEffect(() => { if (ctxMetrics) setMetrics(ctxMetrics); }, [ctxMetrics]);
 
   const load = useCallback(async () => {
     await refreshTelemetry();
     setRefreshing(false);
   }, [refreshTelemetry]);
 
-  const handleRefresh = () => {
-    setRefreshing(true);
-    load();
-  };
+  const handleRefresh = () => { setRefreshing(true); load(); };
 
   const ramPct = metrics && metrics.ramTotal > 0
-    ? Math.round((metrics.ramUsed / metrics.ramTotal) * 100) : 45;
+    ? Math.round((metrics.ramUsed / metrics.ramTotal) * 100) : 0;
   const isProtected = ctxSec?.realTimeProtection ?? true;
 
+  /* ── Telemetry pills ─── */
+  const pills = [
+    { label: 'CPU', value: metrics?.cpuCores > 0 ? `${metrics.cpuPercent}%` : '–', icon: Cpu, color: 'var(--cyan)' },
+    { label: 'RAM', value: metrics?.ramTotal > 0 ? `${ramPct}%` : '–', icon: Activity, color: 'var(--violet)' },
+    { label: 'Disque', value: metrics?.diskFreeGB > 0 ? `${metrics.diskFreeGB} Go libre` : '–', icon: HardDrive, color: metrics?.diskFreeGB < 20 ? '#f59e0b' : 'var(--green)' },
+    { label: 'Uptime', value: fmtUptime(metrics?.uptimeHours), icon: Clock, color: '#c084fc' },
+  ];
+
   return (
-    <div className="tab-scroll animate-in" style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
-      {/* ── Page Header ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+    <div className="tab-scroll" style={{ padding: '28px 32px', maxWidth: 1200, margin: '0 auto' }}>
+
+      {/* ── Header ── */}
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}
+      >
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-              {greeting(firstName)}
-            </h1>
-          </div>
-          <p style={{ margin: '3px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-            Supervision temps réel et centre de contrôle Astral Vanguard
+          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+            {greeting(firstName)}
+          </h1>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
+            Votre centre de contrôle Astral Vanguard
           </p>
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {gamingActive ? (
-            <span className="badge badge-cyan" style={{ fontSize: 11, padding: '5px 12px' }}>
-              <span className="badge-dot" style={{ animation: 'dotPulse 1.4s infinite' }} />
-              GAMING ACTIF
-            </span>
-          ) : !isProtected ? (
-            <span className="badge badge-amber" style={{ fontSize: 11, padding: '5px 12px', border: '1px solid rgba(245, 158, 11, 0.4)' }}>
-              <span className="badge-dot" style={{ backgroundColor: '#f59e0b' }} />
-              PROTECTION SUSPENDUE
-            </span>
-          ) : (
-            <span className="badge badge-green" style={{ fontSize: 11, padding: '5px 12px' }}>
-              <span className="badge-dot" />
-              BOUCLIER ACTIF
-            </span>
-          )}
-
-          <button
-            className="btn btn-ghost btn-sm btn-icon"
-            onClick={handleRefresh}
-            title="Actualiser la télémétrie"
-            aria-label="Actualiser"
-          >
-            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-          </button>
-        </div>
-      </div>
+        <button
+          className="btn btn-ghost btn-sm btn-icon"
+          onClick={handleRefresh}
+          title="Actualiser"
+          style={{ width: 36, height: 36 }}
+        >
+          <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
+        </button>
+      </motion.div>
 
       {errorInfo && (
         <div style={{ marginBottom: 20 }}>
@@ -117,371 +140,185 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
         </div>
       )}
 
-      {/* ── Brief Card with Dynamic Security Status ── */}
-      <div
-        className="glass-card"
+      {/* ── Status Banner ── */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.98 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.4, delay: 0.05 }}
         style={{
-          padding: '24px 28px',
-          borderRadius: 18,
+          padding: '22px 26px',
+          borderRadius: 16,
           marginBottom: 24,
           background: gamingActive
-            ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.12) 0%, rgba(139, 92, 246, 0.08) 50%, rgba(6, 6, 20, 0.85) 100%)'
+            ? 'linear-gradient(135deg, rgba(245,158,11,0.14) 0%, rgba(6,6,20,0.9) 100%)'
             : !isProtected
-            ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(239, 68, 68, 0.08) 50%, rgba(6, 6, 20, 0.85) 100%)'
-            : 'linear-gradient(135deg, rgba(16, 217, 160, 0.12) 0%, rgba(139, 92, 246, 0.08) 50%, rgba(6, 6, 20, 0.85) 100%)',
-          border: gamingActive
-            ? '1px solid rgba(0, 212, 255, 0.35)'
-            : !isProtected
-            ? '1px solid rgba(245, 158, 11, 0.4)'
-            : '1px solid rgba(16, 217, 160, 0.35)',
-          boxShadow: !isProtected
-            ? '0 8px 32px rgba(245, 158, 11, 0.15)'
-            : '0 8px 32px rgba(16, 217, 160, 0.12)',
+            ? 'linear-gradient(135deg, rgba(239,68,68,0.14) 0%, rgba(6,6,20,0.9) 100%)'
+            : 'linear-gradient(135deg, rgba(16,217,160,0.14) 0%, rgba(6,6,20,0.9) 100%)',
+          border: `1px solid ${gamingActive ? 'rgba(245,158,11,0.3)' : !isProtected ? 'rgba(239,68,68,0.3)' : 'rgba(16,217,160,0.3)'}`,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-            <div
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 14,
-                backgroundColor: 'rgba(6, 6, 20, 0.6)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <VanguardLogo size={36} glow />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 12,
+              backgroundColor: gamingActive ? 'rgba(245,158,11,0.15)' : !isProtected ? 'rgba(239,68,68,0.15)' : 'rgba(16,217,160,0.15)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              {gamingActive
+                ? <Gamepad2 size={22} style={{ color: '#f59e0b' }} />
+                : !isProtected
+                ? <AlertTriangle size={22} style={{ color: '#ef4444' }} />
+                : <ShieldCheck size={22} style={{ color: '#10d9a0' }} />}
             </div>
-
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: !isProtected ? '#f59e0b' : 'var(--cyan)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <Sparkles size={13} />
-                  <span>Brief Système Quotidien</span>
-                </span>
-              </div>
-              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
+              <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: 'var(--text-primary)' }}>
                 {gamingActive
-                  ? 'Optimisation E-Sport Engagée'
+                  ? `Mode Jeu actif${currentGame ? ` — ${currentGame}` : ''}`
                   : !isProtected
-                  ? 'Protection en Temps Réel Suspendue'
-                  : 'Système Protégé · Bouclier Actif'}
+                  ? 'Protection suspendue'
+                  : 'Tout est sous contrôle'}
               </h2>
-              <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: 650 }}>
+              <p style={{ margin: '3px 0 0', fontSize: 12, color: 'var(--text-secondary)', maxWidth: 550 }}>
                 {gamingActive
-                  ? `Priorité maximale allouée à votre session (${currentGame || 'Plein Écran'}). Les flux réseau UDP et cœurs CPU sont cadencés au plus haut niveau.`
+                  ? 'Les ressources système sont priorisées pour votre session de jeu.'
                   : !isProtected
-                  ? 'Le bouclier résident en temps réel est désactivé. Votre machine ne filtre pas les scripts et binaires en direct.'
-                  : `Protection résidente opérationnelle. Signatures actives : ${ctxSec.signaturesVersion || 'v2.4.1026-LIVE'}. Votre environnement Windows est sécurisé.`}
+                  ? 'Le bouclier temps réel est désactivé. Vos fichiers ne sont pas surveillés.'
+                  : 'Votre système est protégé et surveillé en continu.'}
               </p>
             </div>
           </div>
 
-          {!isProtected ? (
-            <button
+          {!isProtected && (
+            <motion.button
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.97 }}
               onClick={() => toggleRealTimeProtection(true)}
-              className="btn btn-primary"
-              style={{ padding: '9px 20px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 8, backgroundColor: '#f59e0b', color: '#07071a', fontWeight: 800 }}
+              style={{
+                padding: '10px 22px', fontSize: 13, fontWeight: 700,
+                background: 'linear-gradient(135deg, #ef4444, #f59e0b)',
+                border: 'none', borderRadius: 10, color: '#fff', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}
             >
-              <ShieldCheck size={14} />
-              <span>Réactiver la Protection</span>
-            </button>
-          ) : (
-            <button
-              onClick={() => onTabChange('security')}
-              className="btn btn-primary"
-              style={{ padding: '9px 18px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}
-            >
-              <Shield size={14} />
-              <span>Console Sécurité</span>
-            </button>
+              <ShieldCheck size={16} />
+              Réactiver
+            </motion.button>
           )}
         </div>
 
-        {/* Compact Telemetry Pill Bar */}
-        <div
-          style={{
-            marginTop: 20,
-            paddingTop: 16,
-            borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: 12,
-          }}
-        >
-          {/* CPU */}
-          <div
-            onClick={() => onTabChange('performance')}
-            title={metrics?.cpuModel || 'Processeur Principal'}
-            style={{
-              padding: '10px 14px',
-              borderRadius: 10,
-              backgroundColor: 'rgba(0,0,0,0.25)',
-              border: '1px solid var(--border)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              cursor: 'pointer',
-              transition: 'border-color 0.2s',
-            }}
-          >
-            <Cpu size={16} style={{ color: 'var(--cyan)' }} />
-            <div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Processeur ({metrics?.cpuCores || 8}C)</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--mono)' }}>
-                {metrics ? `${metrics.cpuPercent}%` : '–'}
+        {/* Telemetry pills */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 18 }}>
+          {pills.map((p, i) => (
+            <motion.div
+              key={p.label}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 + i * 0.06 }}
+              onClick={() => onTabChange('performance')}
+              style={{
+                padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
+                backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid var(--border)',
+                display: 'flex', alignItems: 'center', gap: 10,
+                transition: 'border-color 0.2s',
+              }}
+            >
+              <p.icon size={15} style={{ color: p.color, flexShrink: 0 }} />
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{p.label}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--mono)' }}>
+                  {p.value}
+                </div>
               </div>
-            </div>
-          </div>
+            </motion.div>
+          ))}
+        </div>
+      </motion.div>
 
-          {/* RAM */}
-          <div
-            onClick={() => onTabChange('performance')}
+      {/* ── Quick Access Modules ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 24 }}>
+        {MODULES.map((mod, i) => (
+          <motion.div
+            key={mod.id}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 + i * 0.06, type: 'spring', stiffness: 260, damping: 20 }}
+            whileHover={{ y: -4, borderColor: mod.color, boxShadow: `0 8px 24px ${mod.bg}` }}
+            whileTap={{ scale: 0.97 }}
+            onClick={() => onTabChange(mod.id)}
             style={{
-              padding: '10px 14px',
-              borderRadius: 10,
-              backgroundColor: 'rgba(0,0,0,0.25)',
-              border: '1px solid var(--border)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              cursor: 'pointer',
-              transition: 'border-color 0.2s',
+              padding: '20px 16px', borderRadius: 14, cursor: 'pointer',
+              background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
+              display: 'flex', flexDirection: 'column', gap: 14,
+              transition: 'border-color 0.25s, box-shadow 0.25s',
             }}
           >
-            <Activity size={16} style={{ color: 'var(--violet)' }} />
-            <div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Mémoire Vive ({ramPct}%)</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--mono)' }}>
-                {metrics ? `${metrics.ramUsed} Go / ${metrics.ramTotal} Go` : '–'}
-              </div>
+            <div style={{
+              width: 42, height: 42, borderRadius: 12,
+              backgroundColor: mod.bg, border: `1px solid ${mod.border}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <mod.icon size={20} style={{ color: mod.color }} />
             </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
+                {mod.label}
+              </h3>
+              <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                {mod.desc}
+              </p>
+            </div>
+            <ArrowUpRight size={14} style={{ color: 'var(--text-faint)', marginTop: 'auto' }} />
+          </motion.div>
+        ))}
+      </div>
+
+      {/* ── System Health Checks ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5 }}
+        style={{ padding: '20px 22px', borderRadius: 14, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}
+      >
+        <h3 style={{ margin: '0 0 14px', fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <CheckCircle2 size={16} style={{ color: isProtected ? 'var(--green)' : '#f59e0b' }} />
+          État du système
+        </h3>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* Shield check */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <ShieldCheck size={15} style={{ color: isProtected ? 'var(--green)' : '#f59e0b' }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>Protection temps réel</span>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 700, color: isProtected ? 'var(--green)' : '#f59e0b' }}>
+              {isProtected ? 'Actif' : 'Suspendu'}
+            </span>
           </div>
 
           {/* Disk */}
-          <div
-            onClick={() => onTabChange('performance')}
-            style={{
-              padding: '10px 14px',
-              borderRadius: 10,
-              backgroundColor: 'rgba(0,0,0,0.25)',
-              border: '1px solid var(--border)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              cursor: 'pointer',
-              transition: 'border-color 0.2s',
-            }}
-          >
-            <HardDrive size={16} style={{ color: metrics?.diskFreeGB < 20 ? '#f59e0b' : 'var(--green)' }} />
-            <div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                Disque C: ({metrics?.diskFreeGB < 20 ? 'Espace Faible' : 'Actif'})
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--mono)' }}>
-                {metrics ? `${metrics.diskFreeGB} Go libres (${metrics.diskUsedGB} Go occupés)` : '–'}
-              </div>
-            </div>
-          </div>
-
-          {/* Session */}
-          <div
-            onClick={() => onTabChange('performance')}
-            style={{
-              padding: '10px 14px',
-              borderRadius: 10,
-              backgroundColor: 'rgba(0,0,0,0.25)',
-              border: '1px solid var(--border)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              cursor: 'pointer',
-              transition: 'border-color 0.2s',
-            }}
-          >
-            <Clock size={16} style={{ color: 'var(--gold)' }} />
-            <div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Session Windows</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--mono)' }}>
-                {metrics ? fmtUptime(metrics.uptimeHours) : '–'}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── 4 Interactive Action Modules ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
-        <div
-          onClick={() => onTabChange('security')}
-          className="glass-card hover-glow"
-          style={{ padding: 18, borderRadius: 16, cursor: 'pointer', transition: 'all 0.25s ease', border: '1px solid var(--border)' }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(16, 217, 160, 0.12)', border: '1px solid rgba(16, 217, 160, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--green)' }}>
-              <Shield size={18} />
-            </div>
-            <ArrowUpRight size={15} style={{ color: 'var(--text-muted)' }} />
-          </div>
-          <h3 style={{ margin: '0 0 4px 0', fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
-            Sécurité & Defender
-          </h3>
-          <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
-            Radar d'analyse dynamique & heuristique
-          </p>
-        </div>
-
-        <div
-          onClick={() => onTabChange('performance')}
-          className="glass-card hover-glow"
-          style={{ padding: 18, borderRadius: 16, cursor: 'pointer', transition: 'all 0.25s ease', border: '1px solid var(--border)' }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(139, 92, 246, 0.12)', border: '1px solid rgba(139, 92, 246, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--violet)' }}>
-              <Zap size={18} />
-            </div>
-            <ArrowUpRight size={15} style={{ color: 'var(--text-muted)' }} />
-          </div>
-          <h3 style={{ margin: '0 0 4px 0', fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
-            Turbo Performance
-          </h3>
-          <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
-            Optimiseur 1-clic, boot & santé SMART
-          </p>
-        </div>
-
-        <div
-          onClick={() => onTabChange('network')}
-          className="glass-card hover-glow"
-          style={{ padding: 18, borderRadius: 16, cursor: 'pointer', transition: 'all 0.25s ease', border: '1px solid var(--border)' }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(0, 212, 255, 0.12)', border: '1px solid rgba(0, 212, 255, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--cyan)' }}>
-              <Wifi size={18} />
-            </div>
-            <ArrowUpRight size={15} style={{ color: 'var(--text-muted)' }} />
-          </div>
-          <h3 style={{ margin: '0 0 4px 0', fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
-            Réseau & Wi-Fi
-          </h3>
-          <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
-            Compteur de débit cyber & anti-latence
-          </p>
-        </div>
-
-        <div
-          onClick={() => onTabChange('vpn')}
-          className="glass-card hover-glow"
-          style={{ padding: 18, borderRadius: 16, cursor: 'pointer', transition: 'all 0.25s ease', border: '1px solid var(--border)' }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255, 140, 66, 0.12)', border: '1px solid rgba(255, 140, 66, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--orange)' }}>
-              <Gamepad2 size={18} />
-            </div>
-            <ArrowUpRight size={15} style={{ color: 'var(--text-muted)' }} />
-          </div>
-          <h3 style={{ margin: '0 0 4px 0', fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
-            Tunnel VPN & Relais
-          </h3>
-          <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
-            12 relais internationaux & kill switch
-          </p>
-        </div>
-      </div>
-
-      {/* ── Rapport d'Intégrité & Audit Système Dynamique ── */}
-      <div className="glass-card" style={{ padding: 22, borderRadius: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <CheckCircle2 size={16} style={{ color: isProtected && (!metrics || metrics.diskFreeGB >= 20) ? 'var(--green)' : '#f59e0b' }} />
-            <span>Audit d'Intégrité & Sécurité Système</span>
-          </h3>
-          <span
-            style={{
-              fontSize: 11,
-              fontFamily: 'var(--mono)',
-              fontWeight: 700,
-              color: isProtected && (!metrics || metrics.diskFreeGB >= 20) ? 'var(--green)' : '#f59e0b',
-            }}
-          >
-            SCORE SÉCURITÉ : {(!isProtected ? 60 : 85) + (metrics && metrics.diskFreeGB < 20 ? 0 : 15)} / 100
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 12 }}>
-          {/* Real-time shield point */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <ShieldCheck size={16} style={{ color: isProtected ? 'var(--green)' : '#f59e0b' }} />
-              <div>
-                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Bouclier Résident Temps Réel</span>
-                <p style={{ margin: '2px 0 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
-                  {isProtected
-                    ? 'Surveillance continue active : analyse des fichiers exécutés et téléchargés.'
-                    : 'Attention : le bouclier est suspendu. Vos fichiers ne sont pas inspectés en direct.'}
-                </p>
-              </div>
+              <HardDrive size={15} style={{ color: metrics?.diskFreeGB < 20 ? '#f59e0b' : 'var(--green)' }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>Espace disque</span>
             </div>
-            {!isProtected ? (
-              <button
-                onClick={() => toggleRealTimeProtection(true)}
-                className="btn btn-primary"
-                style={{ fontSize: 11, padding: '4px 10px', backgroundColor: '#f59e0b', color: '#07071a', fontWeight: 700 }}
-              >
-                Réactiver
-              </button>
-            ) : (
-              <span className="badge badge-green" style={{ fontSize: 11 }}>Conforme</span>
-            )}
+            <span style={{ fontSize: 11, fontWeight: 700, color: metrics?.diskFreeGB < 20 ? '#f59e0b' : 'var(--green)' }}>
+              {metrics && metrics.diskFreeGB > 0 ? `${metrics.diskFreeGB} Go libres` : '–'}
+            </span>
           </div>
 
-          {/* Storage threshold point */}
+          {/* Signatures */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <HardDrive size={16} style={{ color: metrics?.diskFreeGB < 20 ? '#f59e0b' : 'var(--green)' }} />
-              <div>
-                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Capacité de Stockage Système (C:)</span>
-                <p style={{ margin: '2px 0 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
-                  {metrics
-                    ? metrics.diskFreeGB < 20
-                      ? `Espace critique : seulement ${metrics.diskFreeGB} Go libres (${metrics.diskUsedGB} Go occupés). Risque de ralentissement Windows.`
-                      : `${metrics.diskFreeGB} Go libres disponibles sur ${metrics.diskUsedGB + metrics.diskFreeGB} Go.`
-                    : 'Vérification du volume en cours...'}
-                </p>
-              </div>
+              <Shield size={15} style={{ color: 'var(--cyan)' }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>Signatures antivirus</span>
             </div>
-            {metrics?.diskFreeGB < 20 ? (
-              <button
-                onClick={() => onTabChange('performance')}
-                className="btn btn-secondary"
-                style={{ fontSize: 11, padding: '4px 10px', color: '#f59e0b', borderColor: 'rgba(245, 158, 11, 0.4)' }}
-              >
-                Nettoyer le disque
-              </button>
-            ) : (
-              <span className="badge badge-green" style={{ fontSize: 11 }}>Optimal</span>
-            )}
-          </div>
-
-          {/* Windows Defender Signatures */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <Shield size={16} style={{ color: 'var(--cyan)' }} />
-              <div>
-                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Moteur de Sécurité & Signatures</span>
-                <p style={{ margin: '2px 0 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
-                  Version active : {ctxSec.signaturesVersion || 'v2.4.1026-LIVE'} · Synchronisation arrière-plan active.
-                </p>
-              </div>
-            </div>
-            <span className="badge badge-cyan" style={{ fontSize: 11 }}>À jour</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--cyan)' }}>
+              {ctxSec.signaturesVersion || '–'}
+            </span>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

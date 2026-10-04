@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Shield, ShieldCheck, ShieldAlert, RefreshCw, Zap,
   FolderPlus, Trash2, RotateCcw, AlertTriangle, CheckCircle2,
@@ -71,7 +72,7 @@ export default function SecurityTab() {
     setScanState('scanning');
     setScanProgress(5);
     setFilesScanned(0);
-    setCurrentScanFile('Initialisation de l\'audit forensique multi-couches...');
+    setCurrentScanFile('Initialisation de l\'analyse...');
     setErrorInfo(null);
     setThreats([]);
 
@@ -93,12 +94,12 @@ export default function SecurityTab() {
   const updateSignatures = async () => {
     if (!api) return;
     setUpdatingSignatures(true);
-    setNotice('Synchronisation des signatures Microsoft Defender & Astral Core...');
+    setNotice('Mise à jour des signatures...');
     try {
       const res = await api.updateSignatures();
       if (res?.success) {
-        updateSecurityStatus({ signaturesVersion: res.version || 'v2.4.1026-LIVE' });
-        setNotice('✅ Base virale et heuristique synchronisée avec succès.');
+        updateSecurityStatus({ signaturesVersion: res.version || '' });
+        setNotice('✅ Signatures mises à jour.');
       }
     } finally {
       setUpdatingSignatures(false);
@@ -128,31 +129,17 @@ export default function SecurityTab() {
   const isProtected = ctxSec?.realTimeProtection ?? true;
 
   return (
-    <div className="tab-scroll animate-in" style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
+    <div className="tab-scroll" style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-              Centre de Sécurité & Antivirus
+              Sécurité
             </h1>
-            <span
-              style={{
-                fontSize: 11,
-                fontFamily: "'JetBrains Mono', monospace",
-                padding: '3px 8px',
-                borderRadius: 6,
-                backgroundColor: 'rgba(16, 217, 160, 0.1)',
-                border: '1px solid rgba(16, 217, 160, 0.3)',
-                color: 'var(--green)',
-                fontWeight: 700,
-              }}
-            >
-              DEFENDER ENGINE SYNCHRONISÉ
-            </span>
           </div>
           <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-            Supervision heuristique résidente & analyse multi-disques autonome
+            Analyses antivirus, protection temps réel et gestion des menaces
           </p>
         </div>
 
@@ -167,7 +154,7 @@ export default function SecurityTab() {
             <span>{updatingSignatures ? 'Actualisation...' : 'Actualiser Signatures'}</span>
           </button>
         </div>
-      </div>
+      </motion.div>
 
       {notice && (
         <div
@@ -463,7 +450,7 @@ export default function SecurityTab() {
           onClick={() => setActiveSubTab('exclusions')}
           className={`btn btn-sm ${activeSubTab === 'exclusions' ? 'btn-primary' : 'btn-ghost'}`}
         >
-          Exclusions E-Sport & Mods ({exclusions.length})
+          Exclusions & Mods ({exclusions.length})
         </button>
       </div>
 
@@ -611,7 +598,7 @@ export default function SecurityTab() {
             Dossiers Exclus (Jeux, Mods & Émulateurs)
           </h3>
           <p style={{ margin: '0 0 16px 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-            Empêche les faux-positifs fréquents sur les modpacks indépendants, injecteurs de shaders ou émulateurs e-sport.
+            Empêche les faux-positifs fréquents sur les modpacks indépendants, injecteurs de shaders ou émulateurs.
           </p>
 
           <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>

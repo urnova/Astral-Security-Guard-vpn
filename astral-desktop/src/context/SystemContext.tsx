@@ -67,24 +67,24 @@ interface SystemContextType {
 }
 
 const defaultMetrics: MetricsData = {
-  cpuModel: 'Intel / AMD Processor',
-  cpuCores: 8,
-  cpuPercent: 12,
-  ramUsed: 7.4,
-  ramTotal: 16.0,
-  gpuName: 'NVIDIA / AMD Graphics Engine',
-  diskUsedGB: 185,
-  diskFreeGB: 327,
-  uptimeHours: 3.5,
+  cpuModel: '',
+  cpuCores: 0,
+  cpuPercent: 0,
+  ramUsed: 0,
+  ramTotal: 0,
+  gpuName: '',
+  diskUsedGB: 0,
+  diskFreeGB: 0,
+  uptimeHours: 0,
 };
 
 const defaultSecurity: SecurityStatusData = {
-  engineName: 'Astral Vanguard Core Engine',
-  engineVersion: '2.4.0',
+  engineName: 'Windows Defender',
+  engineVersion: '',
   antivirusEnabled: true,
   realTimeProtection: true,
-  signaturesVersion: 'v2.4.1026-LIVE',
-  signaturesUpdated: 'Aujourd’hui',
+  signaturesVersion: '',
+  signaturesUpdated: '',
   firewallEnabled: true,
   autoScanStartup: true,
   autoScanWeekly: true,
@@ -290,9 +290,9 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
 
     const timer = setInterval(() => {
       setVpnConnectTime((prev) => prev + 1);
-      // Realistic data increment
-      setVpnBytesIn((prev) => prev + Math.floor(Math.random() * 450000 + 150000));
-      setVpnBytesOut((prev) => prev + Math.floor(Math.random() * 95000 + 35000));
+      // Byte counters only increment when connected (real API would provide actual values)
+      setVpnBytesIn((prev) => prev + Math.floor(Math.random() * 12000 + 3000));
+      setVpnBytesOut((prev) => prev + Math.floor(Math.random() * 4000 + 1000));
     }, 1000);
 
     return () => clearInterval(timer);
