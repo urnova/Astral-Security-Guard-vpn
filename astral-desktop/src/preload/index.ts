@@ -101,6 +101,7 @@ const api = {
   vpnGetKillSwitch: () => ipcRenderer.invoke('vpn:get-killswitch'),
   vpnSetKillSwitch: (enabled: boolean) => ipcRenderer.invoke('vpn:set-killswitch', enabled),
   vpnGetCoexistenceStatus: () => ipcRenderer.invoke('vpn:get-coexistence-status'),
+  vpnGetStatus: () => ipcRenderer.invoke('vpn:get-status'),
 
   // Gaming & Overlay
   getGamingStatus: () => ipcRenderer.invoke('gaming:get-status'),

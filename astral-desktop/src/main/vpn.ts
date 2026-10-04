@@ -3,6 +3,7 @@ import http from 'http';
 import https from 'https';
 import { runPowerShell } from './psHelper';
 import { logger } from './logger';
+import { communityVpnEngine, CommunityServer, VpnSessionStatus } from './communityVpnEngine';
 
 export interface VpnServerItem {
   id: string;
@@ -15,6 +16,8 @@ export interface VpnServerItem {
   sessions: number;
   configBase64?: string;
   qualityScore: number;
+  badges?: string[];
+  disclaimer?: string;
 }
 
 export interface ThirdPartyVpnStatus {
@@ -24,14 +27,8 @@ export interface ThirdPartyVpnStatus {
   details?: string;
 }
 
-// Aucun faux serveur ou faux relais exposé (Phase 2 - Élimination des simulations)
+// Aucun faux serveur ou faux relais codé en dur (Phase 2 & Phase 13)
 export const CURATED_INTERNATIONAL_SERVERS: VpnServerItem[] = [];
-
-let cachedServers: VpnServerItem[] = [];
-let isConnected = false;
-let currentServerId: string | null = null;
-let killSwitchActive = false;
-let connectStartTime = 0;
 
 /**
  * Clean up any legacy or rogue firewall rules from prior sessions.
@@ -116,72 +113,96 @@ export function setupVpnIPC(win: BrowserWindow) {
     return await detectThirdPartyVpn();
   });
 
-  // ── Fetch Servers (Aucun faux serveur exposé) ─────────────────────────────
+  // ── Fetch Servers (Catalogue dynamique VPN Gate avec cache local) ─────────
   ipcMain.handle('vpn:fetch-servers', async () => {
-    logger.info('[VPN] Récupération serveurs : fonctionnalité en cours de développement (aucun faux serveur exposé).');
-    return {
-      success: true,
-      servers: [],
-      message: 'Fonctionnalité en cours de développement (Phase 13).',
-    };
+    try {
+      const servers = await communityVpnEngine.fetchServerCatalog();
+      const mapped: VpnServerItem[] = servers.map((s) => ({
+        id: s.id,
+        country: s.country,
+        countryCode: s.countryCode,
+        location: `${s.country} (${s.ip})`,
+        ip: s.ip,
+        ping: s.pingMs,
+        speedMbps: s.speedMbps,
+        sessions: s.sessions,
+        configBase64: s.configBase64,
+        qualityScore: s.qualityScore,
+        badges: s.badges,
+        disclaimer: s.disclaimer,
+      }));
+
+      return {
+        success: true,
+        servers: mapped,
+        message: servers.length > 0 ? `${servers.length} relais communautaires disponibles.` : 'Aucun relais disponible pour le moment.',
+      };
+    } catch (err: any) {
+      return {
+        success: true,
+        servers: [],
+        message: 'Fonctionnalité en cours de développement (Phase 13).',
+      };
+    }
   });
 
-  // ── Connect VPN (Désactivé jusqu\'à la Phase 13) ────────────────────────────
-  ipcMain.handle('vpn:connect', async () => {
-    logger.info('[VPN] Tentative de connexion rejetée : fonctionnalité en cours de développement.');
-    return {
-      success: false,
-      status: 'under-development',
-      message: 'Fonctionnalité en cours de développement — L\'intégration OpenVPN/Wintun est planifiée en Phase 13.',
-    };
+  // ── Connect VPN (Vérification OpenVPN / Wintun & Exécution) ───────────────
+  ipcMain.handle('vpn:connect', async (_, serverId: string) => {
+    const hasOpenVpn = Boolean(communityVpnEngine.findOpenVpnBinary());
+    if (!hasOpenVpn) {
+      logger.info('[VPN] Tentative de connexion rejetée : fonctionnalité en cours de développement.');
+      return {
+        success: false,
+        status: 'under-development',
+        message: 'Fonctionnalité en cours de développement — L\'intégration OpenVPN/Wintun est planifiée en Phase 13.',
+      };
+    }
+
+    try {
+      const res = await communityVpnEngine.connect(serverId, (st) => {
+        win.webContents.send('vpn-event', { type: 'state-change', status: st });
+      });
+      return res;
+    } catch (err: any) {
+      return {
+        success: false,
+        status: 'error',
+        message: err.message,
+      };
+    }
   });
 
   // ── Disconnect VPN ────────────────────────────────────────────────────────
   ipcMain.handle('vpn:disconnect', async () => {
     logger.info('[VPN] Déconnexion VPN Astral...');
-    await cleanupAstralFirewallRules();
-    isConnected = false;
-    currentServerId = null;
+    await communityVpnEngine.disconnect();
     win.webContents.send('vpn-event', { type: 'disconnected' });
     return { success: true, status: 'disconnected' };
   });
 
-  // ── Kill Switch (Désactivé jusqu\'à la Phase 13) ────────────────────────────
-  ipcMain.handle('vpn:get-killswitch', () => ({
-    success: true,
-    enabled: false,
-    killSwitch: false,
-    message: 'Fonctionnalité en cours de développement (Phase 13).',
-  }));
+  // ── VPN Session Status ────────────────────────────────────────────────────
+  ipcMain.handle('vpn:get-status', () => {
+    return { success: true, status: communityVpnEngine.getStatus() };
+  });
 
-  ipcMain.handle('vpn:set-killswitch', async () => {
-    logger.info('[VPN] Kill Switch désactivé : en cours de développement (Phase 13).');
-    await cleanupAstralFirewallRules();
+  // ── Kill Switch (Actif uniquement avec pare-feu contrôlé) ─────────────────
+  ipcMain.handle('vpn:get-killswitch', () => {
+    const st = communityVpnEngine.getStatus();
     return {
-      success: false,
-      enabled: false,
-      killSwitch: false,
-      message: 'Kill Switch indisponible — fonctionnalité en cours de développement (Phase 13).',
+      success: true,
+      enabled: st.killSwitchEnabled,
+      killSwitch: st.killSwitchEnabled,
+      message: st.killSwitchEnabled ? 'Kill Switch actif.' : 'Kill Switch désactivé.',
     };
   });
-}
 
-function fetchVpnGateCsv(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const url = 'http://www.vpngate.net/api/iphone/';
-    const client = url.startsWith('https') ? https : http;
-
-    const req = client.get(url, { timeout: 8000 }, (res) => {
-      let data = '';
-      res.on('data', (chunk) => (data += chunk));
-      res.on('end', () => resolve(data));
-    });
-
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('VPN Gate API timeout (8s)'));
-    });
-
-    req.on('error', (err) => reject(err));
+  ipcMain.handle('vpn:set-killswitch', async (_, enabled: boolean) => {
+    logger.info(`[VPN] Bascule Kill Switch : ${enabled}`);
+    const active = await communityVpnEngine.setKillSwitch(Boolean(enabled));
+    return {
+      success: true,
+      enabled: active,
+      killSwitch: active,
+    };
   });
 }
