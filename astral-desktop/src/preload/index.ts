@@ -73,6 +73,7 @@ const api = {
   testDnsLatencies: () => ipcRenderer.invoke('network:test-dns-latencies'),
   getNetworkProcesses: () => ipcRenderer.invoke('network:get-processes'),
   wifiInterference: () => ipcRenderer.invoke('network:wifi-interference'),
+  getWifiDiag: () => ipcRenderer.invoke('network:get-wifi-diag'),
   dnsBenchmark: () => ipcRenderer.invoke('network:dns-benchmark'),
 
   // Doctor & Anti-Lag (Fix 1002 Ping & Keyboard)

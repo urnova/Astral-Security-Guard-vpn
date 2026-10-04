@@ -180,7 +180,7 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
               </h2>
               <p style={{ margin: '3px 0 0', fontSize: 12, color: 'var(--text-secondary)', maxWidth: 550 }}>
                 {gamingActive
-                  ? 'Les ressources système sont priorisées pour votre session de jeu.'
+                  ? 'Session de jeu active — Profils de priorité système en cours de développement (Phase 11).'
                   : !isProtected
                   ? 'Le bouclier temps réel est désactivé. Vos fichiers ne sont pas surveillés.'
                   : 'Votre système est protégé et surveillé en continu.'}

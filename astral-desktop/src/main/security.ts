@@ -108,7 +108,7 @@ export function setupSecurityIPC(win: BrowserWindow) {
       success: true,
       data: {
         ...cachedSecurityStatus,
-        EngineName: 'Astral Vanguard Core v2.4',
+        EngineName: 'Moteur Microsoft Defender',
         scheduledScan: scheduledScanConfig,
       },
     };
@@ -172,57 +172,35 @@ export function setupSecurityIPC(win: BrowserWindow) {
     });
 
     const startTime = Date.now();
-    let filesScannedCount = 0;
     const detectedThreats: ThreatInfo[] = [];
 
-    // Forensic target checkpoints incorporating portable engine rules
-    const criticalTargets = [
-      { step: 8, phase: 'Audit Processus & Mémoire vive', file: 'C:\\Windows\\System32\\ntoskrnl.exe & csrss.exe' },
-      { step: 16, phase: 'Inspection Mémoire & Threads furtifs', file: 'Scan des hooks mémoire & dlls injectées' },
-      { step: 24, phase: 'Persistance Registre (Run, Winlogon)', file: 'HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' },
-      { step: 32, phase: 'Persistance Registre (IFEO & AppInit)', file: 'HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options' },
-      { step: 40, phase: 'Tâches Planifiées Furtives', file: 'C:\\Windows\\System32\\Tasks (Audit des déclencheurs cachés)' },
-      { step: 50, phase: 'Services Système & Pilotes Noyau (.sys)', file: 'C:\\Windows\\System32\\drivers (Pilotes non signés)' },
-      { step: 60, phase: 'Souscriptions WMI & Filtres d\'événements', file: 'root\\subscription:__EventFilter & CommandLineEventConsumer' },
-      ...detectedDrives.map((drv, idx) => ({
-        step: 68 + Math.floor((idx / Math.max(1, detectedDrives.length)) * 18),
-        phase: `Forensique Multi-Disques [${drv}\\]`,
-        file: `${drv}\\ (Recherche autorun.inf, scripts .vbs/.ps1/.bat cachés, binaries orphelins)`,
-      })),
-      { step: 88, phase: 'Cache Système & Téléchargements', file: path.join(os.homedir(), 'Downloads') },
-      { step: 94, phase: 'Moteur Heuristique PE & Certificats', file: 'Validation des signatures numériques et hashes binaires' },
-      { step: 98, phase: 'Synchronisation Moteur Astral Core', file: 'Consolidation des télémétries et intégrité système' },
-    ];
+    win.webContents.send('security:scan-event', {
+      type: 'scan-progress',
+      scanType,
+      percent: null,
+      phase: 'Moteur Microsoft Defender (Analyse en cours)',
+      currentFile: 'Progression détaillée indisponible',
+      filesScanned: null,
+      drives: detectedDrives,
+    });
 
     try {
-      for (const target of criticalTargets) {
-        if (activeScanCancel) break;
-
-        filesScannedCount += Math.floor(Math.random() * 85 + 60);
-
-        win.webContents.send('security:scan-event', {
-          type: 'scan-progress',
-          scanType,
-          percent: target.step,
-          phase: target.phase,
-          currentFile: target.file,
-          filesScanned: filesScannedCount,
-          drives: detectedDrives,
-        });
-
-        const stepDelay = scanType === 'quick' ? 320 : 650;
-        await new Promise((resolve) => setTimeout(resolve, stepDelay));
+      if (!activeScanCancel) {
+        // Exécution de l'analyse réelle via Microsoft Defender
+        const mpScanType = scanType === 'quick' ? 'QuickScan' : 'FullScan';
+        const scanCmd = `Start-MpScan -ScanType ${mpScanType} -ErrorAction SilentlyContinue`;
+        await runPowerShell(scanCmd, { timeout: scanType === 'quick' ? 60000 : 300000 });
       }
 
-      // Query any real detected threats from system
+      // Requête des menaces réelles détectées par le système
       try {
         const threatsScript = `
           Get-MpThreatDetection -ErrorAction SilentlyContinue |
           Select-Object ThreatID, ThreatName, InitialDetectionTime, Resources |
-          Select-Object -First 10 |
+          Select-Object -First 20 |
           ConvertTo-Json -Compress -Depth 3
         `;
-        const threatsRes = await runPowerShell<string>(threatsScript, { timeout: 3500 });
+        const threatsRes = await runPowerShell<string>(threatsScript, { timeout: 5000 });
         if (threatsRes.data && threatsRes.data.trim()) {
           const parsed = JSON.parse(threatsRes.data);
           const list = Array.isArray(parsed) ? parsed : [parsed];
@@ -232,12 +210,14 @@ export function setupSecurityIPC(win: BrowserWindow) {
         }
       } catch {}
 
-      // Complete scan
+      // Fin d'analyse avec résultats réels sans fausse métrique
       win.webContents.send('security:scan-event', {
         type: 'scan-complete',
         scanType,
         percent: 100,
-        filesScanned: filesScannedCount + 340,
+        phase: 'Analyse Microsoft Defender terminée',
+        currentFile: 'Analyse terminée',
+        filesScanned: null,
         threats: detectedThreats,
         drives: detectedDrives,
         durationMs: Date.now() - startTime,
@@ -246,7 +226,7 @@ export function setupSecurityIPC(win: BrowserWindow) {
       return {
         success: true,
         threats: detectedThreats,
-        filesScanned: filesScannedCount + 340,
+        filesScanned: null,
         drives: detectedDrives,
         durationMs: Date.now() - startTime,
       };

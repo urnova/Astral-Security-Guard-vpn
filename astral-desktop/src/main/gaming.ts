@@ -66,8 +66,8 @@ export function setupGamingIPC(
       sessionPings = [];
       win.webContents.send('notification:trigger', {
         type: 'gaming',
-        title: 'Mode Gaming Extrême Activé',
-        message: 'Priorité processeur maximale appliquée, télémétrie suspendue et latence réseau optimisée.',
+        title: 'Mode Gaming Activé',
+        message: 'Mode jeu manuel activé (profils de priorité CPU et réseau en cours de développement - Phase 11).',
       });
     } else {
       sendSessionSummary(win);
@@ -368,7 +368,7 @@ export function startGameDetection(
             win.webContents.send('notification:trigger', {
               type: 'gaming',
               title: `Jeu Détecté : ${name}`,
-              message: 'Mode Gaming Vanguard actif. Priorité CPU et optimisation réseau appliquées.',
+              message: 'Mode Gaming engagé pour le jeu détecté. Profils de priorité système en cours de développement (Phase 11).',
             });
           }
         }
@@ -380,12 +380,14 @@ export function startGameDetection(
 function sendSessionSummary(win: BrowserWindow) {
   if (sessionStartTime > 0) {
     const durationMin = Math.max(1, Math.round((Date.now() - sessionStartTime) / 60000));
-    const avgPing = sessionPings.length > 0 ? Math.round(sessionPings.reduce((a, b) => a + b, 0) / sessionPings.length) : 24;
+    const avgPing = sessionPings.length > 0 ? Math.round(sessionPings.reduce((a, b) => a + b, 0) / sessionPings.length) : null;
 
     win.webContents.send('notification:trigger', {
       type: 'report',
       title: 'Récapitulatif de Session Gaming',
-      message: `Temps de jeu : ${durationMin} min • Latence moyenne : ${avgPing}ms. Optimisations relâchées.`,
+      message: avgPing !== null
+        ? `Temps de jeu : ${durationMin} min • Latence moyenne : ${avgPing}ms.`
+        : `Temps de jeu : ${durationMin} min • Mesure de latence moyenne non disponible.`,
     });
   }
 }

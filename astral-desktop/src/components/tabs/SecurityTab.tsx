@@ -276,18 +276,18 @@ export default function SecurityTab() {
 
             <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#ffffff' }}>
               {scanState === 'scanning'
-                ? `Analyse forensique en cours sur disques [${scannedDrives.join(', ')}]...`
+                ? `Analyse Moteur Microsoft Defender en cours sur [${scannedDrives.join(', ')}]...`
                 : scanState === 'done'
-                ? 'Analyse système achevée'
-                : 'Système sous surveillance résidente'}
+                ? 'Analyse Microsoft Defender achevée'
+                : 'Système sous surveillance résidente — Moteur Microsoft Defender'}
             </h2>
 
             <p style={{ margin: '6px 0 18px 0', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
               {scanState === 'scanning'
-                ? 'Le moteur inspecte les processus actifs, entrées de persistance Registre/WMI, tâches cachées et fichiers critiques.'
+                ? 'Progression détaillée indisponible — L\'analyse s\'exécute en arrière-plan via le Moteur Microsoft Defender.'
                 : scanState === 'done'
-                ? `Analyse achevée avec succès. ${filesScanned} cibles vérifiées sur tous les disques, ${threats.length} anomalie(s).`
-                : `Auditez l'ensemble de vos disques [${scannedDrives.join(', ')}] pour déceler les altérations système, modules non autorisés et processus furtifs.`}
+                ? `Analyse terminée avec le Moteur Microsoft Defender. ${threats.length} menace(s) détectée(s).`
+                : `Auditez vos disques [${scannedDrives.join(', ')}] avec le Moteur Microsoft Defender.`}
             </p>
 
             {/* Scan Type Selector & Action Buttons */}
@@ -299,14 +299,14 @@ export default function SecurityTab() {
                     className={`btn btn-sm ${scanType === 'quick' ? 'btn-primary' : 'btn-ghost'}`}
                     style={{ fontSize: 12, padding: '6px 14px' }}
                   >
-                    Rapide (Mémoire & Run)
+                    Rapide (Système)
                   </button>
                   <button
                     onClick={() => setScanType('full')}
                     className={`btn btn-sm ${scanType === 'full' ? 'btn-primary' : 'btn-ghost'}`}
                     style={{ fontSize: 12, padding: '6px 14px' }}
                   >
-                    Forensique (Tous Disques {scannedDrives.join(', ')})
+                    Complète (Tous Disques {scannedDrives.join(', ')})
                   </button>
                 </div>
 
@@ -336,7 +336,7 @@ export default function SecurityTab() {
                   Annuler l'analyse
                 </button>
                 <span style={{ fontSize: 12, color: 'var(--cyan)', fontFamily: "'JetBrains Mono', monospace" }}>
-                  {filesScanned} fichiers analysés
+                  Moteur Microsoft Defender actif
                 </span>
               </div>
             )}
@@ -381,10 +381,12 @@ export default function SecurityTab() {
               <div style={{ zIndex: 2, textAlign: 'center' }}>
                 {scanState === 'scanning' ? (
                   <>
-                    <div style={{ fontSize: 26, fontWeight: 900, color: 'var(--cyan)', fontFamily: "'JetBrains Mono', monospace" }}>
-                      {scanProgress}%
+                    <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--cyan)', fontFamily: "'JetBrains Mono', monospace" }}>
+                      {scanProgress != null ? `${scanProgress}%` : 'ACTIF'}
                     </div>
-                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase' }}>En cours</div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase' }}>
+                      {scanProgress != null ? 'En cours' : 'Defender'}
+                    </div>
                   </>
                 ) : scanState === 'done' ? (
                   <CheckCircle2 size={46} style={{ color: '#10b981' }} />
@@ -400,15 +402,12 @@ export default function SecurityTab() {
                   fontSize: 11,
                   fontFamily: "'JetBrains Mono', monospace",
                   color: 'rgba(148, 163, 184, 0.85)',
-                  maxWidth: 240,
+                  maxWidth: 260,
                   textAlign: 'center',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
                 }}
                 title={currentScanFile}
               >
-                {currentScanFile}
+                {currentScanFile || 'Progression détaillée indisponible'}
               </div>
             )}
           </div>
@@ -421,10 +420,11 @@ export default function SecurityTab() {
               <div
                 style={{
                   height: '100%',
-                  width: `${scanProgress}%`,
+                  width: scanProgress != null ? `${scanProgress}%` : '100%',
                   background: 'linear-gradient(90deg, #00f5ff, #818cf8)',
                   transition: 'width 0.3s ease',
                   boxShadow: '0 0 10px rgba(0, 245, 255, 0.7)',
+                  animation: scanProgress == null ? 'pulse 2s ease-in-out infinite' : 'none',
                 }}
               />
             </div>

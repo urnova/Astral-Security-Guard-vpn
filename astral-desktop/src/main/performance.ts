@@ -195,15 +195,16 @@ export function setupPerformanceIPC(win: BrowserWindow) {
     `;
 
     const res = await runPowerShell(script, { asJson: true, timeout: 15000 });
+    if (!res.success || !res.data) {
+      return {
+        success: false,
+        error: res.error || 'Impossible d\'analyser les dossiers temporaires.',
+        categories: null,
+      };
+    }
     return {
       success: true,
-      categories: res.data || {
-        userTempMB: 120,
-        winTempMB: 45,
-        winLogsMB: 30,
-        updateCacheMB: 280,
-        totalMB: 475,
-      },
+      categories: res.data,
     };
   });
 
@@ -231,25 +232,21 @@ export function setupPerformanceIPC(win: BrowserWindow) {
     win.webContents.send('notification:trigger', {
       type: 'report',
       title: 'Nettoyage Système Terminé',
-      message: 'Les fichiers temporaires, caches de mise à jour et la corbeille ont été vidés avec succès.',
+      message: 'Les fichiers temporaires, caches de mise à jour et la corbeille ont été vidés.',
     });
 
     return { success: res.success };
   });
 
-  // ── Clean RAM ─────────────────────────────────────────────────────────────
+  // ── Clean RAM (Suppression de la fausse purge GC.Collect - Phase 2) ──────────
   ipcMain.handle('perf:clean-ram', async () => {
-    logger.info('Purge de la mémoire RAM...');
-
-    const script = `
-      [System.GC]::Collect()
-      [System.GC]::WaitForPendingFinalizers()
-      [System.GC]::Collect()
-      [PSCustomObject]@{ purged = $true } | ConvertTo-Json -Compress
-    `;
-
-    const res = await runPowerShell(script, { asJson: true });
-    return { success: res.success };
+    logger.info('[Performance] Purge RAM désactivée : [System.GC]::Collect() supprimé. EmptyWorkingSet requiert le service privilégié Phase 3/7.');
+    return {
+      success: false,
+      status: 'unavailable',
+      message: 'Purge RAM non disponible — La fausse purge [System.GC]::Collect() a été supprimée. Une purge réelle (EmptyWorkingSet) requiert le service privilégié de la Phase 3/7.',
+      freedMb: 0,
+    };
   });
 
   // ── Process Manager (List & Kill non-system process) ───────────────────────

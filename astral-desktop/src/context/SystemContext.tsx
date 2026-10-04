@@ -91,98 +91,8 @@ const defaultSecurity: SecurityStatusData = {
   threatsCount: 0,
 };
 
-// Curated High-Speed Multi-Node International Country Stacks
-export const INITIAL_VPN_COUNTRIES: VpnCountryGroup[] = [
-  {
-    country: 'France',
-    countryCode: 'FR',
-    flag: '🇫🇷',
-    bestPing: 12,
-    nodes: [
-      { id: 'fr-par-01', name: 'Paris Core Alpha', city: 'Paris (Equinix PA4)', ping: 12, speedMbps: 980, quality: 99, ip: '185.125.190.45' },
-      { id: 'fr-rbx-01', name: 'Roubaix FastRoute', city: 'Roubaix (OVH Datacenter)', ping: 15, speedMbps: 950, quality: 98, ip: '51.255.48.12' },
-      { id: 'fr-mrs-01', name: 'Marseille Gateway', city: 'Marseille (Interxion MRS1)', ping: 19, speedMbps: 920, quality: 97, ip: '193.104.162.8' },
-    ],
-  },
-  {
-    country: 'Japon',
-    countryCode: 'JP',
-    flag: '🇯🇵',
-    bestPing: 34,
-    nodes: [
-      { id: 'jp-tyo-01', name: 'Tokyo Gaming Route #1', city: 'Tokyo (JPIX Low-Latency)', ping: 34, speedMbps: 880, quality: 98, ip: '133.130.54.91' },
-      { id: 'jp-tyo-02', name: 'Tokyo Equinix TY3', city: 'Tokyo (Equinix Hub)', ping: 39, speedMbps: 850, quality: 96, ip: '103.253.25.18' },
-      { id: 'jp-osa-01', name: 'Osaka High-Speed', city: 'Osaka (NTT Communications)', ping: 44, speedMbps: 820, quality: 95, ip: '160.16.89.202' },
-    ],
-  },
-  {
-    country: 'Allemagne',
-    countryCode: 'DE',
-    flag: '🇩🇪',
-    bestPing: 16,
-    nodes: [
-      { id: 'de-fra-01', name: 'Frankfurt DE-CIX Main', city: 'Francfort (DE-CIX Core)', ping: 16, speedMbps: 960, quality: 99, ip: '194.187.249.12' },
-      { id: 'de-fra-02', name: 'Frankfurt Equinix FR5', city: 'Francfort (Equinix FR5)', ping: 18, speedMbps: 940, quality: 97, ip: '185.108.105.14' },
-    ],
-  },
-  {
-    country: 'Suisse',
-    countryCode: 'CH',
-    flag: '🇨🇭',
-    bestPing: 18,
-    nodes: [
-      { id: 'ch-zur-01', name: 'Zurich Swiss Vault', city: 'Zurich (Interxion ZUR1)', ping: 18, speedMbps: 930, quality: 98, ip: '179.43.155.8' },
-      { id: 'ch-gva-01', name: 'Geneva CERN Direct', city: 'Genève (Equinix GV1)', ping: 22, speedMbps: 910, quality: 96, ip: '195.176.255.4' },
-    ],
-  },
-  {
-    country: 'États-Unis',
-    countryCode: 'US',
-    flag: '🇺🇸',
-    bestPing: 72,
-    nodes: [
-      { id: 'us-nyc-01', name: 'New York Gaming Relay', city: 'New York (Equinix NY4)', ping: 72, speedMbps: 890, quality: 95, ip: '198.54.130.2' },
-      { id: 'us-lax-01', name: 'Los Angeles Pacific', city: 'Los Angeles (One Wilshire)', ping: 84, speedMbps: 860, quality: 94, ip: '104.200.150.3' },
-      { id: 'us-mia-01', name: 'Miami Gateway', city: 'Miami (NAP of Americas)', ping: 78, speedMbps: 870, quality: 94, ip: '199.195.250.6' },
-    ],
-  },
-  {
-    country: 'Pays-Bas',
-    countryCode: 'NL',
-    flag: '🇳🇱',
-    bestPing: 17,
-    nodes: [
-      { id: 'nl-ams-01', name: 'Amsterdam AMS-IX Core', city: 'Amsterdam (AMS-IX)', ping: 17, speedMbps: 960, quality: 98, ip: '195.181.168.20' },
-    ],
-  },
-  {
-    country: 'Royaume-Uni',
-    countryCode: 'GB',
-    flag: '🇬🇧',
-    bestPing: 21,
-    nodes: [
-      { id: 'gb-lon-01', name: 'London Telehouse North', city: 'Londres (Telehouse)', ping: 21, speedMbps: 920, quality: 96, ip: '185.108.105.7' },
-    ],
-  },
-  {
-    country: 'Canada',
-    countryCode: 'CA',
-    flag: '🇨🇦',
-    bestPing: 79,
-    nodes: [
-      { id: 'ca-mtl-01', name: 'Montreal Cologix', city: 'Montréal (Cologix MTL)', ping: 79, speedMbps: 840, quality: 93, ip: '192.99.14.77' },
-    ],
-  },
-  {
-    country: 'Singapour',
-    countryCode: 'SG',
-    flag: '🇸🇬',
-    bestPing: 155,
-    nodes: [
-      { id: 'sg-sin-01', name: 'Singapore Equinix SG1', city: 'Singapour (Equinix SG1)', ping: 155, speedMbps: 790, quality: 91, ip: '103.253.25.10' },
-    ],
-  },
-];
+// Aucun faux serveur ou faux pays exposé (Phase 2 - Élimination des simulations)
+export const INITIAL_VPN_COUNTRIES: VpnCountryGroup[] = [];
 
 const SystemContext = createContext<SystemContextType | undefined>(undefined);
 
@@ -190,7 +100,7 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
   const [metrics, setMetrics] = useState<MetricsData>(defaultMetrics);
   const [securityStatus, setSecurityStatus] = useState<SecurityStatusData>(defaultSecurity);
   const [vpnCountries, setVpnCountries] = useState<VpnCountryGroup[]>(INITIAL_VPN_COUNTRIES);
-  const [activeVpnNode, setActiveVpnNode] = useState<VpnNode | null>(INITIAL_VPN_COUNTRIES[0].nodes[0]);
+  const [activeVpnNode, setActiveVpnNode] = useState<VpnNode | null>(null);
   const [isVpnConnected, setIsVpnConnected] = useState(false);
   const [isVpnConnecting, setIsVpnConnecting] = useState(false);
   const [killSwitchEnabled, setKillSwitchEnabled] = useState(false);
@@ -281,56 +191,23 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refreshTelemetry, api]);
 
-  // VPN Data simulation & timer when connected
-  useEffect(() => {
-    if (!isVpnConnected) {
-      setVpnConnectTime(0);
-      return;
-    }
-
-    const timer = setInterval(() => {
-      setVpnConnectTime((prev) => prev + 1);
-      // Byte counters only increment when connected (real API would provide actual values)
-      setVpnBytesIn((prev) => prev + Math.floor(Math.random() * 12000 + 3000));
-      setVpnBytesOut((prev) => prev + Math.floor(Math.random() * 4000 + 1000));
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [isVpnConnected]);
-
-  const connectVpn = async (node: VpnNode): Promise<boolean> => {
-    setIsVpnConnecting(true);
-    setActiveVpnNode(node);
-    try {
-      if (api?.vpnConnect) {
-        await api.vpnConnect(node.id);
-      } else {
-        await new Promise((r) => setTimeout(r, 900));
-      }
-      setIsVpnConnected(true);
-      setVpnConnectTime(0);
-      setVpnBytesIn(1024 * 512);
-      setVpnBytesOut(1024 * 128);
-      return true;
-    } catch {
-      return false;
-    } finally {
-      setIsVpnConnecting(false);
-    }
+  // VPN Désactivé (Phase 2 - Élimination des simulations)
+  // Aucun faux octet, faux timer ou fausse connexion
+  const connectVpn = async (_node: VpnNode): Promise<boolean> => {
+    setIsVpnConnecting(false);
+    setIsVpnConnected(false);
+    return false;
   };
 
   const disconnectVpn = async () => {
-    setIsVpnConnecting(true);
-    try {
-      if (api?.vpnDisconnect) {
-        await api.vpnDisconnect();
-      } else {
-        await new Promise((r) => setTimeout(r, 500));
-      }
-      setIsVpnConnected(false);
-      setActiveVpnNode(null);
-    } finally {
-      setIsVpnConnecting(false);
+    setIsVpnConnecting(false);
+    setIsVpnConnected(false);
+    setActiveVpnNode(null);
+    setVpnConnectTime(0);
+    setVpnBytesIn(0);
+    setVpnBytesOut(0);
+    if (api?.vpnDisconnect) {
+      try { await api.vpnDisconnect(); } catch {}
     }
   };
 

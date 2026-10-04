@@ -93,7 +93,7 @@ export async function executeSosPing(): Promise<{
     success: true,
     pingBefore,
     pingAfter,
-    message: 'Pile réseau, sockets Winsock et cache DNS purgés avec succès ! P2P Windows Update désactivé.',
+    message: 'Cache DNS et table ARP purgés avec succès !',
   };
 }
 

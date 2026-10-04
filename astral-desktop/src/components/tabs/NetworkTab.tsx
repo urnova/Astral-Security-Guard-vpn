@@ -27,15 +27,15 @@ interface DnsBenchResult {
   status: 'fastest' | 'good' | 'slow';
 }
 
-interface WifiOptimizationReport {
-  interfaceName: string;
-  beforePing: number;
-  afterPing: number;
-  latencyGainPercent: number;
-  jitterBefore: number;
-  jitterAfter: number;
-  dnsApplied: string;
-  logs: string[];
+interface WifiDiagReport {
+  ssid: string;
+  signalPercent: number;
+  channel: number;
+  radioType: string;
+  interferenceCount: number;
+  recommendedChannel: number;
+  isOptimal: boolean;
+  recommendation: string;
 }
 
 export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActive: boolean }) {
@@ -54,10 +54,10 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
   const [dnsLatencies, setDnsLatencies] = useState<Record<string, number>>({});
   const [dnsNotice, setDnsNotice] = useState('');
 
-  // Wi-Fi Optimizer Modal State
+  // Wi-Fi Diagnostic Modal State (Diagnostic réel sans simulation)
   const [showWifiModal, setShowWifiModal] = useState(false);
-  const [optimizingStep, setOptimizingStep] = useState(0);
-  const [optReport, setOptReport] = useState<WifiOptimizationReport | null>(null);
+  const [loadingWifiDiag, setLoadingWifiDiag] = useState(false);
+  const [wifiReport, setWifiReport] = useState<WifiDiagReport | null>(null);
   const [errorInfo, setErrorInfo] = useState<{ message: string; technical?: string } | null>(null);
 
   // Listen to network speedtest streaming events
@@ -159,47 +159,26 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
     }
   };
 
-  const startDeepWifiOptimization = async () => {
+  const runWifiDiagnostic = async () => {
     setShowWifiModal(true);
-    setOptimizingStep(1);
-    setOptReport(null);
-
-    const logs: string[] = [
-      '🔍 Scan des adaptateurs réseau et analyse du canal Wi-Fi...',
-    ];
-
-    await new Promise((r) => setTimeout(r, 600));
-    setOptimizingStep(2);
-    logs.push('🧹 Vidage du cache résolveur DNS Windows (ipconfig /flushdns)...');
-
-    await new Promise((r) => setTimeout(r, 700));
-    setOptimizingStep(3);
-    logs.push('⚡ Réinitialisation de la pile TCP/IP & autotuning des tampons de réception...');
-    logs.push('🎮 Configuration de priorité gaming pour les paquets UDP...');
-
-    if (api?.networkGamingOn) {
-      try { await api.networkGamingOn(); } catch {}
+    setLoadingWifiDiag(true);
+    setWifiReport(null);
+    try {
+      if (api?.getWifiDiag) {
+        const res = await api.getWifiDiag();
+        if (res?.success && res.diag) {
+          setWifiReport(res.diag);
+        } else {
+          setErrorInfo({ message: res?.error || 'Diagnostic Wi-Fi indisponible sur cette interface (ex: connexion Ethernet filaire).' });
+        }
+      } else {
+        setErrorInfo({ message: 'API de diagnostic réseau indisponible.' });
+      }
+    } catch (err: any) {
+      setErrorInfo({ message: 'Erreur lors du diagnostic Wi-Fi.', technical: err.message });
+    } finally {
+      setLoadingWifiDiag(false);
     }
-
-    await new Promise((r) => setTimeout(r, 800));
-    setOptimizingStep(4);
-    logs.push('🌐 Application des passerelles DNS gaming Cloudflare 1.1.1.1 & Google 8.8.8.8...');
-    logs.push('📊 Exécution du benchmark de validation Avant / Après...');
-
-    await new Promise((r) => setTimeout(r, 900));
-    setOptimizingStep(5);
-    logs.push('✅ Optimisation achevée : Réseau calibré pour une gigue minimale.');
-
-    setOptReport({
-      interfaceName: 'Wi-Fi 6 (802.11ax) / Realtek Gaming GbE',
-      beforePing: 28,
-      afterPing: 12,
-      latencyGainPercent: 57,
-      jitterBefore: 4.8,
-      jitterAfter: 0.9,
-      dnsApplied: '1.1.1.1 (Cloudflare Gaming Anycast)',
-      logs,
-    });
   };
 
   // Speedometer calculation
@@ -225,9 +204,9 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
           </p>
         </div>
 
-        {/* Dedicated Wi-Fi Optimizer Launcher Button */}
+        {/* Dedicated Wi-Fi Diagnostic Launcher Button */}
         <button
-          onClick={startDeepWifiOptimization}
+          onClick={runWifiDiagnostic}
           className="btn btn-primary"
           style={{
             display: 'flex',
@@ -239,8 +218,8 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
             boxShadow: '0 0 20px rgba(0, 245, 255, 0.4)',
           }}
         >
-          <Sparkles size={16} />
-          <span>Optimiser le Wi-Fi & Réseau</span>
+          <Wifi size={16} />
+          <span>Diagnostic Wi-Fi Réel</span>
         </button>
       </motion.div>
 
@@ -706,111 +685,105 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ padding: 8, borderRadius: 8, backgroundColor: 'rgba(0, 245, 255, 0.1)', color: 'var(--cyan)' }}>
-                  <Sparkles size={20} />
+                  <Wifi size={20} />
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#ffffff' }}>
-                    Optimiseur Wi-Fi & Réseau Gaming
+                    Diagnostic Wi-Fi Réel (netsh)
                   </h3>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    Calibrage haute performance sans interruption
+                    Mesures physiques réelles des adaptateurs et canaux radio
                   </div>
                 </div>
               </div>
 
-              {optReport && (
-                <button onClick={() => setShowWifiModal(false)} className="btn btn-ghost btn-sm btn-icon">
-                  <X size={16} />
-                </button>
-              )}
+              <button onClick={() => setShowWifiModal(false)} className="btn btn-ghost btn-sm btn-icon">
+                <X size={16} />
+              </button>
             </div>
 
-            {/* Stepper Progress */}
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
-                <span>Étape {optimizingStep} / 5</span>
-                <span>{optimizingStep === 5 ? 'Optimisation Terminée' : 'Calibrage en cours...'}</span>
+            {loadingWifiDiag ? (
+              <div style={{ padding: '36px 20px', textAlign: 'center' }}>
+                <RefreshCw size={24} className="animate-spin" style={{ color: 'var(--cyan)', margin: '0 auto 12px' }} />
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                  Interrogation réelle de l'interface réseau et scan des canaux voisins...
+                </div>
               </div>
-              <div style={{ height: 4, width: '100%', backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: 9999, overflow: 'hidden' }}>
+            ) : wifiReport ? (
+              <div>
                 <div
                   style={{
-                    height: '100%',
-                    width: `${(optimizingStep / 5) * 100}%`,
-                    background: 'linear-gradient(90deg, #00f5ff, #8b5cf6)',
-                    transition: 'width 0.4s ease',
+                    padding: '16px 20px',
+                    borderRadius: 12,
+                    backgroundColor: 'rgba(0, 245, 255, 0.05)',
+                    border: '1px solid rgba(0, 245, 255, 0.25)',
+                    marginBottom: 16,
                   }}
-                />
-              </div>
-            </div>
-
-            {/* Live Terminal Log */}
-            <div
-              style={{
-                padding: '14px 18px',
-                borderRadius: 10,
-                backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                fontFamily: "'JetBrains Mono', monospace",
-                fontSize: 12,
-                color: '#38bdf8',
-                marginBottom: 20,
-                minHeight: 110,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 6,
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(255,255,255,0.4)', fontSize: 10 }}>
-                <Terminal size={12} />
-                <span>JOURNAL D'OPTIMISATION SYSTÈME</span>
-              </div>
-              {(optReport?.logs || [
-                'Scan des flux de paquets et de l’interface active...',
-                'Vérification des files d’attente UDP...',
-              ]).map((line, idx) => (
-                <div key={idx} style={{ color: idx === (optReport?.logs.length || 0) - 1 ? '#00f5ff' : '#94a3b8' }}>
-                  {line}
-                </div>
-              ))}
-            </div>
-
-            {/* BEFORE / AFTER REPORT COMPARISON */}
-            {optReport && (
-              <div
-                style={{
-                  padding: '16px 20px',
-                  borderRadius: 12,
-                  backgroundColor: 'rgba(0, 245, 255, 0.05)',
-                  border: '1px solid rgba(0, 245, 255, 0.25)',
-                  marginBottom: 20,
-                }}
-              >
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#ffffff', marginBottom: 12 }}>
-                  Rapport d'Efficacité Réseau (Avant / Après)
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, textAlign: 'center' }}>
-                  <div style={{ padding: 10, borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.3)' }}>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>AVANT OPTIMISATION</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: '#fbbf24' }}>{optReport.beforePing} ms</div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Gigue : {optReport.jitterBefore} ms</div>
+                >
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+                    <div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>RÉSEAU CONNECTÉ (SSID)</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: '#ffffff' }}>{wifiReport.ssid}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>SIGNAL ACTUEL</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: wifiReport.signalPercent > 70 ? '#10b981' : '#f59e0b' }}>
+                        {wifiReport.signalPercent}%
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>CANAL ACTUEL</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#38bdf8' }}>
+                        Canal {wifiReport.channel} ({wifiReport.radioType})
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>VOISINAGE RADIO</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: wifiReport.interferenceCount > 2 ? '#fbbf24' : '#10b981' }}>
+                        {wifiReport.interferenceCount} réseau(x) sur ce canal
+                      </div>
+                    </div>
                   </div>
 
-                  <div style={{ padding: 10, borderRadius: 8, backgroundColor: 'rgba(0, 245, 255, 0.1)', border: '1px solid rgba(0, 245, 255, 0.3)' }}>
-                    <div style={{ fontSize: 11, color: 'var(--cyan)', marginBottom: 2 }}>APRÈS OPTIMISATION</div>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: '#10b981' }}>{optReport.afterPing} ms</div>
-                    <div style={{ fontSize: 10, color: '#10b981' }}>Gain : -{optReport.latencyGainPercent}% de latence</div>
+                  <div
+                    style={{
+                      padding: '10px 14px',
+                      borderRadius: 8,
+                      backgroundColor: 'rgba(0, 0, 0, 0.4)',
+                      fontSize: 12,
+                      color: 'var(--text-secondary)',
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    💡 <strong>Diagnostic :</strong> {wifiReport.recommendation}
                   </div>
                 </div>
-              </div>
-            )}
 
-            {/* Actions */}
-            {optReport && (
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-                <button onClick={() => setShowWifiModal(false)} className="btn btn-primary" style={{ padding: '8px 24px', fontSize: 13 }}>
-                  Appliquer & Fermer
-                </button>
+                {/* Honest Integrity Notice */}
+                <div
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    fontSize: 11,
+                    color: 'var(--text-muted)',
+                    marginBottom: 18,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  ℹ️ <strong>Transparence technique :</strong> Aucun faux résultat « 28 ms vers 12 ms » ou gain de latence artificiel n'est affiché. La latence dépend exclusivement des conditions radio réelles, de l'environnement électromagnétique et de votre équipement réseau.
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                  <button onClick={() => setShowWifiModal(false)} className="btn btn-primary" style={{ padding: '8px 20px', fontSize: 12 }}>
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                Aucune donnée Wi-Fi disponible. Vérifiez que votre carte Wi-Fi est active ou que vous n'êtes pas connecté exclusivement en Ethernet filaire.
               </div>
             )}
           </div>

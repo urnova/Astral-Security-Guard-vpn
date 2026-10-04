@@ -24,23 +24,10 @@ export interface ThirdPartyVpnStatus {
   details?: string;
 }
 
-// Curated high-speed international relays with clear French country & city locations
-export const CURATED_INTERNATIONAL_SERVERS: VpnServerItem[] = [
-  { id: 'fr-par-01', country: 'France', countryCode: 'FR', location: 'Paris (Equinix PA4)', ip: '185.125.190.45', ping: 14, speedMbps: 950, sessions: 120, qualityScore: 99 },
-  { id: 'de-fra-01', country: 'Allemagne', countryCode: 'DE', location: 'Francfort (DE-CIX)', ip: '194.187.249.12', ping: 18, speedMbps: 920, sessions: 95, qualityScore: 98 },
-  { id: 'ch-zur-01', country: 'Suisse', countryCode: 'CH', location: 'Zurich (Swiss InterXion)', ip: '179.43.155.8', ping: 22, speedMbps: 900, sessions: 80, qualityScore: 97 },
-  { id: 'nl-ams-01', country: 'Pays-Bas', countryCode: 'NL', location: 'Amsterdam (AMS-IX)', ip: '195.181.168.20', ping: 20, speedMbps: 940, sessions: 110, qualityScore: 98 },
-  { id: 'uk-lon-01', country: 'Royaume-Uni', countryCode: 'GB', location: 'Londres (Telehouse)', ip: '185.108.105.7', ping: 25, speedMbps: 910, sessions: 105, qualityScore: 96 },
-  { id: 'be-bru-01', country: 'Belgique', countryCode: 'BE', location: 'Bruxelles (BNIX Gateway)', ip: '193.104.162.3', ping: 16, speedMbps: 930, sessions: 65, qualityScore: 95 },
-  { id: 'es-mad-01', country: 'Espagne', countryCode: 'ES', location: 'Madrid (ESPANIX)', ip: '185.220.101.5', ping: 29, speedMbps: 880, sessions: 70, qualityScore: 94 },
-  { id: 'it-mil-01', country: 'Italie', countryCode: 'IT', location: 'Milan (MIX IT)', ip: '194.26.29.14', ping: 27, speedMbps: 890, sessions: 75, qualityScore: 94 },
-  { id: 'us-nyc-01', country: 'États-Unis', countryCode: 'US', location: 'New York (Equinix NY4)', ip: '198.54.130.2', ping: 82, speedMbps: 840, sessions: 140, qualityScore: 92 },
-  { id: 'ca-mtl-01', country: 'Canada', countryCode: 'CA', location: 'Montréal (Cologix MTL)', ip: '192.99.14.77', ping: 88, speedMbps: 810, sessions: 60, qualityScore: 91 },
-  { id: 'jp-tyo-01', country: 'Japon', countryCode: 'JP', location: 'Tokyo (JPIX Core)', ip: '133.130.54.91', ping: 215, speedMbps: 680, sessions: 130, qualityScore: 90 },
-  { id: 'sg-sin-01', country: 'Singapour', countryCode: 'SG', location: 'Singapour (Equinix SG1)', ip: '103.253.25.10', ping: 180, speedMbps: 720, sessions: 85, qualityScore: 91 },
-];
+// Aucun faux serveur ou faux relais exposé (Phase 2 - Élimination des simulations)
+export const CURATED_INTERNATIONAL_SERVERS: VpnServerItem[] = [];
 
-let cachedServers: VpnServerItem[] = [...CURATED_INTERNATIONAL_SERVERS];
+let cachedServers: VpnServerItem[] = [];
 let isConnected = false;
 let currentServerId: string | null = null;
 let killSwitchActive = false;
@@ -124,82 +111,58 @@ export function setupVpnIPC(win: BrowserWindow) {
   // Purge any stale firewall rules on startup
   cleanupAstralFirewallRules();
 
-  // ── Coexistence Status Check ──────────────────────────────────────────────
+  // ── Coexistence Status Check (Vérification réelle) ──────────────────────────
   ipcMain.handle('vpn:get-coexistence-status', async () => {
     return await detectThirdPartyVpn();
   });
 
-  // ── Fetch Curated International Servers ───────────────────────────────────
+  // ── Fetch Servers (Aucun faux serveur exposé) ─────────────────────────────
   ipcMain.handle('vpn:fetch-servers', async () => {
-    logger.info('Récupération de la liste des serveurs VPN internationaux...');
+    logger.info('[VPN] Récupération serveurs : fonctionnalité en cours de développement (aucun faux serveur exposé).');
     return {
       success: true,
-      servers: CURATED_INTERNATIONAL_SERVERS,
+      servers: [],
+      message: 'Fonctionnalité en cours de développement (Phase 13).',
     };
   });
-  // ── Connect VPN (Guarded by Third-Party VPN Coexistence) ───────────────────
-  ipcMain.handle('vpn:connect', async (_, serverId: string) => {
-    // Check if another VPN is already protecting the user's computer
-    const coexistence = await detectThirdPartyVpn();
-    if (coexistence.thirdPartyActive) {
-      logger.info(`[VPN] Coexistence active: ${coexistence.vpnName} est déjà actif. Connexion concurrente bloquée pour éviter les conflits.`);
-      return {
-        success: false,
-        blockedByCoexistence: true,
-        thirdPartyVpn: coexistence.vpnName,
-        message: `${coexistence.vpnName} est actif en arrière-plan. Astral Vanguard active son mode coexistence sécurisé pour préserver votre navigation et ne pas entrer en conflit avec votre VPN existant.`,
-      };
-    }
 
-    logger.info(`Connexion au serveur VPN : ${serverId}`);
-    win.webContents.send('vpn-event', { type: 'connecting', serverId });
-
-    currentServerId = serverId;
-    connectStartTime = Date.now();
-
-    // Safely simulate or establish connection
-    setTimeout(() => {
-      isConnected = true;
-      win.webContents.send('vpn-event', { type: 'connected', serverId });
-      win.webContents.send('notification:trigger', {
-        type: 'vpn',
-        title: 'Tunnel Astral VPN Établi',
-        message: `Connecté avec succès au serveur chiffré (${serverId}). Trafic sécurisé sans interférence.`,
-      });
-    }, 1800);
-
-    return { success: true, status: 'connected', serverId };
+  // ── Connect VPN (Désactivé jusqu\'à la Phase 13) ────────────────────────────
+  ipcMain.handle('vpn:connect', async () => {
+    logger.info('[VPN] Tentative de connexion rejetée : fonctionnalité en cours de développement.');
+    return {
+      success: false,
+      status: 'under-development',
+      message: 'Fonctionnalité en cours de développement — L\'intégration OpenVPN/Wintun est planifiée en Phase 13.',
+    };
   });
 
   // ── Disconnect VPN ────────────────────────────────────────────────────────
   ipcMain.handle('vpn:disconnect', async () => {
-    logger.info('Déconnexion du VPN Astral...');
-    win.webContents.send('vpn-event', { type: 'disconnecting' });
-
+    logger.info('[VPN] Déconnexion VPN Astral...');
     await cleanupAstralFirewallRules();
-
     isConnected = false;
     currentServerId = null;
-
     win.webContents.send('vpn-event', { type: 'disconnected' });
     return { success: true, status: 'disconnected' };
   });
 
-  // ── Toggle Kill Switch ────────────────────────────────────────────────────
+  // ── Kill Switch (Désactivé jusqu\'à la Phase 13) ────────────────────────────
   ipcMain.handle('vpn:get-killswitch', () => ({
     success: true,
-    enabled: killSwitchActive,
-    killSwitch: killSwitchActive,
+    enabled: false,
+    killSwitch: false,
+    message: 'Fonctionnalité en cours de développement (Phase 13).',
   }));
 
-  ipcMain.handle('vpn:set-killswitch', async (_, enabled: boolean) => {
-    killSwitchActive = enabled;
-    logger.info(`Kill Switch configuré à : ${enabled}`);
-
-    // Always clean up any global blocking firewall rules
+  ipcMain.handle('vpn:set-killswitch', async () => {
+    logger.info('[VPN] Kill Switch désactivé : en cours de développement (Phase 13).');
     await cleanupAstralFirewallRules();
-
-    return { success: true, enabled: killSwitchActive, killSwitch: killSwitchActive };
+    return {
+      success: false,
+      enabled: false,
+      killSwitch: false,
+      message: 'Kill Switch indisponible — fonctionnalité en cours de développement (Phase 13).',
+    };
   });
 }
 

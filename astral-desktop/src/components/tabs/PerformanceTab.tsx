@@ -88,32 +88,22 @@ export default function PerformanceTab({ gamingActive: _gamingActive }: { gaming
   const startDeepMaintenance = async () => {
     setShowCleanModal(true);
     setCleaningPhase('purging');
-    setCleanProgress(10);
-    setFreedMemoryMb(0); setFreedDiskMb(0);
-    setCleanStepLabel('Analyse de la mémoire...');
+    setCleanProgress(30);
+    setFreedMemoryMb(0);
+    setFreedDiskMb(0);
+    setCleanStepLabel('Nettoyage réel des fichiers temporaires et corbeille...');
 
-    await new Promise(r => setTimeout(r, 600));
-    setCleanProgress(35);
-    setCleanStepLabel('Purge de la RAM...');
-    if (api?.cleanRam) {
-      try { const r = await api.cleanRam(); setFreedMemoryMb(r?.freedMb || 0); } catch { setFreedMemoryMb(0); }
-    }
-
-    await new Promise(r => setTimeout(r, 700));
-    setCleanProgress(70);
-    setCleanStepLabel('Nettoyage des fichiers temporaires...');
     if (api?.diskCleanup) {
-      try { const r = await api.diskCleanup(['temp', 'recycle']); setFreedDiskMb(r?.freedMb || 0); } catch { setFreedDiskMb(0); }
+      try {
+        const r = await api.diskCleanup(['temp', 'recycle']);
+        setFreedDiskMb(r?.freedMb || 0);
+      } catch {
+        setFreedDiskMb(0);
+      }
     }
 
-    await new Promise(r => setTimeout(r, 600));
-    setCleanProgress(95);
-    setCleanStepLabel('Optimisation du profil alimentation...');
-    if (api?.gamingModeOn) { try { await api.gamingModeOn(); } catch {} }
-
-    await new Promise(r => setTimeout(r, 400));
     setCleanProgress(100);
-    setCleanStepLabel('Maintenance terminée !');
+    setCleanStepLabel('Nettoyage des fichiers temporaires achevé !');
     setCleaningPhase('done');
     refreshTelemetry();
   };
@@ -437,18 +427,16 @@ export default function PerformanceTab({ gamingActive: _gamingActive }: { gaming
               {cleaningPhase === 'done' && (
                 <>
                   <div style={{
-                    display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12,
                     padding: '14px 16px', borderRadius: 12,
                     backgroundColor: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)',
-                    marginBottom: 20,
+                    marginBottom: 16, textAlign: 'left',
                   }}>
-                    <div>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>RAM libérée</div>
-                      <div style={{ fontSize: 20, fontWeight: 900, color: '#8b5cf6' }}>+{freedMemoryMb} Mo</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Fichiers temporaires nettoyés</span>
+                      <strong style={{ fontSize: 16, color: '#10b981' }}>+{freedDiskMb} Mo</strong>
                     </div>
-                    <div>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Disque nettoyé</div>
-                      <div style={{ fontSize: 20, fontWeight: 900, color: '#10b981' }}>+{freedDiskMb} Mo</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                      ℹ️ <em>Purge RAM : Non disponible — La fausse purge [System.GC]::Collect() a été supprimée. Une purge réelle (EmptyWorkingSet) requiert le service d'arrière-plan de la Phase 3/7.</em>
                     </div>
                   </div>
                   <motion.button

@@ -39,10 +39,10 @@ export function setupNetworkIPC(win: BrowserWindow) {
       }
 
       const validPings = pingSamples.filter(p => p > 0);
-      const pingMs = validPings.length > 0 ? Math.round(validPings.reduce((a, b) => a + b, 0) / validPings.length) : 12;
+      const pingMs = validPings.length > 0 ? Math.round(validPings.reduce((a, b) => a + b, 0) / validPings.length) : null;
       const jitterMs = validPings.length > 1
         ? Number((validPings.slice(1).reduce((acc, val, idx) => acc + Math.abs(val - validPings[idx]), 0) / (validPings.length - 1)).toFixed(1))
-        : 1.1;
+        : (validPings.length === 1 ? 0 : null);
 
       // 2. High-Capacity Download Test (Progressive streaming up to 120MB)
       const dlDurationMs = 6000;
@@ -99,13 +99,9 @@ export function setupNetworkIPC(win: BrowserWindow) {
       ]);
 
       const dlElapsedTotal = (performance.now() - dlStartTime) / 1000;
-      let measuredDlMbps = totalBytesDown > 0 && dlElapsedTotal > 0
+      const measuredDlMbps = totalBytesDown > 0 && dlElapsedTotal > 0
         ? Math.round((totalBytesDown * 8) / (dlElapsedTotal * 1000000))
-        : 840;
-
-      // Realistic Gigabit fiber peak calibration
-      if (measuredDlMbps > 1200) measuredDlMbps = 980;
-      if (measuredDlMbps < 150) measuredDlMbps = Math.max(measuredDlMbps, peakDownloadMbps || 720);
+        : 0;
 
       // 3. Upload Test (~4.5 seconds)
       const ulDurationMs = 4500;
@@ -149,8 +145,8 @@ export function setupNetworkIPC(win: BrowserWindow) {
                   phase: 'upload',
                   currentMbps: currentUlMbps,
                   progress,
-                  ping: pingMs,
-                  jitter: jitterMs,
+                  ping: pingMs !== null ? Math.round(pingMs) : null,
+                  jitter: jitterMs !== null ? Number(jitterMs.toFixed(1)) : null,
                 });
 
                 ulWindowStart = now;
@@ -173,35 +169,32 @@ export function setupNetworkIPC(win: BrowserWindow) {
       }
 
       const ulElapsedTotal = (performance.now() - ulStartTime) / 1000;
-      let measuredUlMbps = totalBytesUp > 0 && ulElapsedTotal > 0
+      const measuredUlMbps = totalBytesUp > 0 && ulElapsedTotal > 0
         ? Math.round((totalBytesUp * 8) / (ulElapsedTotal * 1000000))
-        : Math.round(measuredDlMbps * 0.72);
-
-      if (measuredUlMbps < 80) measuredUlMbps = Math.max(measuredUlMbps, Math.round(measuredDlMbps * 0.68));
+        : 0;
 
       const result = {
-        downloadMbps: Math.max(50, measuredDlMbps),
-        uploadMbps: Math.max(30, measuredUlMbps),
-        pingMs: Math.max(1, pingMs),
-        jitterMs: Math.max(0.1, jitterMs),
+        downloadMbps: measuredDlMbps,
+        uploadMbps: measuredUlMbps,
+        pingMs: pingMs !== null ? Math.round(pingMs) : null,
+        jitterMs: jitterMs !== null ? Number(jitterMs.toFixed(1)) : null,
         timestamp: new Date().toLocaleTimeString('fr-FR'),
       };
 
-      logger.info('Speed Test haute précision achevé avec succès', result);
+      logger.info('Speed Test réel achevé', result);
       win.webContents.send('network-event', { type: 'speedtest-complete', result });
       return { success: true, result };
     } catch (error: any) {
       logger.error('Erreur lors du Speed Test', error.message);
-      // Realistic high-speed fallback if network connection is firewalled
-      const fallbackResult = {
-        downloadMbps: 885,
-        uploadMbps: 620,
-        pingMs: 11,
-        jitterMs: 1.0,
-        timestamp: new Date().toLocaleTimeString('fr-FR'),
+      win.webContents.send('network-event', {
+        type: 'speedtest-error',
+        error: error.message || 'Test de débit indisponible.',
+      });
+      return {
+        success: false,
+        error: error.message || 'Test de débit indisponible.',
+        result: null,
       };
-      win.webContents.send('network-event', { type: 'speedtest-complete', result: fallbackResult });
-      return { success: true, result: fallbackResult };
     }
   });
 
@@ -426,17 +419,18 @@ export function setupNetworkIPC(win: BrowserWindow) {
     return { success: true, processes: list };
   });
 
-  // ── Gaming Network Priority Mode (STUB — pending opt-in redesign) ──────────
-  // SAFETY NOTE: TcpAckFrequency and TCPNoDelay registry modifications have been
-  // removed from this automatic path. These are persistent system-wide changes
-  // that must be presented as explicit opt-in advanced options with rollback support.
+  // ── Gaming Network Priority Mode (En cours de développement - Phase 11) ────
   ipcMain.handle('network:gaming-mode-on', async () => {
-    logger.info('[STUB] network:gaming-mode-on appelé — aucune modification registre appliquée (opt-in requis).');
-    return { success: true, message: 'Mode Gaming réseau activé (UI uniquement — modifications TCP désactivées).' };
+    logger.info('[Network] network:gaming-mode-on désactivé (fonctionnalité en cours de développement - Phase 11).');
+    return {
+      success: false,
+      status: 'under-development',
+      message: 'Priorité réseau gaming en cours de développement (Phase 11).',
+    };
   });
 
   ipcMain.handle('network:gaming-mode-off', async () => {
-    logger.info('[STUB] network:gaming-mode-off appelé.');
-    return { success: true };
+    logger.info('[Network] network:gaming-mode-off appelé.');
+    return { success: true, active: false };
   });
 }

@@ -9,6 +9,7 @@ import { BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import crypto from 'crypto';
 import cp from 'child_process';
 import { logger } from './logger';
 import { runPowerShell } from './psHelper';
@@ -285,7 +286,7 @@ function buildAndStoreScanResult(
     logger.warn('[DownloadScanner] Could not register scan session:', err.message);
   }
 
-  const finalId = sessionScanId || (Date.now().toString() + Math.random().toString().slice(2, 6));
+  const finalId = sessionScanId || crypto.randomUUID();
 
   const res: ScanResult = {
     id: finalId,

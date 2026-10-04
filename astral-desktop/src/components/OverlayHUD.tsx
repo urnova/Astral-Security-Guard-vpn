@@ -6,7 +6,6 @@ const api = (window as any).vanguard;
 export default function OverlayHUD() {
   const [metrics, setMetrics] = useState({ cpu: 14, ramPercent: 42 });
   const [ping, setPing] = useState<number>(12);
-  const [fps, setFps] = useState<number>(165);
   const [compact, setCompact] = useState(false);
 
   useEffect(() => {
@@ -29,15 +28,9 @@ export default function OverlayHUD() {
       if (data?.ping) setPing(data.ping);
     });
 
-    // Dynamic subtle FPS fluctuation around monitor sync rate
-    const fpsInterval = setInterval(() => {
-      setFps(165 + Math.floor(Math.random() * 5 - 2));
-    }, 1200);
-
     return () => {
       cleanupMetrics?.();
       cleanupPing?.();
-      clearInterval(fpsInterval);
     };
   }, []);
 
@@ -125,9 +118,14 @@ export default function OverlayHUD() {
       {!compact ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: 11 }}>
           {/* FPS Row */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 10 }}>IPS (FPS)</span>
-            <span style={{ color: '#10b981', fontWeight: 800 }}>{fps}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingBottom: 2 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 10 }}>IPS (FPS)</span>
+              <span style={{ color: '#f59e0b', fontSize: 10, fontWeight: 700 }}>INDISPONIBLE</span>
+            </div>
+            <div style={{ fontSize: 9, color: 'rgba(255, 255, 255, 0.4)', lineHeight: 1.2 }}>
+              FPS indisponibles — PresentMon non installé
+            </div>
           </div>
 
           {/* CPU Row */}
@@ -160,7 +158,7 @@ export default function OverlayHUD() {
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11, paddingTop: 4 }}>
-          <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>FPS </span><strong style={{ color: '#10b981' }}>{fps}</strong></div>
+          <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>FPS </span><span style={{ color: '#f59e0b', fontSize: 9 }}>N/D</span></div>
           <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>CPU </span><strong style={{ color: cpuColor }}>{metrics.cpu}%</strong></div>
           <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>RAM </span><strong style={{ color: ramColor }}>{metrics.ramPercent}%</strong></div>
           <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>PING </span><strong style={{ color: pingColor }}>{ping}ms</strong></div>

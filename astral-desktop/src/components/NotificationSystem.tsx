@@ -22,7 +22,9 @@ export const NotificationSystem: React.FC<{ dndEnabled?: boolean }> = ({ dndEnab
       return;
     }
 
-    const id = Date.now().toString() + Math.random().toString().slice(2, 6);
+    const id = typeof window !== 'undefined' && window.crypto?.randomUUID
+      ? window.crypto.randomUUID()
+      : `toast-${Date.now()}`;
     const newToast: ToastNotification = { ...toast, id };
 
     setToasts((prev) => [...prev.slice(-2), newToast]); // max 3 toasts

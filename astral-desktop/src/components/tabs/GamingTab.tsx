@@ -58,14 +58,12 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
       await api.toggleGaming(next);
       if (next) {
         await api.gamingModeOn?.();
-        if (autoWifiBoost) await api.networkGamingOn?.();
       } else {
         await api.gamingModeOff?.();
-        await api.networkGamingOff?.();
       }
       onGamingToggle(next);
       showNotice(next
-        ? `🎮 Mode Jeu activé${forceGameName ? ` pour ${forceGameName}` : ''}`
+        ? `🎮 Mode Jeu activé${forceGameName ? ` pour ${forceGameName}` : ''} (suivi de session)`
         : 'Mode Jeu désactivé');
     } catch (err: any) {
       setErrorInfo({ message: 'Impossible de basculer le mode gaming', technical: err.message });
@@ -83,9 +81,9 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
   const filteredGames = installedGames.filter(g => selectedPlatform === 'all' || g.launcher.toLowerCase() === selectedPlatform.toLowerCase());
 
   const PROFILES = [
-    { id: 'competitive' as const, label: 'Compétitif', desc: 'FPS max, priorité CPU' },
-    { id: 'balanced' as const, label: 'Équilibré', desc: 'Bon compromis' },
-    { id: 'stream' as const, label: 'Streaming', desc: 'OBS / Capture' },
+    { id: 'competitive' as const, label: 'Compétitif', desc: 'En cours de dév. (Phase 11)' },
+    { id: 'balanced' as const, label: 'Équilibré', desc: 'En cours de dév. (Phase 11)' },
+    { id: 'stream' as const, label: 'Streaming', desc: 'En cours de dév. (Phase 11)' },
   ];
 
   return (
@@ -98,7 +96,7 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
       >
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: 'var(--text-primary)' }}>Gaming</h1>
         <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-          Optimisez votre PC pendant vos sessions de jeu
+          Suivi des sessions de jeu et détection des bibliothèques installées
         </p>
       </motion.div>
 
@@ -158,8 +156,8 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
               {gamingActive
-                ? `Ressources priorisées${currentGame ? ` pour ${currentGame}` : ''}`
-                : 'Priorise le CPU, réduit la latence et optimise le réseau'}
+                ? `Suivi de session engagé${currentGame ? ` pour ${currentGame}` : ''} (profils système en Phase 11)`
+                : 'Active le suivi de session et la détection d’activité de jeu'}
             </div>
           </div>
         </div>
@@ -184,7 +182,10 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 + i * 0.05 }}
             whileHover={{ y: -3, borderColor: profile === p.id ? '#f59e0b' : 'rgba(255,255,255,0.15)' }}
-            onClick={() => setProfile(p.id)}
+            onClick={() => {
+              setProfile(p.id);
+              showNotice(`Profil [${p.label}] sélectionné. L'application des priorités système sera implémentée en Phase 11.`);
+            }}
             style={{
               padding: '18px 16px', borderRadius: 14, cursor: 'pointer',
               background: profile === p.id ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.02)',
@@ -195,7 +196,7 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
             <div style={{ fontSize: 14, fontWeight: 700, color: profile === p.id ? '#f59e0b' : 'var(--text-primary)' }}>
               {p.label}
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{p.desc}</div>
+            <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 4, fontWeight: 600 }}>{p.desc}</div>
           </motion.div>
         ))}
       </div>
@@ -224,7 +225,7 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
             <CyberToggle checked={overlayEnabled} onChange={toggleOverlay} />
           </div>
           <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            Affiche FPS, CPU, RAM et ping en temps réel dans vos jeux.
+            Affiche les métriques CPU, RAM et latence. Mesure FPS directe prévue en Phase 12 (PresentMon).
           </p>
         </motion.div>
 
@@ -235,6 +236,7 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
           style={{
             padding: '20px 22px', borderRadius: 14,
             background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
+            opacity: 0.8,
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -244,13 +246,13 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
               </div>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Optimisation Wi-Fi</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Anti-lag automatique</div>
+                <div style={{ fontSize: 11, color: '#f59e0b', fontWeight: 600 }}>En cours de développement (Phase 11)</div>
               </div>
             </div>
-            <CyberToggle checked={autoWifiBoost} onChange={setAutoWifiBoost} glowColor="purple" />
+            <CyberToggle checked={false} onChange={() => showNotice('La gestion de priorité des paquets réseau (WFP / QoS) sera implémentée en Phase 11')} glowColor="purple" disabled={true} />
           </div>
           <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            Réduit la latence réseau et stabilise le ping pendant le jeu.
+            La régulation de latence réseau et priorisation de paquets sera introduite en Phase 11.
           </p>
         </motion.div>
       </div>
@@ -269,7 +271,7 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
                 Jeux détectés ({installedGames.length})
               </h2>
               <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                Cliquez sur un jeu pour prioriser ses ressources
+                Détection réelle des jeux installés via Steam, Epic, Riot et GOG
               </div>
             </div>
           </div>
@@ -342,7 +344,7 @@ export default function GamingTab({ gamingActive, currentGame, onGamingToggle }:
                   }}
                 >
                   <Play size={12} />
-                  {isCurrent ? 'Optimisé' : 'Optimiser'}
+                  {isCurrent ? 'Session active' : 'Lancer le suivi'}
                 </motion.button>
               </motion.div>
             );

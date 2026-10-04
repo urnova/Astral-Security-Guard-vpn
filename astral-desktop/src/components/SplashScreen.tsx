@@ -9,7 +9,7 @@ interface SplashScreenProps {
 
 export default function SplashScreen({ onFinish }: SplashScreenProps) {
   const [progress, setProgress] = useState(12);
-  const [status, setStatus] = useState('Initialisation du moteur Vanguard...');
+  const [status, setStatus] = useState('Démarrage de l’application...');
   const [fading, setFading] = useState(false);
   const { markWarmedUp, refreshTelemetry } = useSystem();
 
@@ -45,13 +45,13 @@ export default function SplashScreen({ onFinish }: SplashScreenProps) {
       setProgress(pct);
 
       if (pct < 30) {
-        setStatus('Initialisation des protocoles haute vitesse...');
+        setStatus('Chargement de l’interface...');
       } else if (pct < 65) {
-        setStatus('Activation du bouclier temps réel...');
+        setStatus('Initialisation du profil utilisateur...');
       } else if (pct < 92) {
-        setStatus('Calibration des profils e-sport & anti-lag...');
+        setStatus('Chargement des modules...');
       } else {
-        setStatus('Système sécurisé · Prêt');
+        setStatus('Prêt');
       }
 
       if (pct >= 100) {
