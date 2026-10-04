@@ -60,9 +60,10 @@ const api = {
 
   // Performance
   getMetrics: () => ipcRenderer.invoke('perf:get-metrics'),
+  emptyWorkingSet: (opts?: { userConsent?: boolean }) => ipcRenderer.invoke('perf:empty-working-set', opts),
   gamingModeOn: () => ipcRenderer.invoke('perf:gaming-mode-on'),
   gamingModeOff: () => ipcRenderer.invoke('perf:gaming-mode-off'),
-  cleanRam: () => ipcRenderer.invoke('perf:clean-ram'),
+  cleanRam: (opts?: { userConsent?: boolean }) => ipcRenderer.invoke('perf:clean-ram', opts),
   diskCleanup: () => ipcRenderer.invoke('perf:disk-cleanup'),
   getStartup: () => ipcRenderer.invoke('perf:get-startup'),
   disableStartup: (name: string, location?: string) => ipcRenderer.invoke('perf:disable-startup', name, location),
@@ -71,10 +72,12 @@ const api = {
 
   // Network
   speedtest: () => ipcRenderer.invoke('network:speedtest'),
+  cancelSpeedtest: () => ipcRenderer.invoke('network:cancel-speedtest'),
   getAdapters: () => ipcRenderer.invoke('network:get-adapters'),
   networkGamingOn: () => ipcRenderer.invoke('network:gaming-mode-on'),
   networkGamingOff: () => ipcRenderer.invoke('network:gaming-mode-off'),
   setDns: (dns: 'cloudflare' | 'google' | 'quad9' | 'opendns' | 'auto' | string) => ipcRenderer.invoke('network:set-dns', dns),
+  restorePreviousDns: () => ipcRenderer.invoke('network:restore-previous-dns'),
   testDnsLatencies: () => ipcRenderer.invoke('network:test-dns-latencies'),
   getNetworkProcesses: () => ipcRenderer.invoke('network:get-processes'),
   wifiInterference: () => ipcRenderer.invoke('network:wifi-interference'),
@@ -105,6 +108,9 @@ const api = {
   getProfiles: () => ipcRenderer.invoke('gaming:get-profiles'),
   saveProfile: (name: string, settings: any) => ipcRenderer.invoke('gaming:save-profile', name, settings),
   scanInstalledGames: () => ipcRenderer.invoke('gaming:scan-installed'),
+  getPresentMonStatus: () => ipcRenderer.invoke('gaming:get-presentmon-status'),
+  getHudMetrics: () => ipcRenderer.invoke('gaming:get-hud-metrics'),
+  restoreGamingSystemState: () => ipcRenderer.invoke('gaming:restore-system-state'),
   overlayToggle: (show?: boolean) => ipcRenderer.invoke('overlay:toggle', show),
   overlayShow: () => ipcRenderer.invoke('overlay:show'),
   overlayHide: () => ipcRenderer.invoke('overlay:hide'),

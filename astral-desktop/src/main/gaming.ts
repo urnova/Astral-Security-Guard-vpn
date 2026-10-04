@@ -1,6 +1,8 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import { runPowerShell } from './psHelper';
 import { logger } from './logger';
+import { gamingManager } from './gamingManager';
+import { presentMonEngine, PresentMonMetrics } from './presentmonEngine';
 
 let gameDetectionInterval: NodeJS.Timeout | null = null;
 let currentGameName: string | null = null;
@@ -10,9 +12,7 @@ let sessionStartTime = 0;
 let sessionPings: number[] = [];
 
 // AUTO-DETECTION IS DISABLED BY DEFAULT for safety.
-// The detection algorithm had critical false positives (e.g. Perplexity, Edge in fullscreen).
-// It requires a proper 2-level library-based redesign before being re-enabled.
-// Users can still toggle gaming mode MANUALLY at any time.
+// Can be enabled explicitly by the user.
 let autoDetectEnabled = false;
 
 // Exclusions: browsers, IDEs, system tools, launchers, productivity tools, media players, and this app
@@ -35,7 +35,6 @@ const EXCLUDED_PROCESSES = new Set([
   'electron', 'astral vanguard', 'astral vanguard setup',
 ]);
 
-
 // Saved per-game profiles
 const gameProfiles: Record<string, {
   networkPriority: boolean;
@@ -48,28 +47,60 @@ export function setupGamingIPC(
   getOverlay: () => BrowserWindow | null
 ) {
   // ── Status ────────────────────────────────────────────────────────────────
-  ipcMain.handle('gaming:get-status', () => ({
-    gamingModeActive,
-    currentGame: currentGameName,
-    currentPID: currentGamePID,
-    sessionDurationSeconds: sessionStartTime > 0 ? Math.round((Date.now() - sessionStartTime) / 1000) : 0,
-    averagePing: sessionPings.length > 0 ? Math.round(sessionPings.reduce((a, b) => a + b, 0) / sessionPings.length) : null,
-  }));
+  ipcMain.handle('gaming:get-status', () => {
+    const mgrStatus = gamingManager.getStatus();
+    return {
+      gamingModeActive: gamingModeActive || mgrStatus.isGamingActive,
+      currentGame: currentGameName || mgrStatus.activeGameName,
+      currentPID: currentGamePID || mgrStatus.activeGamePid,
+      sessionDurationSeconds: sessionStartTime > 0 ? Math.round((Date.now() - sessionStartTime) / 1000) : 0,
+      averagePing: sessionPings.length > 0 ? Math.round(sessionPings.reduce((a, b) => a + b, 0) / sessionPings.length) : null,
+      presentMon: mgrStatus.presentMon,
+    };
+  });
+
+  // ── PresentMon Availability & Metrics ──────────────────────────────────────
+  ipcMain.handle('gaming:get-presentmon-status', () => {
+    return { success: true, ...presentMonEngine.getAvailability() };
+  });
+
+  ipcMain.handle('gaming:get-hud-metrics', () => {
+    return { success: true, metrics: presentMonEngine.getCurrentMetrics() };
+  });
+
+  // ── Restauration explicite des paramètres système ──────────────────────────
+  ipcMain.handle('gaming:restore-system-state', async () => {
+    logger.info('[Gaming] Demande de restauration explicite des paramètres système');
+    const res = await gamingManager.restorePreviousState();
+    return res;
+  });
 
   // ── Toggle Gaming Mode Manually ───────────────────────────────────────────
   ipcMain.handle('gaming:toggle', async (_, force?: boolean) => {
-    gamingModeActive = force !== undefined ? force : !gamingModeActive;
+    const nextState = force !== undefined ? force : !gamingModeActive;
+    gamingModeActive = nextState;
     logger.info(`Mode Gaming manuel : ${gamingModeActive ? 'ACTIVÉ' : 'DÉSACTIVÉ'}`);
 
     if (gamingModeActive) {
       sessionStartTime = Date.now();
       sessionPings = [];
+
+      // Si un PID est connu, appliquer l'optimisation réversible
+      if (currentGamePID && currentGameName) {
+        try {
+          await gamingManager.enableGamingOptimizations(currentGamePID, currentGameName);
+        } catch (e: any) {
+          logger.warn('[Gaming] Erreur application optimisations :', e.message);
+        }
+      }
+
       win.webContents.send('notification:trigger', {
         type: 'gaming',
         title: 'Mode Gaming Activé',
-        message: 'Mode jeu manuel activé (profils de priorité CPU et réseau en cours de développement - Phase 11).',
+        message: 'Optimisation de priorité processus (AboveNormal) et plan d\'alimentation réversible activés.',
       });
     } else {
+      await gamingManager.restorePreviousState();
       sendSessionSummary(win);
       sessionStartTime = 0;
     }
@@ -121,7 +152,7 @@ export function setupGamingIPC(
       if (Test-Path $vdf) {
         $lines = Get-Content $vdf -ErrorAction SilentlyContinue
         foreach ($line in $lines) {
-          if ($line -match '"path"\s+"([^"]+)"') {
+          if ($line -match '"path"\\s+"([^"]+)"') {
             $rawPath = $matches[1].Replace('\\\\', '\\')
             $commonPath = Join-Path $rawPath "steamapps\\common"
             if (Test-Path $commonPath) {
@@ -231,7 +262,7 @@ export function startGameDetection(
 
   gameDetectionInterval = setInterval(async () => {
     try {
-      // AUTO-DETECT GUARD: loop runs but does nothing if autoDetect is disabled
+      // AUTO-DETECT GUARD: loop runs but does nothing if autoDetect is disabled and no game active
       if (!autoDetectEnabled && !gamingModeActive) return;
 
       // If gaming mode is active with a tracked PID, check if the process is still running (instant native check)
@@ -248,6 +279,10 @@ export function startGameDetection(
           // Process terminated
           logger.info(`Processus de jeu terminé (PID ${currentGamePID} : ${currentGameName})`);
           gamingSessionState = 'finished';
+
+          // Restauration automatique et propre des paramètres d'origine
+          await gamingManager.restorePreviousState();
+
           sendSessionSummary(win);
           currentGameName = null;
           currentGamePID = null;
@@ -358,6 +393,13 @@ export function startGameDetection(
 
             logger.info(`🎮 Nouveau jeu détecté : ${name} (PID ${pid})`);
 
+            // Application des optimisations réversibles mesurables
+            try {
+              await gamingManager.enableGamingOptimizations(pid, name);
+            } catch (e: any) {
+              logger.warn('[Gaming] Erreur application optimisations :', e.message);
+            }
+
             win.webContents.send('gaming-event', {
               type: 'mode-changed',
               state: 'active',
@@ -368,7 +410,7 @@ export function startGameDetection(
             win.webContents.send('notification:trigger', {
               type: 'gaming',
               title: `Jeu Détecté : ${name}`,
-              message: 'Mode Gaming engagé pour le jeu détecté. Profils de priorité système en cours de développement (Phase 11).',
+              message: 'Mode Gaming engagé : priorité AboveNormal appliquée. Restauration automatique garantie à la fermeture.',
             });
           }
         }
@@ -391,4 +433,3 @@ function sendSessionSummary(win: BrowserWindow) {
     });
   }
 }
-

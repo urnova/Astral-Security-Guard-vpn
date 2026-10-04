@@ -216,6 +216,70 @@ export function setupPerformanceIPC(win: BrowserWindow) {
     };
   });
 
+  // ── EmptyWorkingSet Expérimental (Lot 2 / Phase 9) ──────────────────────────
+  ipcMain.handle('perf:empty-working-set', async (_, opts?: { userConsent?: boolean }) => {
+    const userConsent = Boolean(opts?.userConsent);
+    if (!userConsent) {
+      logger.info('[Performance] perf:empty-working-set : Refusé sans consentement explicite.');
+      return {
+        success: false,
+        status: 'consent_required',
+        message: 'Opération expérimentale. Le consentement explicite de l\'utilisateur est requis car vider le working set déplace les pages mémoire vers le swap et peut générer des micro-ralentissements (page faults).',
+        workingSetReducedMB: 0,
+      };
+    }
+
+    logger.info('[Performance] Exécution contrôlée de EmptyWorkingSet avec consentement utilisateur...');
+    const freeBefore = os.freemem();
+
+    const script = `
+      Add-Type @"
+        using System;
+        using System.Runtime.InteropServices;
+        public class Win32Mem {
+          [DllImport("psapi.dll")]
+          public static extern int EmptyWorkingSet(IntPtr hwProc);
+        }
+"@ -ErrorAction SilentlyContinue
+
+      $procs = Get-Process -ErrorAction SilentlyContinue | Where-Object {
+        $_.Id -gt 4 -and
+        $_.ProcessName -notmatch '^(csrss|dwm|lsass|smss|services|svchost|system|wininit|winlogon|astral-vanguard)$'
+      }
+
+      $count = 0
+      foreach ($p in $procs) {
+        try {
+          $res = [Win32Mem]::EmptyWorkingSet($p.Handle)
+          if ($res -ne 0) { $count++ }
+        } catch {}
+      }
+      [PSCustomObject]@{ processed = $count } | ConvertTo-Json -Compress
+    `;
+
+    try {
+      const res = await runPowerShell<any>(script, { asJson: true, timeout: 8000 });
+      const freeAfter = os.freemem();
+      const reducedMB = Math.max(0, Math.round((freeAfter - freeBefore) / (1024 * 1024)));
+
+      return {
+        success: true,
+        status: 'completed',
+        workingSetReducedMB: reducedMB,
+        pageFaultWarning: 'Avertissement : la réduction du jeu de travail (working set) transfère les données inactives vers le fichier d\'échange. Des défauts de page (page faults) surviendront lors du réaccès aux applications.',
+        honestNote: 'Réduction ponctuelle du jeu de travail (non qualifiée d\'optimisation permanente).',
+        processedProcesses: res?.data?.processed || 0,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        status: 'error',
+        message: err.message,
+        workingSetReducedMB: 0,
+      };
+    }
+  });
+
   // ── Process Manager (List & Kill non-system process) ───────────────────────
   ipcMain.handle('perf:get-processes', async () => {
     const script = `

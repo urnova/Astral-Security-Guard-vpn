@@ -9,6 +9,7 @@ import { setupVpnIPC, cleanupAstralFirewallRules } from './vpn';
 import { setupPerformanceIPC } from './performance';
 import { setupNetworkIPC } from './network';
 import { setupGamingIPC, startGameDetection } from './gaming';
+import { gamingManager } from './gamingManager';
 import { setupRollbackIPC } from './rollback';
 import { setupDoctorIPC, executeSosPing } from './doctor';
 import { setupDownloadScannerIPC } from './downloadScanner';
@@ -473,6 +474,9 @@ app.whenReady().then(async () => {
     });
   });
 
+  // Récupération de l'état système précédent en cas de crash intempestif
+  await gamingManager.recoverFromPreviousCrash();
+
   createMainWindow();
   createTray();
 
@@ -500,6 +504,7 @@ app.on('before-quit', () => {
     tray?.destroy();
     tray = null;
   } catch {}
+  gamingManager.restorePreviousState();
   cleanupAstralFirewallRules();
 });
 
@@ -509,6 +514,7 @@ app.on('will-quit', () => {
     tray?.destroy();
     tray = null;
   } catch {}
+  gamingManager.restorePreviousState();
   cleanupAstralFirewallRules();
 });
 

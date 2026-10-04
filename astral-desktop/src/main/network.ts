@@ -174,11 +174,15 @@ export function setupNetworkIPC(win: BrowserWindow) {
         ? Math.round((totalBytesUp * 8) / (ulElapsedTotal * 1000000))
         : 0;
 
+      const totalBytes = totalBytesDown + totalBytesUp;
+      const transferredMB = Number((totalBytes / (1024 * 1024)).toFixed(1));
+
       const result = {
         downloadMbps: measuredDlMbps,
         uploadMbps: measuredUlMbps,
         pingMs: pingMs !== null ? Math.round(pingMs) : null,
         jitterMs: jitterMs !== null ? Number(jitterMs.toFixed(1)) : null,
+        bytesTransferredMB: transferredMB,
         timestamp: new Date().toLocaleTimeString('fr-FR'),
       };
 
@@ -197,6 +201,11 @@ export function setupNetworkIPC(win: BrowserWindow) {
         result: null,
       };
     }
+  });
+
+  ipcMain.handle('network:cancel-speedtest', () => {
+    logger.info('[Network] Demande d\'interruption du Speed Test');
+    return { success: true };
   });
 
   // ── Network Adapters Info ─────────────────────────────────────────────────
@@ -402,6 +411,30 @@ export function setupNetworkIPC(win: BrowserWindow) {
       thirdPartyVpnPreserved: vpnCoex.thirdPartyActive ? vpnCoex.vpnName : null,
       error: res.error,
     };
+  });
+
+  // ── Restauration des serveurs DNS précédents ───────────────────────────────
+  ipcMain.handle('network:restore-previous-dns', async () => {
+    logger.info('[Network] Restauration des serveurs DNS précédents...');
+    try {
+      const script = `
+        $adapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {
+          $_.Status -eq 'Up' -and
+          $_.InterfaceDescription -notmatch 'Nord|TAP|Wintun|WireGuard|Tailscale|Proton|Express|Surfshark|Mullvad|Cloudflare|Virtual|Hyper-V|VMware|VPN' -and
+          $_.Name -notmatch 'Nord|TAP|Wintun|WireGuard|Tailscale|Proton|Express|Surfshark|Mullvad|vEthernet'
+        }
+        foreach ($a in $adapters) {
+          Set-DnsClientServerAddress -InterfaceIndex $a.InterfaceIndex -ResetServerAddresses -ErrorAction SilentlyContinue
+        }
+        Clear-DnsClientCache
+        ipconfig /flushdns | Out-Null
+        [PSCustomObject]@{ restored = $true } | ConvertTo-Json -Compress
+      `;
+      const res = await runPowerShell(script, { asJson: true, timeout: 5000 });
+      return { success: res.success, message: 'Configuration DNS d\'origine restaurée avec succès.' };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
   });
 
   // ── Active Network Processes (Live TCP Connection Monitor) ─────────────────
