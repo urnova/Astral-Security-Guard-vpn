@@ -7,6 +7,17 @@ export default function OverlayHUD() {
   const [metrics, setMetrics] = useState({ cpu: 14, ramPercent: 42 });
   const [ping, setPing] = useState<number>(12);
   const [compact, setCompact] = useState(false);
+  const [presentmon, setPresentmon] = useState<{
+    status: string;
+    fps: number | null;
+    onePercentLowFps: number | null;
+    isCapturing: boolean;
+  }>({
+    status: 'Indisponible',
+    fps: null,
+    onePercentLowFps: null,
+    isCapturing: false,
+  });
 
   useEffect(() => {
     if (!api) return;
@@ -20,6 +31,12 @@ export default function OverlayHUD() {
       }
     });
 
+    api.getPresentMonStatus?.().then((res: any) => {
+      if (res?.data) {
+        setPresentmon(res.data);
+      }
+    }).catch(() => {});
+
     const cleanupMetrics = api.on('overlay-metrics', (data: any) => {
       if (data) setMetrics(data);
     });
@@ -28,9 +45,14 @@ export default function OverlayHUD() {
       if (data?.ping) setPing(data.ping);
     });
 
+    const cleanupPm = api.on('overlay-presentmon', (data: any) => {
+      if (data) setPresentmon(data);
+    });
+
     return () => {
       cleanupMetrics?.();
       cleanupPing?.();
+      cleanupPm?.();
     };
   }, []);
 
@@ -121,11 +143,21 @@ export default function OverlayHUD() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingBottom: 2 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 10 }}>IPS (FPS)</span>
-              <span style={{ color: '#f59e0b', fontSize: 10, fontWeight: 700 }}>INDISPONIBLE</span>
+              {presentmon.isCapturing && presentmon.fps !== null ? (
+                <span style={{ color: '#10b981', fontSize: 12, fontWeight: 800 }}>{Math.round(presentmon.fps)} IPS</span>
+              ) : (
+                <span style={{ color: '#f59e0b', fontSize: 10, fontWeight: 700 }}>INDISPONIBLE</span>
+              )}
             </div>
-            <div style={{ fontSize: 9, color: 'rgba(255, 255, 255, 0.4)', lineHeight: 1.2 }}>
-              FPS indisponibles — PresentMon non installé
-            </div>
+            {presentmon.isCapturing && presentmon.onePercentLowFps !== null ? (
+              <div style={{ fontSize: 9, color: 'rgba(255, 255, 255, 0.7)', lineHeight: 1.2 }}>
+                1% Low : {Math.round(presentmon.onePercentLowFps)} IPS
+              </div>
+            ) : (
+              <div style={{ fontSize: 9, color: 'rgba(255, 255, 255, 0.4)', lineHeight: 1.2 }}>
+                FPS indisponibles — PresentMon non installé
+              </div>
+            )}
           </div>
 
           {/* CPU Row */}
@@ -158,7 +190,14 @@ export default function OverlayHUD() {
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11, paddingTop: 4 }}>
-          <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>FPS </span><span style={{ color: '#f59e0b', fontSize: 9 }}>N/D</span></div>
+          <div>
+            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>FPS </span>
+            {presentmon.isCapturing && presentmon.fps !== null ? (
+              <strong style={{ color: '#10b981', fontSize: 9 }}>{Math.round(presentmon.fps)}</strong>
+            ) : (
+              <span style={{ color: '#f59e0b', fontSize: 9 }}>N/D</span>
+            )}
+          </div>
           <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>CPU </span><strong style={{ color: cpuColor }}>{metrics.cpu}%</strong></div>
           <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>RAM </span><strong style={{ color: ramColor }}>{metrics.ramPercent}%</strong></div>
           <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>PING </span><strong style={{ color: pingColor }}>{ping}ms</strong></div>
