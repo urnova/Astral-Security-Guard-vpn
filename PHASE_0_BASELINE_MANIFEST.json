@@ -1,0 +1,88 @@
+{
+  "manifestVersion": "3.3.1",
+  "phase": "PHASE_0_BASELINE_AND_TOOLING",
+  "generatedAtUtc": "2026-10-04T15:15:00.000Z",
+  "gateStatus": "GATE_0_PASSED",
+  "repository": {
+    "name": "Astral-Security-Guard-vpn",
+    "activeBranch": "refactor/v3-baseline",
+    "baselineCommitSha": "05e58b34806afa17522d494c2d510396eac89dd3",
+    "annotatedTag": "v2.4.0-pre-v3-baseline",
+    "packageVersion": "2.4.0",
+    "packageJsonPath": "astral-desktop/package.json",
+    "worktreeCleanAtTag": true
+  },
+  "environment": {
+    "os": "Windows 11 / Windows 10 x64 (Build 26200.7309)",
+    "nodeExecutable": "F:\\donnee_app\\dev_tool\\node\\node.exe",
+    "nodeVersion": "v24.13.0",
+    "npmExecutable": "F:\\donnee_app\\dev_tool\\node\\npm.cmd",
+    "npmVersion": "11.6.2",
+    "typeScriptVersion": "5.9.3",
+    "viteVersion": "5.4.19",
+    "electronDeclared": "33.0.2",
+    "electronTargetBranch": "44.x-stable",
+    "verificationScript": "scripts/verify-env.mjs",
+    "verificationStatus": "PASS"
+  },
+  "baselineValidation": {
+    "typecheck": {
+      "command": "tsc -p tsconfig.json --noEmit",
+      "cwd": "astral-desktop",
+      "exitCode": 0,
+      "errorsCount": 0
+    },
+    "viteBuild": {
+      "command": "npx vite build",
+      "cwd": "astral-desktop",
+      "exitCode": 0,
+      "bundleMetrics": {
+        "rendererJs": {
+          "file": "dist/assets/index-D_8v6x8i.js",
+          "sizeBytes": 506630,
+          "gzipSizeBytes": 154690
+        },
+        "rendererCss": {
+          "file": "dist/assets/index-CS80nN5H.css",
+          "sizeBytes": 149200,
+          "gzipSizeBytes": 22440
+        },
+        "mainJs": {
+          "file": "dist-electron/main.js",
+          "sizeBytes": 663290
+        },
+        "preloadJs": {
+          "file": "dist-electron/preload.js",
+          "sizeBytes": 7390
+        }
+      }
+    },
+    "sourceFilesIntegrity": {
+      "astralDesktopSrcModified": false,
+      "externalBinariesDownloaded": false,
+      "newProductionDependenciesAdded": false
+    }
+  },
+  "spikesValidation": {
+    "namedPipeSecuritySpike": {
+      "script": "scratch/spike-pipe-security.ps1",
+      "testsTotal": 9,
+      "testsPassed": 9,
+      "testsFailed": 0,
+      "overallStatus": "PASS",
+      "clientAccessMask": "0x00120183",
+      "fileCreatePipeInstanceBitExcluded": true,
+      "daclLogonSidExclusif": true,
+      "pipeRejectRemoteClientsValidated": true,
+      "fileFlagFirstPipeInstanceValidated": true
+    },
+    "aiQualificationSpike": {
+      "script": "scratch/spike-ai-qualification.mjs",
+      "overallStatus": "QUALIFIED_DETERMINISTIC_LOCAL_ONLY",
+      "llm7Status": "INELIGIBLE_ANONYMOUS (Requires API key - HTTP 401)",
+      "ovhStatus": "INELIGIBLE_ANONYMOUS (Requires IAM credentials - Web portal redirect)",
+      "retainedArchitecture": "Deterministic local native engine as sole active provider in v3.0"
+    }
+  },
+  "nextStep": "PHASE_1_BLOCKED_PENDING_EXPLICIT_USER_AUTHORIZATION"
+}
