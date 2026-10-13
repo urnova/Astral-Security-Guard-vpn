@@ -1,128 +1,96 @@
-import { Shield, LayoutDashboard, Cpu, Gamepad2, Wifi, Lock, Settings } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import {
+  Home, Shield, Zap, Gamepad2, Wifi, Lock, Settings, ChevronRight
+} from 'lucide-react';
 
-const NAV_ITEMS = [
-  { id: 'dashboard',   label: 'Accueil',      icon: LayoutDashboard },
-  { id: 'security',    label: 'Sécurité',     icon: Shield },
-  { id: 'performance', label: 'Performance',  icon: Cpu },
-  { id: 'gaming',      label: 'Gaming',       icon: Gamepad2 },
-  { id: 'network',     label: 'Réseau',       icon: Wifi },
-  { id: 'vpn',         label: 'VPN',          icon: Lock },
+const NAV = [
+  { id: 'dashboard',   label: "Vue d'ensemble", Icon: Home },
+  { id: 'security',    label: 'Sécurité',        Icon: Shield },
+  { id: 'performance', label: 'Maintenance',     Icon: Zap },
+  { id: 'gaming',      label: 'Jeux',            Icon: Gamepad2 },
+  { id: 'network',     label: 'Réseau',           Icon: Wifi },
+  { id: 'vpn',         label: 'VPN',              Icon: Lock },
 ];
 
 interface Props {
-  activeTab: string;
-  onTabChange: (tab: string) => void;
+  activeTab:    string;
+  onTabChange:  (id: string) => void;
   gamingActive: boolean;
-  currentGame: string | null;
-  firstName?: string;
-  lastName?: string;
+  currentGame:  string | null;
+  firstName:    string;
+  lastName:     string;
+  onSettings?:  () => void;
 }
 
-function getInitials(first: string, last: string) {
-  const f = first.trim();
-  const l = last.trim();
-  if (!f && !l) return 'AV';
-  if (!l) return f.charAt(0).toUpperCase();
-  return (f.charAt(0) + l.charAt(0)).toUpperCase();
-}
+export default function Sidebar({
+  activeTab, onTabChange, gamingActive, currentGame,
+  firstName, lastName, onSettings,
+}: Props) {
+  const pillRef = useRef<HTMLDivElement>(null);
+  const navRef  = useRef<HTMLDivElement>(null);
 
-export default function Sidebar({ activeTab, onTabChange, gamingActive, firstName = '', lastName = '' }: Props) {
+  // Animate pill to active item
+  useEffect(() => {
+    if (!navRef.current || !pillRef.current) return;
+    const buttons = navRef.current.querySelectorAll('button[data-id]');
+    buttons.forEach(btn => {
+      if ((btn as HTMLElement).dataset.id === activeTab) {
+        const top = (btn as HTMLElement).offsetTop;
+        pillRef.current!.style.transform = `translateY(${top}px)`;
+        pillRef.current!.style.opacity = '1';
+      }
+    });
+  }, [activeTab]);
+
+  const initials = `${firstName?.[0] ?? ''}${lastName?.[0] ?? ''}`.toUpperCase() || '?';
+  const fullName  = [firstName, lastName].filter(Boolean).join(' ') || 'Profil';
+
   return (
     <aside className="sidebar">
-      {/* Navigation — directly at top, no duplicate logo */}
-      <nav className="sidebar-nav" style={{ paddingTop: 12 }}>
-        {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
-          const isGaming = id === 'gaming' && gamingActive;
-          const isActive = activeTab === id;
-          return (
-            <button
-              key={id}
-              className={`sidebar-item ${isActive ? 'active' : ''} ${isGaming ? 'gaming-pulse' : ''}`}
-              onClick={() => onTabChange(id)}
-              title={label}
-              aria-label={label}
-              aria-current={isActive ? 'page' : undefined}
-            >
-              <Icon size={16} strokeWidth={isActive ? 2.2 : 1.8} />
-              <span>{label}</span>
-              {isGaming && <span className="sidebar-dot" aria-hidden="true" />}
-            </button>
-          );
-        })}
-      </nav>
+      <div className="sidebar-label">Navigation</div>
 
-      {/* Profile & Settings */}
-      <div className="sidebar-footer" style={{ padding: '12px 14px', borderTop: '1px solid var(--border)' }}>
-        <div
-          onClick={() => onTabChange('settings')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            padding: '9px 10px',
-            borderRadius: 12,
-            backgroundColor: activeTab === 'settings' ? 'rgba(99, 102, 241, 0.16)' : 'rgba(255, 255, 255, 0.03)',
-            border: `1px solid ${activeTab === 'settings' ? 'rgba(99, 102, 241, 0.35)' : 'var(--border)'}`,
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-          }}
-          title="Gérer le profil et les paramètres"
-        >
-          <div
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: '50%',
-              backgroundColor: 'rgba(99, 102, 241, 0.2)',
-              border: '1px solid rgba(99, 102, 241, 0.4)',
-              color: '#c084fc',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 12,
-              fontWeight: 800,
-              flexShrink: 0,
-            }}
-          >
-            {getInitials(firstName, lastName)}
-          </div>
+      <div className="sidebar-nav" ref={navRef}>
+        {/* Animated pill */}
+        <div className="sidebar-pill" ref={pillRef} style={{ opacity: 0 }} />
 
-          <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                color: 'var(--text-primary)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {firstName || lastName ? `${firstName} ${lastName}`.trim() : 'Mon Profil'}
-            </div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Paramètres</div>
-          </div>
-
+        {NAV.map(({ id, label, Icon }) => (
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onTabChange('settings');
-            }}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: activeTab === 'settings' ? 'var(--cyan)' : 'var(--text-muted)',
-              cursor: 'pointer',
-              padding: 4,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-            title="Paramètres de l'application"
+            key={id}
+            data-id={id}
+            className={`sidebar-item${activeTab === id ? ' active' : ''}`}
+            onClick={() => onTabChange(id)}
           >
-            <Settings size={15} />
+            <Icon size={16} />
+            {label}
+            {id === 'gaming' && gamingActive && (
+              <span
+                className="dot"
+                style={{ marginLeft: 'auto', color: 'var(--ok)' }}
+              />
+            )}
           </button>
+        ))}
+      </div>
+
+      <div style={{ flex: 1 }} />
+
+      {/* User footer */}
+      <div
+        className="sidebar-user"
+        onClick={() => (onSettings ? onSettings() : onTabChange('settings'))}
+        role="button"
+        tabIndex={0}
+        aria-label="Ouvrir les paramètres"
+        onKeyDown={e => e.key === 'Enter' && (onSettings ? onSettings() : onTabChange('settings'))}
+      >
+        <div className="user-avatar">{initials}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span className="user-name truncate">{fullName}</span>
+          <span className="user-role">
+            {gamingActive && currentGame ? `Jeu : ${currentGame}` : 'Profil Joueur'}
+          </span>
         </div>
+        <ChevronRight size={14} style={{ color: 'var(--dim)', flexShrink: 0 }} />
       </div>
     </aside>
   );

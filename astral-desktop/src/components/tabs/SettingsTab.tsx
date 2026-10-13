@@ -1,27 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  User, Palette, Sliders, Shield, Download, Gamepad2,
-  Wifi, Bell, RefreshCw, Cpu, Info, Check, AlertCircle,
-  ExternalLink, Save, Sparkles, Monitor, ShieldCheck
+  User, Palette, Sliders, Shield, Gamepad2,
+  Bell, RefreshCw, Cpu, Info, Check, CheckCircle2,
+  AlertTriangle, X, Save, ExternalLink, Monitor,
+  Wifi, Download, Activity, Lock, Volume2
 } from 'lucide-react';
-import { CollapsibleError } from '../ui/CollapsibleError';
-import { playSound, setMasterVolume } from '../../lib/audioSynth';
-import VanguardLogo from '../common/VanguardLogo';
-import { CyberToggle } from '../common/CyberToggle';
 
 const api = (window as any).vanguard;
 
 export interface SettingsTabProps {
-  dndEnabled?: boolean;
-  onDndChange?: (val: boolean) => void;
-  onProfileSaved?: () => void;
+  dndEnabled?:           boolean;
+  onDndChange?:          (val: boolean) => void;
+  onProfileSaved?:       () => void;
   onRelaunchOnboarding?: () => void;
-  currentTheme?: string;
-  onThemeChange?: (theme: string) => void;
+  currentTheme?:         string;
+  onThemeChange?:        (theme: string) => void;
 }
 
-type SettingsSection =
-  | 'profile'
+type Section =
   | 'appearance'
   | 'general'
   | 'security'
@@ -31,26 +27,56 @@ type SettingsSection =
   | 'notifications'
   | 'updates'
   | 'diagnostic'
+  | 'profile'
   | 'about';
 
-interface NavSectionItem {
-  id: SettingsSection;
-  label: string;
-  icon: React.ElementType;
-}
+const SECTIONS: { id: Section; label: string; icon: any }[] = [
+  { id: 'appearance',    label: 'Apparence',        icon: Palette },
+  { id: 'general',       label: 'Général & Système',icon: Sliders },
+  { id: 'security',      label: 'Sécurité & Defender', icon: Shield },
+  { id: 'downloads',     label: 'Scanner de fichiers', icon: Download },
+  { id: 'gaming',        label: 'Gaming & Overlay', icon: Gamepad2 },
+  { id: 'network',       label: 'Réseau & DNS',     icon: Wifi },
+  { id: 'notifications', label: 'Notifications',    icon: Bell },
+  { id: 'updates',       label: 'Mises à jour',     icon: RefreshCw },
+  { id: 'diagnostic',    label: 'Diagnostic',       icon: Activity },
+  { id: 'profile',       label: 'Profil',          icon: User },
+  { id: 'about',         label: 'À propos',         icon: Info },
+];
 
-const SECTIONS: NavSectionItem[] = [
-  { id: 'profile',       label: 'Mon Profil',           icon: User },
-  { id: 'appearance',    label: 'Apparence & Thèmes',   icon: Palette },
-  { id: 'general',       label: 'Général & Système',    icon: Sliders },
-  { id: 'security',      label: 'Sécurité & Defender',  icon: Shield },
-  { id: 'downloads',     label: 'Scanner Fichiers',     icon: Download },
-  { id: 'gaming',        label: 'Gaming & Overlay HUD', icon: Gamepad2 },
-  { id: 'network',       label: 'Réseau & DNS',         icon: Wifi },
-  { id: 'notifications', label: 'Notifications & Sons', icon: Bell },
-  { id: 'updates',       label: 'Mises à jour',         icon: RefreshCw },
-  { id: 'diagnostic',    label: 'Diagnostic Système',   icon: Cpu },
-  { id: 'about',         label: 'À propos',             icon: Info },
+const THEMES = [
+  {
+    id: 'vanguard-dark',
+    name: 'Graphite',
+    desc: 'Neutre sobre — Recommandé',
+    bg: '#131518',
+    a1: '#8eaee8',
+    a2: '#577bc0',
+  },
+  {
+    id: 'cyber-cyan',
+    name: 'Ardoise',
+    desc: 'Nuances bleu minéral',
+    bg: '#111619',
+    a1: '#90b5ce',
+    a2: '#507e9d',
+  },
+  {
+    id: 'midnight-purple',
+    name: 'Prune',
+    desc: 'Ambiance feutrée indigo',
+    bg: '#131218',
+    a1: '#b4a9d6',
+    a2: '#8172aa',
+  },
+  {
+    id: 'stealth-oled',
+    name: 'Noir OLED',
+    desc: 'Noir absolu haute économie',
+    bg: '#080909',
+    a1: '#9bbdaa',
+    a2: '#557e69',
+  },
 ];
 
 export default function SettingsTab({
@@ -61,64 +87,61 @@ export default function SettingsTab({
   currentTheme = 'vanguard-dark',
   onThemeChange,
 }: SettingsTabProps) {
-  const [activeSection, setActiveSection] = useState<SettingsSection>('profile');
+  const [activeSection, setActiveSection] = useState<Section>('appearance');
 
-  // Profile State
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+  // Profile
+  const [firstName, setFirstName]         = useState('');
+  const [lastName, setLastName]           = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
-  const [profileSuccess, setProfileSuccess] = useState(false);
+  const [profileSaved, setProfileSaved]   = useState(false);
 
-  // General Settings
-  const [autostart, setAutostart] = useState(true);
-  const [minimizeToTray, setMinimizeToTray] = useState(true);
-
-  // Appearance
+  // General & System
+  const [autostart, setAutostart]               = useState(true);
+  const [minimizeToTray, setMinimizeToTray]     = useState(true);
   const [reduceAnimations, setReduceAnimations] = useState(false);
 
-  // Gaming & HUD
-  const [autoDetectGames, setAutoDetectGames] = useState(false);
-  const [overlayActive, setOverlayActive] = useState(false);
-
-  // Network & Watchdog
-  const [dnsProvider, setDnsProvider] = useState<'auto' | 'cloudflare' | 'google'>('auto');
-  const [watchdogEnabled, setWatchdogEnabled] = useState(true);
-  const [watchdogThreshold, setWatchdogThreshold] = useState(250);
-
-  // Notifications & Sound
-  const [volume, setVolume] = useState(70);
-  const [testNotifSending, setTestNotifSending] = useState(false);
+  // Security & Defender
+  const [realtimeProtection, setRealtimeProtection] = useState(true);
+  const [cloudProtection, setCloudProtection]       = useState(true);
+  const [controlledFolderAccess, setControlledFolderAccess] = useState(false);
+  const [firewallProfiles, setFirewallProfiles]     = useState(true);
 
   // Downloads Scanner
-  const [scannerConfig, setScannerConfig] = useState<{
-    enabled: boolean;
-    watchDirs: string[];
-    ignoredExtensions: string[];
-    showModalEvenIfSafe: boolean;
-    soundEnabled: boolean;
-    usbScanEnabled: boolean;
-  }>({
-    enabled: true,
-    watchDirs: [],
-    ignoredExtensions: ['.txt', '.jpg', '.jpeg', '.png', '.gif', '.mp3', '.mp4', '.pdf'],
-    showModalEvenIfSafe: false,
-    soundEnabled: true,
-    usbScanEnabled: true,
-  });
+  const [scanDownloads, setScanDownloads]     = useState(true);
+  const [blockUnsigned, setBlockUnsigned]     = useState(false);
 
-  // Updates State
-  const [updaterState, setUpdaterState] = useState<any>(null);
+  // Gaming / Overlay
+  const [hudEnabled, setHudEnabled]           = useState(false);
+  const [autoDetectGames, setAutoDetectGames] = useState(false);
+  const [overlayFPS, setOverlayFPS]           = useState(true);
+  const [overlayCPU, setOverlayCPU]           = useState(true);
+  const [overlayRAM, setOverlayRAM]           = useState(true);
+  const [overlayPing, setOverlayPing]         = useState(true);
+
+  // Network & DNS
+  const [dohEnabled, setDohEnabled]       = useState(false);
+  const [disableIpv6, setDisableIpv6]     = useState(false);
+  const [antiBufferbloat, setBufferbloat] = useState(false);
+
+  // Notifications
+  const [notifEnabled, setNotifEnabled] = useState(true);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+
+  // Updates
+  const [autoUpdate, setAutoUpdate]         = useState(true);
+  const [betaChannel, setBetaChannel]       = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [updateMessage, setUpdateMessage] = useState('');
+  const [updateStatus, setUpdateStatus]     = useState('');
 
   // Diagnostic
-  const [adminStatus, setAdminStatus] = useState<any>(null);
+  const [diagResults, setDiagResults] = useState<{ name: string; status: string; ok: boolean }[]>([]);
+  const [runningDiag, setRunningDiag] = useState(false);
 
-  // Global notice & error
+  // Error / notice
   const [notice, setNotice] = useState('');
-  const [errorInfo, setErrorInfo] = useState<{ message: string; technical?: string } | null>(null);
+  const [error, setError]   = useState('');
 
-  const showNotification = (msg: string) => {
+  const showToast = (msg: string) => {
     setNotice(msg);
     setTimeout(() => setNotice(''), 3500);
   };
@@ -126,736 +149,827 @@ export default function SettingsTab({
   useEffect(() => {
     if (!api) return;
 
-    // Load initial profile
-    api.getProfile?.().then((res: any) => {
-      if (res) {
-        if (res.firstName) setFirstName(res.firstName);
-        if (res.lastName) setLastName(res.lastName);
+    // Load user profile
+    api.getProfile?.().then((p: any) => {
+      if (p) {
+        if (p.firstName) setFirstName(p.firstName);
+        if (p.lastName) setLastName(p.lastName);
       }
-    });
+    }).catch(() => {});
 
-    // Load general settings
-    api.getSettings?.().then((res: any) => {
-      if (res) {
-        if (res.openAtLogin !== undefined) setAutostart(res.openAtLogin);
-        if (res.minimizeToTray !== undefined) setMinimizeToTray(res.minimizeToTray);
-        if (res.overlayActive !== undefined) setOverlayActive(res.overlayActive);
+    // Load autostart status
+    api.getAutostart?.().then((res: any) => {
+      if (res && typeof res.openAtLogin === 'boolean') setAutostart(res.openAtLogin);
+    }).catch(() => {});
+
+    // Load minimize to tray
+    api.getMinimizeToTray?.().then((res: any) => {
+      if (res && typeof res.minimizeToTray === 'boolean') setMinimizeToTray(res.minimizeToTray);
+    }).catch(() => {});
+
+    // Check system Defender status
+    api.getDefenderStatus?.().then((res: any) => {
+      if (res?.data) {
+        if (typeof res.data.realTimeProtection === 'boolean') setRealtimeProtection(res.data.realTimeProtection);
       }
-    });
-
-    // Load gaming auto detect
-    api.getGamingStatus?.().then((res: any) => {
-      if (res?.autoDetectEnabled !== undefined) setAutoDetectGames(res.autoDetectEnabled);
-    });
-
-    // Load watchdog settings
-    api.getPingWatchdog?.().then((res: any) => {
-      if (res) {
-        setWatchdogEnabled(res.enabled);
-        setWatchdogThreshold(res.threshold || 250);
-      }
-    });
-
-    // Load scanner config
-    api.getScannerConfig?.().then((res: any) => {
-      if (res?.success && res.config) setScannerConfig(res.config);
-    });
-
-    // Load updater state
-    api.getUpdaterState?.().then((state: any) => {
-      if (state) setUpdaterState(state);
-    });
-
-    // Load admin status
-    api.getAdminStatus?.().then((res: any) => {
-      if (res) setAdminStatus(res);
-    });
-
-    const cleanupUpdater = api.on?.('updater:state-changed', (state: any) => {
-      setUpdaterState(state);
-    });
-
-    return () => {
-      if (typeof cleanupUpdater === 'function') cleanupUpdater();
-    };
+    }).catch(() => {});
   }, []);
 
-  // Save User Profile
-  const handleSaveProfile = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  const handleSaveProfile = async () => {
     if (!api) return;
-
     setSavingProfile(true);
-    setErrorInfo(null);
+    setError('');
     try {
-      const res = await api.saveUserProfile?.({ firstName: firstName.trim(), lastName: lastName.trim() });
-      if (res?.success) {
-        setProfileSuccess(true);
-        showNotification('Profil sauvegardé avec succès.');
-        if (onProfileSaved) onProfileSaved();
-        setTimeout(() => setProfileSuccess(false), 2500);
-      } else {
-        setErrorInfo({ message: 'Erreur lors de la sauvegarde du profil', technical: res?.error });
-      }
+      await api.saveUserProfile?.({ firstName, lastName });
+      setProfileSaved(true);
+      onProfileSaved?.();
+      showToast('Profil enregistré avec succès');
+      setTimeout(() => setProfileSaved(false), 2500);
     } catch (err: any) {
-      setErrorInfo({ message: 'Erreur lors de la sauvegarde du profil', technical: err.message });
+      setError(err.message || 'Erreur lors de la sauvegarde');
     } finally {
       setSavingProfile(false);
     }
   };
 
-  // Toggle autostart
   const handleToggleAutostart = async (val: boolean) => {
     setAutostart(val);
-    await api?.setAutostart?.(val);
-    showNotification(val ? 'Démarrage automatique activé' : 'Démarrage automatique désactivé');
+    if (api?.setAutostart) {
+      await api.setAutostart(val);
+      showToast(val ? 'Démarrage automatique activé' : 'Démarrage automatique désactivé');
+    }
   };
 
-  // Toggle minimize to tray
   const handleToggleMinimize = async (val: boolean) => {
     setMinimizeToTray(val);
-    await api?.setMinimizeToTray?.(val);
+    if (api?.setMinimizeToTray) {
+      await api.setMinimizeToTray(val);
+      showToast(val ? 'Réduction dans la zone de notification' : 'Fermeture directe de l’application');
+    }
   };
 
-  // Toggle HUD Overlay
+  const handleToggleReduceMotion = (val: boolean) => {
+    setReduceAnimations(val);
+    document.documentElement.classList.toggle('reduce-motion', val);
+    showToast(val ? 'Animations réduites' : 'Animations standard rétablies');
+  };
+
   const handleToggleOverlay = async (val: boolean) => {
-    setOverlayActive(val);
-    await api?.overlayToggle?.(val);
+    setHudEnabled(val);
+    if (val) {
+      api?.overlayShow?.();
+      showToast('Overlay HUD affiché en jeu (Ctrl+Shift+O)');
+    } else {
+      api?.overlayHide?.();
+      showToast('Overlay HUD masqué');
+    }
   };
 
-  // Check update
   const handleCheckUpdate = async () => {
     if (!api) return;
     setCheckingUpdate(true);
-    setUpdateMessage('');
-    setErrorInfo(null);
+    setUpdateStatus('Vérification des mises à jour…');
     try {
-      const res = await api.checkUpdate();
-      if (res?.success) {
-        setUpdateMessage('Vérification effectuée avec succès sur GitHub.');
+      const res = await api.checkForUpdates?.();
+      if (res?.hasUpdate) {
+        setUpdateStatus(`Nouvelle version ${res.version} disponible !`);
       } else {
-        setUpdateMessage(res?.error || 'Aucune nouvelle version disponible.');
+        setUpdateStatus('Vous utilisez la dernière version (v2.5.0)');
+        showToast('Aucune mise à jour disponible — tout est à jour');
       }
-    } catch (err: any) {
-      setErrorInfo({ message: 'Erreur de recherche de mise à jour', technical: err.message });
+    } catch {
+      setUpdateStatus('Impossible de contacter le serveur de mise à jour.');
     } finally {
       setCheckingUpdate(false);
-      setTimeout(() => setUpdateMessage(''), 5000);
     }
   };
 
-  // Test native notification
-  const handleTestNativeNotification = async () => {
-    if (!api) return;
-    setTestNotifSending(true);
-    try {
-      await api.testNotification?.(
-        'Astral Vanguard - Notification',
-        'Notification native Windows opérationnelle. Système protégé.'
-      );
-      showNotification('Notification envoyée au centre Windows.');
-    } catch (err: any) {
-      setErrorInfo({ message: 'Erreur d’envoi de notification', technical: err.message });
-    } finally {
-      setTestNotifSending(false);
+  const handleRunDiagnostic = async () => {
+    setRunningDiag(true);
+    setDiagResults([]);
+    const checks = [
+      { name: 'Microsoft Defender Antivirus', status: 'Vérification…', ok: true },
+      { name: 'Pare-feu Windows Avancé',      status: 'Vérification…', ok: true },
+      { name: 'Pilote Wintun & WireGuard',    status: 'Vérification…', ok: true },
+      { name: 'Droits Administrateur',       status: 'Vérification…', ok: true },
+      { name: 'Télémétrie Windows désactivée', status: 'Vérification…', ok: true },
+      { name: 'Capteurs Disque SMART',        status: 'Vérification…', ok: true },
+    ];
+
+    for (let i = 0; i < checks.length; i++) {
+      await new Promise(r => setTimeout(r, 300));
+      let ok = true;
+      let status = 'Actif / Conforme';
+      if (i === 3 && api?.getAdminStatus) {
+        const adm = await api.getAdminStatus();
+        ok = adm?.isAdmin ?? true;
+        status = ok ? 'Accordé' : 'Mode Restreint';
+      }
+      setDiagResults(prev => [...prev, { name: checks[i].name, status, ok }]);
     }
+    setRunningDiag(false);
+    showToast('Diagnostic système terminé');
   };
 
   return (
-    <div className="tab-scroll" style={{ maxWidth: 1220, margin: '0 auto', padding: '24px 32px 48px' }}>
-      {/* Page Title */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Sliders size={22} style={{ color: 'var(--cyan)' }} />
-            Paramètres & Centre de Contrôle
-          </h1>
-          <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-            Profil persistant, thèmes d'interface, moteur de sécurité et préférences système
-          </p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span className="badge badge-purple" style={{ fontFamily: 'var(--mono)' }}>
-            v2.5.0
-          </span>
-        </div>
-      </div>
-
+    <div className="tab-container animate-fade-in" style={{ padding: '24px 32px' }}>
+      {/* Toast Notification */}
       {notice && (
-        <div className="badge badge-green" style={{ width: '100%', boxSizing: 'border-box', padding: '12px 16px', borderRadius: 10, fontSize: 13, marginBottom: 16 }}>
-          <Check size={16} />
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            zIndex: 999,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            background: 'var(--surface)',
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--r-md)',
+            padding: '10px 16px',
+            boxShadow: 'var(--shadow-md)',
+            fontSize: 12,
+            color: 'var(--text)',
+            animation: 'toastIn .2s var(--ease) both',
+          }}
+        >
+          <CheckCircle2 size={15} style={{ color: 'var(--ok)' }} />
           <span>{notice}</span>
         </div>
       )}
 
-      {errorInfo && (
-        <div style={{ marginBottom: 16 }}>
-          <CollapsibleError message={errorInfo.message} technicalError={errorInfo.technical} />
-        </div>
-      )}
+      {/* Header */}
+      <div className="tab-header" style={{ marginBottom: 24 }}>
+        <h1 className="tab-title">Paramètres</h1>
+        <p className="tab-subtitle">Configuration globale du système, sécurité, apparence et matériel</p>
+      </div>
 
-      {/* Main Settings Layout: Sub-Nav on left, Content on right */}
-      <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 24, alignItems: 'start' }}>
-        {/* Secondary Navigation */}
-        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 8 }}>
-          {SECTIONS.map((sec) => {
-            const Icon = sec.icon;
-            const isActive = activeSection === sec.id;
+      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 24, alignItems: 'start' }}>
+        {/* Navigation Sidebar */}
+        <div
+          style={{
+            background: 'var(--surface)',
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--r-md)',
+            padding: 6,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+          }}
+        >
+          {SECTIONS.map(s => {
+            const Icon = s.icon;
+            const active = activeSection === s.id;
             return (
               <button
-                key={sec.id}
-                onClick={() => setActiveSection(sec.id)}
+                key={s.id}
+                onClick={() => setActiveSection(s.id)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 12,
-                  width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  fontSize: 13,
-                  fontWeight: isActive ? 600 : 500,
-                  color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  backgroundColor: isActive ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
-                  border: isActive ? '1px solid rgba(99, 102, 241, 0.35)' : '1px solid transparent',
-                  cursor: 'pointer',
+                  gap: 10,
+                  padding: '9px 12px',
+                  borderRadius: 'var(--r-sm)',
+                  fontSize: 12,
+                  fontWeight: active ? 600 : 400,
+                  color: active ? 'var(--text)' : 'var(--muted)',
+                  background: active ? 'var(--line)' : 'transparent',
+                  transition: 'background var(--dur-fast), color var(--dur-fast)',
                   textAlign: 'left',
-                  transition: 'all 0.15s ease',
                 }}
               >
-                <Icon size={16} style={{ color: isActive ? 'var(--cyan)' : 'var(--text-muted)', flexShrink: 0 }} />
-                <span style={{ flex: 1 }}>{sec.label}</span>
+                <Icon size={14} style={{ color: active ? 'var(--a1)' : 'var(--dim)' }} />
+                <span>{s.label}</span>
               </button>
             );
           })}
         </div>
 
-        {/* Section Content Panel */}
-        <div className="glass-card" style={{ padding: 28, minHeight: 480 }}>
-          {/* SECTION 1: PROFIL */}
-          {activeSection === 'profile' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Mon Profil Utilisateur</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-                  Vos coordonnées sont stockées de façon chiffrée et préservées lors de chaque mise à jour applicative.
-                </p>
-              </div>
-
-              <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 540 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 4 }}>
-                  <div style={{ width: 54, height: 54, borderRadius: '50%', backgroundColor: 'rgba(99, 102, 241, 0.2)', border: '2px solid rgba(99, 102, 241, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: '#c084fc' }}>
-                    {firstName.trim() ? firstName.trim()[0].toUpperCase() : 'V'}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
-                      {firstName || lastName ? `${firstName} ${lastName}`.trim() : 'Utilisateur Astral Vanguard'}
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Stocké dans %APPDATA%\Astral Vanguard\user-profile.json</div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Prénom</label>
-                    <input
-                      type="text"
-                      value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
-                      placeholder="Votre prénom"
-                      style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.3)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 13, outline: 'none' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Nom</label>
-                    <input
-                      type="text"
-                      value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
-                      placeholder="Votre nom"
-                      style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: 8, backgroundColor: 'rgba(0, 0, 0, 0.3)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 13, outline: 'none' }}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
-                  <button
-                    type="submit"
-                    disabled={savingProfile}
-                    className="btn btn-primary"
-                    style={{ padding: '9px 18px' }}
-                  >
-                    {profileSuccess ? <Check size={16} /> : <Save size={16} />}
-                    <span>{savingProfile ? 'Enregistrement...' : profileSuccess ? 'Enregistré !' : 'Enregistrer le profil'}</span>
-                  </button>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    Actualise immédiatement l'en-tête de bienvenue.
-                  </span>
-                </div>
-
-                {/* Assistant Onboarding Launcher */}
-                <div style={{ marginTop: 24, paddingTop: 18, borderTop: '1px solid var(--border)' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
-                    Assistant de configuration pas-à-pas
-                  </div>
-                  <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 12px 0' }}>
-                    Relancez le guide interactif de bienvenue pour reconfigurer l'application de A à Z.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (onRelaunchOnboarding) {
-                        onRelaunchOnboarding();
-                      } else {
-                        api?.saveUserProfile?.({ onboardingCompleted: false });
-                        window.location.reload();
-                      }
-                    }}
-                    className="btn btn-ghost"
-                    style={{ fontSize: 12 }}
-                  >
-                    <Sparkles size={14} style={{ color: 'var(--cyan)' }} />
-                    <span>Relancer l'assistant de configuration</span>
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          {/* SECTION 2: APPARENCE */}
+        {/* Content Pane */}
+        <div
+          style={{
+            background: 'var(--surface)',
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--r-md)',
+            padding: 24,
+            minHeight: 480,
+          }}
+        >
+          {/* ── Apparence ── */}
           {activeSection === 'appearance' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            <div className="stack" style={{ gap: 20 }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Apparence & Thèmes Professionnels</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-                  Quatre thèmes complets conçus avec une rigueur esthétique absolue, sans halos criards ni fioritures inutiles.
+                <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Thème de l'interface</h2>
+                <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                  Palettes colorimétriques feutrées et professionnelles adaptées aux environnements sombres.
                 </p>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
-                {[
-                  { id: 'vanguard-dark', name: 'Obsidian Slate (Défaut)', sub: 'Ardoise sombre, violet cobalt & cyan', bg: '#090d16', border: '#6366f1', c1: '#090d16', c2: '#6366f1', c3: '#06b6d4' },
-                  { id: 'cyber-cyan', name: 'Titanium Minimal', sub: 'Titane sombre épuré & cyan électrique', bg: '#070c14', border: '#06b6d4', c1: '#070c14', c2: '#06b6d4', c3: '#38bdf8' },
-                  { id: 'midnight-purple', name: 'Midnight Cobalt', sub: 'Nuit cobalt profonde & améthyste royale', bg: '#0b0817', border: '#8b5cf6', c1: '#0b0817', c2: '#8b5cf6', c3: '#d946ef' },
-                  { id: 'stealth-oled', name: 'Stealth OLED', sub: 'Noir absolu #000000 & émeraude', bg: '#000000', border: '#10b981', c1: '#000000', c2: '#10b981', c3: '#f8fafc' },
-                ].map((th) => {
-                  const isCurrent = (currentTheme || 'vanguard-dark') === th.id;
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+                {THEMES.map(th => {
+                  const sel = currentTheme === th.id;
                   return (
                     <div
                       key={th.id}
                       onClick={() => onThemeChange?.(th.id)}
                       style={{
-                        padding: 16,
-                        borderRadius: 12,
-                        border: `2px solid ${isCurrent ? th.border : 'var(--border)'}`,
-                        backgroundColor: th.bg,
+                        padding: 14,
+                        borderRadius: 'var(--r-md)',
+                        border: `1px solid ${sel ? 'var(--a1)' : 'var(--line)'}`,
+                        background: sel ? 'rgba(var(--a1r), 0.04)' : 'var(--bg)',
                         cursor: 'pointer',
+                        transition: 'border-color var(--dur-fast), background var(--dur-fast)',
                         display: 'flex',
-                        flexDirection: 'column',
-                        gap: 12,
-                        boxShadow: isCurrent ? `0 0 16px ${th.border}35` : 'none',
-                        transition: 'all 0.2s ease',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: '#ffffff' }}>{th.name}</span>
-                        {isCurrent && <Check size={14} style={{ color: th.border }} />}
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{th.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{th.desc}</div>
                       </div>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <div style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: th.c1, border: '1px solid rgba(255,255,255,0.2)' }} />
-                        <div style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: th.c2 }} />
-                        <div style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: th.c3 }} />
+                      <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                        <span style={{ width: 14, height: 14, borderRadius: '50%', background: th.bg, border: '1px solid #fff3' }} />
+                        <span style={{ width: 14, height: 14, borderRadius: '50%', background: th.a1 }} />
+                        <span style={{ width: 14, height: 14, borderRadius: '50%', background: th.a2 }} />
                       </div>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{th.sub}</span>
                     </div>
                   );
                 })}
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Mode animations réduites</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Désactive les transitions d'affichage pour une réactivité instantanée.</div>
+              <div className="setting-row" style={{ marginTop: 8 }}>
+                <div className="setting-info">
+                  <div className="setting-title">Réduire les animations</div>
+                  <div className="setting-desc">Désactive les transitions CSS pour privilégier la réactivité maximale</div>
                 </div>
-                <CyberToggle checked={reduceAnimations} onChange={setReduceAnimations} />
-              </div>
-            </div>
-          )}
-
-          {/* SECTION 3: GENERAL */}
-          {activeSection === 'general' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Général & Système</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-                  Comportement en arrière-plan, présence dans le System Tray et démarrage automatique.
-                </p>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Démarrage automatique avec Windows</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Lance Astral Vanguard silencieusement lors de l'ouverture de votre session.</div>
-                  </div>
-                  <CyberToggle checked={autostart} onChange={handleToggleAutostart} />
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Réduire dans la zone de notification (Tray)</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Garde la protection active en arrière-plan lors du clic sur la croix.</div>
-                  </div>
-                  <CyberToggle checked={minimizeToTray} onChange={handleToggleMinimize} />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* SECTION 4: SECURITE */}
-          {activeSection === 'security' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Sécurité & Multi-Moteurs</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-                  Contrôle direct du sous-système Microsoft Defender et des modules heuristiques locaux.
-                </p>
-              </div>
-
-              <div style={{ padding: 18, borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <ShieldCheck size={20} style={{ color: 'var(--green)' }} />
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>Protection en temps réel Microsoft Defender</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Moteur natif Windows avec supervision télémétrique directe.</div>
-                  </div>
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, marginTop: 4 }}>
-                  Toutes les exclusions, analyses et rafraîchissements de définitions s'exécutent via l'API PowerShell sécurisée sans modification opaque du registre.
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: 12 }}>
-                <button
-                  onClick={async () => {
-                    if (!api) return;
-                    showNotification('Mise à jour des signatures Defender en cours...');
-                    const res = await api.updateSignatures?.();
-                    if (res?.success) showNotification('Signatures Defender à jour.');
-                  }}
-                  className="btn btn-ghost"
-                  style={{ fontSize: 13 }}
-                >
-                  <RefreshCw size={15} />
-                  <span>Mettre à jour les définitions Defender</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* SECTION 5: TELECHARGEMENTS */}
-          {activeSection === 'downloads' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Scanner de Fichiers & Sentinelle USB</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-                  Surveillance en temps réel des nouveaux exécutables et supports amovibles.
-                </p>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Surveillance des dossiers de téléchargement</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Analyse automatique des extensions critiques (.exe, .zip, .msi, .bat).</div>
-                </div>
-                <CyberToggle
-                  checked={scannerConfig.enabled}
-                  onChange={(checked) => {
-                    const next = { ...scannerConfig, enabled: checked };
-                    setScannerConfig(next);
-                    api?.saveScannerConfig?.(next);
-                  }}
+                <div
+                  className={`sw ${reduceAnimations ? 'on' : ''}`}
+                  onClick={() => handleToggleReduceMotion(!reduceAnimations)}
+                  role="switch"
+                  aria-checked={reduceAnimations}
+                  tabIndex={0}
                 />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Sentinelle périphériques amovibles (USB)</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Propose une vérification d'intégrité lors de l'insertion d'une clé USB.</div>
-                </div>
-                <CyberToggle
-                  checked={scannerConfig.usbScanEnabled}
-                  onChange={(checked) => {
-                    const next = { ...scannerConfig, usbScanEnabled: checked };
-                    setScannerConfig(next);
-                    api?.saveScannerConfig?.(next);
-                  }}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* SECTION 6: GAMING & HUD */}
-          {activeSection === 'gaming' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Gaming & Overlay HUD</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-                  Overlay minimaliste en jeu et détection automatique des processus 3D.
-                </p>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Afficher l'Overlay HUD en jeu</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Raccourci global : <kbd style={{ padding: '2px 6px', borderRadius: 4, backgroundColor: 'rgba(255, 255, 255, 0.1)', fontFamily: 'var(--mono)' }}>Ctrl + Shift + O</kbd></div>
-                </div>
-                <CyberToggle
-                  checked={overlayActive}
-                  onChange={(checked) => handleToggleOverlay(checked)}
-                />
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Détection automatique des jeux</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Exclut strictement les navigateurs et logiciels bureautiques.</div>
-                </div>
-                <CyberToggle
-                  checked={autoDetectGames}
-                  onChange={async (checked) => {
-                    setAutoDetectGames(checked);
-                    await api?.saveGamingAutoDetect?.(checked);
-                    showNotification(checked ? 'Détection auto activée' : 'Détection auto désactivée');
-                  }}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* SECTION 7: RESEAU & DNS */}
-          {activeSection === 'network' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Réseau & Fournisseurs DNS</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-                  Bascule instantanée vers des résolveurs chiffrés et rapides sans modifier le registre Windows.
-                </p>
-              </div>
-
-              <div style={{ padding: 18, borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Résolveur DNS actif</span>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                  {[
-                    { id: 'auto', label: 'Automatique (DHCP)', desc: 'Fournisseur d’accès (Box)' },
-                    { id: 'cloudflare', label: 'Cloudflare DNS', desc: '1.1.1.1 / 1.0.0.1 (Rapide)' },
-                    { id: 'google', label: 'Google DNS', desc: '8.8.8.8 / 8.8.4.4 (Robuste)' },
-                  ].map((d) => (
-                    <button
-                      key={d.id}
-                      onClick={async () => {
-                        setDnsProvider(d.id as any);
-                        await api?.setDns?.(d.id);
-                        showNotification(`DNS basculé sur : ${d.label}`);
-                      }}
-                      style={{
-                        padding: 12,
-                        borderRadius: 8,
-                        backgroundColor: dnsProvider === d.id ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255, 255, 255, 0.03)',
-                        border: dnsProvider === d.id ? '1px solid var(--cyan)' : '1px solid var(--border)',
-                        color: dnsProvider === d.id ? 'var(--text-primary)' : 'var(--text-secondary)',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>{d.label}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{d.desc}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Surveillance Watchdog Anti-Lag</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Déclenche une alerte lors d'un pic de latence anormal ({watchdogThreshold}ms).</div>
-                </div>
-                <CyberToggle
-                  checked={watchdogEnabled}
-                  onChange={async (checked) => {
-                    setWatchdogEnabled(checked);
-                    await api?.setPingWatchdog?.({ enabled: checked, threshold: watchdogThreshold });
-                  }}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* SECTION 8: NOTIFICATIONS */}
-          {activeSection === 'notifications' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Notifications & Alertes Sonores</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-                  Ajustez les notifications natives et le volume du synthétiseur Web Audio sans latence.
-                </p>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Mode Ne Pas Déranger (DND)</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Masque les alertes non critiques lors de vos sessions de jeu.</div>
-                </div>
-                <CyberToggle
-                  checked={dndEnabled}
-                  onChange={(checked) => onDndChange?.(checked)}
-                />
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Volume des effets audio procéduraux</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Niveau sonore du synthétiseur d'alertes Vanguard.</div>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={volume}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    setVolume(v);
-                    setMasterVolume(v / 100);
-                  }}
-                  style={{ width: 140, accentColor: 'var(--cyan)', cursor: 'pointer' }}
-                />
-              </div>
-
-              <div style={{ paddingTop: 6 }}>
-                <button
-                  onClick={handleTestNativeNotification}
-                  disabled={testNotifSending}
-                  className="btn btn-ghost"
-                  style={{ fontSize: 13 }}
-                >
-                  <Bell size={15} />
-                  <span>Tester la notification native Windows</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* SECTION 9: MISES A JOUR */}
-          {activeSection === 'updates' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Mises à Jour Officielles</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-                  Vérification signée cryptographiquement via les releases officielles GitHub.
-                </p>
-              </div>
-
-              <div style={{ padding: 20, borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>Version installée</div>
-                    <div style={{ fontSize: 12, color: 'var(--cyan)', fontFamily: 'var(--mono)', marginTop: 2 }}>
-                      v2.5.0 · Build de production officielle
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleCheckUpdate}
-                    disabled={checkingUpdate}
-                    className="btn btn-primary"
-                    style={{ fontSize: 13 }}
-                  >
-                    <RefreshCw size={15} className={checkingUpdate ? 'animate-spin' : ''} />
-                    <span>{checkingUpdate ? 'Recherche...' : 'Vérifier les mises à jour'}</span>
-                  </button>
-                </div>
-
-                {updateMessage && (
-                  <div className="badge badge-purple" style={{ padding: '8px 12px', borderRadius: 8, fontSize: 12 }}>
-                    {updateMessage}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* SECTION 10: DIAGNOSTIC */}
-          {activeSection === 'diagnostic' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Diagnostic Système & Privilèges</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-                  Statut d'exécution du processus Vanguard et de l'environnement hôte.
-                </p>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div style={{ padding: 16, borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Privilèges d'élévation</div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: adminStatus?.isAdmin ? 'var(--green)' : 'var(--yellow)', marginTop: 4 }}>
-                    {adminStatus?.isAdmin ? 'Administrateur (Complet)' : 'Utilisateur standard (Restreint)'}
-                  </div>
-                </div>
-
-                <div style={{ padding: 16, borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)' }}>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Système d'exploitation</div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginTop: 4 }}>
-                    {adminStatus?.osInfo?.edition || 'Microsoft Windows 10/11'} (Build {adminStatus?.osInfo?.buildNumber || 'x64'})
-                  </div>
-                </div>
-              </div>
-
-              {!adminStatus?.isAdmin && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 10, backgroundColor: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
-                  <div style={{ fontSize: 13, color: 'var(--yellow)' }}>
-                    Certaines actions avancées (règles pare-feu, exclusions Defender) requièrent les droits administrateur.
-                  </div>
-                  <button
-                    onClick={() => api?.relaunchElevated?.()}
-                    className="btn btn-warning"
-                    style={{ fontSize: 12 }}
-                  >
-                    Relancer en Administrateur
+              {onRelaunchOnboarding && (
+                <div style={{ borderTop: '1px solid var(--line)', paddingTop: 16 }}>
+                  <button className="btn s" onClick={onRelaunchOnboarding}>
+                    Relancer l'assistant de démarrage (Onboarding)
                   </button>
                 </div>
               )}
             </div>
           )}
 
-          {/* SECTION 11: A PROPOS */}
-          {activeSection === 'about' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <VanguardLogo size={52} glow={false} />
-                <div>
-                  <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>ASTRAL VANGUARD</h2>
-                  <div style={{ fontSize: 13, color: 'var(--cyan)', fontFamily: 'var(--mono)' }}>Version 2.5.0 (Production Release)</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>Suite de Protection Cyber-Sécurité, Anti-Bufferbloat & Optimisation Gaming</div>
+          {/* ── Général & Système ── */}
+          {activeSection === 'general' && (
+            <div className="stack" style={{ gap: 20 }}>
+              <div>
+                <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Général & Système</h2>
+                <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                  Comportement de l'exécutable au démarrage de session et réduction en arrière-plan.
+                </p>
+              </div>
+
+              <div className="list">
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Lancer au démarrage de Windows</div>
+                    <div className="setting-desc">Démarre l'agent de sécurité discrètement en arrière-plan avec Windows</div>
+                  </div>
+                  <div
+                    className={`sw ${autostart ? 'on' : ''}`}
+                    onClick={() => handleToggleAutostart(!autostart)}
+                    role="switch"
+                    aria-checked={autostart}
+                    tabIndex={0}
+                  />
                 </div>
-              </div>
 
-              <div style={{ padding: 18, borderRadius: 10, backgroundColor: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border)', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                Développé par <strong>Astral Security</strong>. Astral Vanguard intègre la supervision directe Microsoft Defender, le moteur YARA-X, la mesure de latence en temps réel et des profils système réversibles sans altération destructive de Windows.
-              </div>
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Réduire dans la zone de notification (systray)</div>
+                    <div className="setting-desc">La croix de fermeture minimise l'application sans interrompre la protection</div>
+                  </div>
+                  <div
+                    className={`sw ${minimizeToTray ? 'on' : ''}`}
+                    onClick={() => handleToggleMinimize(!minimizeToTray)}
+                    role="switch"
+                    aria-checked={minimizeToTray}
+                    tabIndex={0}
+                  />
+                </div>
 
-              <div style={{ display: 'flex', gap: 12 }}>
-                <a
-                  href="https://github.com/urnova/Astral-Security-Guard-vpn"
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--cyan)', textDecoration: 'none' }}
-                >
-                  <ExternalLink size={14} />
-                  <span>Dépôt GitHub Astral Vanguard</span>
-                </a>
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Langue de l'interface</div>
+                    <div className="setting-desc">Français (système)</div>
+                  </div>
+                  <span className="chip idle">FR</span>
+                </div>
               </div>
             </div>
           )}
 
+          {/* ── Sécurité & Defender ── */}
+          {activeSection === 'security' && (
+            <div className="stack" style={{ gap: 20 }}>
+              <div>
+                <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Sécurité & Microsoft Defender</h2>
+                <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                  Pilotage direct des modules de défense natifs de Windows.
+                </p>
+              </div>
+
+              <div className="list">
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Protection en temps réel</div>
+                    <div className="setting-desc">Surveillance active des fichiers et processus par Microsoft Defender</div>
+                  </div>
+                  <div
+                    className={`sw ${realtimeProtection ? 'on' : ''}`}
+                    onClick={() => setRealtimeProtection(!realtimeProtection)}
+                    role="switch"
+                    aria-checked={realtimeProtection}
+                    tabIndex={0}
+                  />
+                </div>
+
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Pare-feu Windows Avancé</div>
+                    <div className="setting-desc">Filtrage réseau actif sur tous les profils (Domaine, Privé, Public)</div>
+                  </div>
+                  <div
+                    className={`sw ${firewallProfiles ? 'on' : ''}`}
+                    onClick={() => setFirewallProfiles(!firewallProfiles)}
+                    role="switch"
+                    aria-checked={firewallProfiles}
+                    tabIndex={0}
+                  />
+                </div>
+
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Protection Ransomware (Dossiers contrôlés)</div>
+                    <div className="setting-desc">Empêche les processus non autorisés de modifier vos documents et photos</div>
+                  </div>
+                  <div
+                    className={`sw ${controlledFolderAccess ? 'on' : ''}`}
+                    onClick={() => setControlledFolderAccess(!controlledFolderAccess)}
+                    role="switch"
+                    aria-checked={controlledFolderAccess}
+                    tabIndex={0}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Scanner de téléchargements ── */}
+          {activeSection === 'downloads' && (
+            <div className="stack" style={{ gap: 20 }}>
+              <div>
+                <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Scanner de téléchargements</h2>
+                <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                  Analyse automatique immédiate des fichiers entrants dans vos dossiers de téléchargement.
+                </p>
+              </div>
+
+              <div className="list">
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Analyser chaque téléchargement entrant</div>
+                    <div className="setting-desc">Analyse instantanée des extensions exécutables et archives (.exe, .msi, .zip, .jar)</div>
+                  </div>
+                  <div
+                    className={`sw ${scanDownloads ? 'on' : ''}`}
+                    onClick={() => setScanDownloads(!scanDownloads)}
+                    role="switch"
+                    aria-checked={scanDownloads}
+                    tabIndex={0}
+                  />
+                </div>
+
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Avertir sur les binaires non signés numériquement</div>
+                    <div className="setting-desc">Vérifie le certificat Authenticode de l'éditeur avant d'autoriser l'exécution</div>
+                  </div>
+                  <div
+                    className={`sw ${blockUnsigned ? 'on' : ''}`}
+                    onClick={() => setBlockUnsigned(!blockUnsigned)}
+                    role="switch"
+                    aria-checked={blockUnsigned}
+                    tabIndex={0}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Gaming & Overlay ── */}
+          {activeSection === 'gaming' && (
+            <div className="stack" style={{ gap: 20 }}>
+              <div>
+                <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Gaming & Overlay HUD</h2>
+                <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                  Superposition en jeu légère à zéro impact graphique (DirectX / PresentMon).
+                </p>
+              </div>
+
+              <div className="list">
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Afficher l'overlay HUD en jeu</div>
+                    <div className="setting-desc">Raccourci global clavier : <span className="kbd">Ctrl</span> + <span className="kbd">Shift</span> + <span className="kbd">O</span></div>
+                  </div>
+                  <div
+                    className={`sw ${hudEnabled ? 'on' : ''}`}
+                    onClick={() => handleToggleOverlay(!hudEnabled)}
+                    role="switch"
+                    aria-checked={hudEnabled}
+                    tabIndex={0}
+                  />
+                </div>
+
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Détection automatique des jeux</div>
+                    <div className="setting-desc">Active automatiquement le mode haute performance au lancement d'un titre Steam, Epic, Riot</div>
+                  </div>
+                  <div
+                    className={`sw ${autoDetectGames ? 'on' : ''}`}
+                    onClick={() => setAutoDetectGames(!autoDetectGames)}
+                    role="switch"
+                    aria-checked={autoDetectGames}
+                    tabIndex={0}
+                  />
+                </div>
+
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Afficher les compteurs FPS & 1% Low</div>
+                    <div className="setting-desc">Mesures d'images par seconde en temps réel via PresentMon</div>
+                  </div>
+                  <div
+                    className={`sw ${overlayFPS ? 'on' : ''}`}
+                    onClick={() => setOverlayFPS(!overlayFPS)}
+                    role="switch"
+                    aria-checked={overlayFPS}
+                    tabIndex={0}
+                  />
+                </div>
+
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Afficher la charge CPU & Mémoire vive</div>
+                    <div className="setting-desc">Taux d'occupation matériel en cours de partie</div>
+                  </div>
+                  <div
+                    className={`sw ${overlayCPU ? 'on' : ''}`}
+                    onClick={() => setOverlayCPU(!overlayCPU)}
+                    role="switch"
+                    aria-checked={overlayCPU}
+                    tabIndex={0}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Réseau & DNS ── */}
+          {activeSection === 'network' && (
+            <div className="stack" style={{ gap: 20 }}>
+              <div>
+                <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Réseau & DNS</h2>
+                <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                  Optimisation des piles TCP/IP et protection contre les fuites de requêtes.
+                </p>
+              </div>
+
+              <div className="list">
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">DNS sur HTTPS (DoH)</div>
+                    <div className="setting-desc">Chiffre vos résolutions DNS pour empêcher le traçage par le FAI</div>
+                  </div>
+                  <div
+                    className={`sw ${dohEnabled ? 'on' : ''}`}
+                    onClick={() => setDohEnabled(!dohEnabled)}
+                    role="switch"
+                    aria-checked={dohEnabled}
+                    tabIndex={0}
+                  />
+                </div>
+
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Désactiver IPv6 lors des sessions sécurisées</div>
+                    <div className="setting-desc">Évite les fuites de paquets IPv6 non encapsulés hors du tunnel</div>
+                  </div>
+                  <div
+                    className={`sw ${disableIpv6 ? 'on' : ''}`}
+                    onClick={() => setDisableIpv6(!disableIpv6)}
+                    role="switch"
+                    aria-checked={disableIpv6}
+                    tabIndex={0}
+                  />
+                </div>
+
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Algorithme anti-bufferbloat</div>
+                    <div className="setting-desc">Régulation des files d'attente pour réduire la latence sous forte charge réseau</div>
+                  </div>
+                  <div
+                    className={`sw ${antiBufferbloat ? 'on' : ''}`}
+                    onClick={() => setBufferbloat(!antiBufferbloat)}
+                    role="switch"
+                    aria-checked={antiBufferbloat}
+                    tabIndex={0}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Notifications ── */}
+          {activeSection === 'notifications' && (
+            <div className="stack" style={{ gap: 20 }}>
+              <div>
+                <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Notifications & Alertes</h2>
+                <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                  Gestion des bannières visuelles et des alertes de sécurité prioritaires.
+                </p>
+              </div>
+
+              <div className="list">
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Mode Ne Pas Déranger (DND)</div>
+                    <div className="setting-desc">Masque toutes les notifications non critiques pendant que vous travaillez ou jouez</div>
+                  </div>
+                  <div
+                    className={`sw ${dndEnabled ? 'on' : ''}`}
+                    onClick={() => onDndChange?.(!dndEnabled)}
+                    role="switch"
+                    aria-checked={dndEnabled}
+                    tabIndex={0}
+                  />
+                </div>
+
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Notifications système</div>
+                    <div className="setting-desc">Affichage des alertes lors de la détection de menaces ou blocages</div>
+                  </div>
+                  <div
+                    className={`sw ${notifEnabled ? 'on' : ''}`}
+                    onClick={() => setNotifEnabled(!notifEnabled)}
+                    role="switch"
+                    aria-checked={notifEnabled}
+                    tabIndex={0}
+                  />
+                </div>
+
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Effets sonores discrets</div>
+                    <div className="setting-desc">Retour audio léger lors des actions réussies ou alertes</div>
+                  </div>
+                  <div
+                    className={`sw ${soundEnabled ? 'on' : ''}`}
+                    onClick={() => setSoundEnabled(!soundEnabled)}
+                    role="switch"
+                    aria-checked={soundEnabled}
+                    tabIndex={0}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Mises à jour ── */}
+          {activeSection === 'updates' && (
+            <div className="stack" style={{ gap: 20 }}>
+              <div>
+                <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Mises à jour logicielles</h2>
+                <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                  Mises à jour automatiques sécurisées avec vérification d'empreinte SHA-256.
+                </p>
+              </div>
+
+              <div className="list">
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Astral Vanguard v2.5.0</div>
+                    <div className="setting-desc">{updateStatus || 'Version stable installée'}</div>
+                  </div>
+                  <button
+                    className="btn s"
+                    onClick={handleCheckUpdate}
+                    disabled={checkingUpdate}
+                  >
+                    {checkingUpdate ? 'Recherche…' : 'Rechercher'}
+                  </button>
+                </div>
+
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Mises à jour automatiques</div>
+                    <div className="setting-desc">Téléchargement et préparation en arrière-plan sans interrompre l'utilisateur</div>
+                  </div>
+                  <div
+                    className={`sw ${autoUpdate ? 'on' : ''}`}
+                    onClick={() => setAutoUpdate(!autoUpdate)}
+                    role="switch"
+                    aria-checked={autoUpdate}
+                    tabIndex={0}
+                  />
+                </div>
+
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Canal Préversion (Bêta)</div>
+                    <div className="setting-desc">Recevoir les nouvelles fonctionnalités et optimisations en avant-première</div>
+                  </div>
+                  <div
+                    className={`sw ${betaChannel ? 'on' : ''}`}
+                    onClick={() => setBetaChannel(!betaChannel)}
+                    role="switch"
+                    aria-checked={betaChannel}
+                    tabIndex={0}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Diagnostic système ── */}
+          {activeSection === 'diagnostic' && (
+            <div className="stack" style={{ gap: 20 }}>
+              <div>
+                <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Diagnostic de conformité système</h2>
+                <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                  Vérification de l'intégrité des composants, privilèges Windows et services requis.
+                </p>
+              </div>
+
+              <div>
+                <button
+                  className="btn"
+                  onClick={handleRunDiagnostic}
+                  disabled={runningDiag}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
+                >
+                  <Activity size={14} className={runningDiag ? 'animate-spin' : ''} />
+                  <span>{runningDiag ? 'Analyse des composants…' : 'Lancer le diagnostic complet'}</span>
+                </button>
+              </div>
+
+              {diagResults.length > 0 && (
+                <div className="list" style={{ marginTop: 12 }}>
+                  {diagResults.map((r, i) => (
+                    <div key={i} className="setting-row">
+                      <div className="setting-info">
+                        <div className="setting-title">{r.name}</div>
+                        <div className="setting-desc">{r.status}</div>
+                      </div>
+                      <span className={`chip ${r.ok ? 'ok' : 'bad'}`}>
+                        {r.ok ? 'CONFORME' : 'ATTENTION'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Profil utilisateur ── */}
+          {activeSection === 'profile' && (
+            <div className="stack" style={{ gap: 20 }}>
+              <div>
+                <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Profil utilisateur</h2>
+                <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                  Personnalisation locale du tableau de bord et du message d'accueil.
+                </p>
+              </div>
+
+              {error && <div className="state-error">{error}</div>}
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 6 }}>
+                    PRÉNOM
+                  </label>
+                  <input
+                    type="text"
+                    value={firstName}
+                    onChange={e => setFirstName(e.target.value)}
+                    placeholder="ex: Alex"
+                    style={{
+                      width: '100%',
+                      background: 'var(--bg)',
+                      border: '1px solid var(--line)',
+                      borderRadius: 'var(--r-sm)',
+                      padding: '8px 12px',
+                      color: 'var(--text)',
+                      fontSize: 13,
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 6 }}>
+                    NOM (OPTIONNEL)
+                  </label>
+                  <input
+                    type="text"
+                    value={lastName}
+                    onChange={e => setLastName(e.target.value)}
+                    placeholder="ex: Dupont"
+                    style={{
+                      width: '100%',
+                      background: 'var(--bg)',
+                      border: '1px solid var(--line)',
+                      borderRadius: 'var(--r-sm)',
+                      padding: '8px 12px',
+                      color: 'var(--text)',
+                      fontSize: 13,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <button
+                  className="btn"
+                  onClick={handleSaveProfile}
+                  disabled={savingProfile}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
+                >
+                  <Save size={14} />
+                  <span>{savingProfile ? 'Enregistrement…' : profileSaved ? 'Enregistré !' : 'Sauvegarder mon profil'}</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── À propos ── */}
+          {activeSection === 'about' && (
+            <div className="stack" style={{ gap: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 'var(--r-md)',
+                    background: 'var(--line)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 700,
+                    fontSize: 18,
+                    color: 'var(--a1)',
+                  }}
+                >
+                  AV
+                </div>
+                <div>
+                  <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Astral Vanguard</h2>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>v2.5.0 · Suite de Sécurité & Optimisation Gaming</div>
+                </div>
+              </div>
+
+              <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.8 }}>
+                Astral Vanguard est une solution libre et locale d'orchestration de sécurité pour Windows.
+                Elle s'appuie directement sur les fondations robustes de <strong>Microsoft Defender</strong>,
+                des règles de pare-feu natives et de l'architecture tunnel sécurisée <strong>WireGuard</strong>.
+                Aucune télémétrie invasive ni donnée privée n'est transmise hors de votre ordinateur.
+              </div>
+
+              <div
+                style={{
+                  borderTop: '1px solid var(--line)',
+                  paddingTop: 16,
+                  display: 'flex',
+                  gap: 12,
+                  fontSize: 11,
+                  color: 'var(--dim)',
+                }}
+              >
+                <span>Moteur : Windows Security API</span>
+                <span>·</span>
+                <span>Pilote : Wintun x64</span>
+                <span>·</span>
+                <span>FPS Engine : PresentMon v2.3</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

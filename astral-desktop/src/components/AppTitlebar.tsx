@@ -1,124 +1,94 @@
-import React from 'react';
+import { useEffect, useState } from 'react';
 import VanguardLogo from './common/VanguardLogo';
-import { useSystem } from '../context/SystemContext';
 
-interface AppTitlebarProps {
+const api = (window as any).vanguard;
+
+interface Props {
   gamingActive: boolean;
-  currentGame: string | null;
+  currentGame:  string | null;
 }
 
-export default function AppTitlebar({ gamingActive, currentGame }: AppTitlebarProps) {
-  const { securityStatus } = useSystem();
-  const isProtected = securityStatus?.realTimeProtection ?? true;
+export default function AppTitlebar({ gamingActive, currentGame }: Props) {
+  const [isAdmin, setIsAdmin] = useState(true);
+
+  useEffect(() => {
+    api?.getAdminStatus?.().then((r: any) => {
+      if (r && typeof r.isAdmin === 'boolean') setIsAdmin(r.isAdmin);
+    }).catch(() => {});
+  }, []);
 
   return (
-    <header
-      className="app-titlebar titlebar-drag"
-      style={{
-        height: 40,
-        minHeight: 40,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingLeft: 16,
-        paddingRight: 140, // Reserved for Windows native caption buttons
-        backgroundColor: 'var(--bg-void)',
-        borderBottom: '1px solid var(--border)',
-        userSelect: 'none',
-        zIndex: 100,
-        width: '100%',
-      }}
-    >
-      {/* Unified Single Brand Emblem & Title */}
-      <div className="titlebar-no-drag" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+    <div className="app-titlebar">
+      {/* Brand & Logo */}
+      <div className="tb-brand" style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
         <VanguardLogo size={20} glow={false} />
-        <span
-          style={{
-            fontFamily: "'Space Grotesk', system-ui, sans-serif",
-            fontSize: 13,
-            fontWeight: 800,
-            letterSpacing: '0.04em',
-            color: 'var(--text-primary)',
-          }}
-        >
-          ASTRAL VANGUARD
+        <span className="tb-name" style={{ fontWeight: 600, letterSpacing: '-0.01em', color: 'var(--text)' }}>
+          Astral Vanguard
         </span>
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            padding: '2px 8px',
-            borderRadius: 6,
-            backgroundColor: 'rgba(99, 102, 241, 0.15)',
-            border: '1px solid rgba(99, 102, 241, 0.3)',
-            color: '#a5b4fc',
-            fontFamily: 'var(--mono)',
-          }}
-        >
-          v2.5.0
+        <span className="tb-ver" style={{ fontSize: 11, color: 'var(--dim)', background: 'rgba(255,255,255,0.04)', padding: '2px 6px', borderRadius: '4px' }}>
+          v2.5.1
         </span>
       </div>
 
-      {/* Middle Status Indicator */}
-      <div className="titlebar-no-drag" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <span className="tb-spacer" />
+
+      {/* Status Chip */}
+      <div className="tb-status-wrap" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         {gamingActive ? (
-          <span className="badge badge-cyan" style={{ fontSize: 10, padding: '3px 10px' }}>
-            <span className="badge-dot" style={{ animation: 'dotPulse 1.4s infinite' }} />
-            GAMING : {currentGame || 'Session Active'}
+          <span className="chip warn" style={{ WebkitAppRegion: 'no-drag' } as any}>
+            <span className="dot" />
+            {currentGame ? `Jeu : ${currentGame}` : 'Mode Gaming actif'}
           </span>
-        ) : !isProtected ? (
-          <span
-            style={{
-              fontSize: 11,
-              color: '#f59e0b',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 7,
-              backgroundColor: 'rgba(245, 158, 11, 0.1)',
-              padding: '3px 10px',
-              borderRadius: 20,
-              border: '1px solid rgba(245, 158, 11, 0.4)',
-              fontWeight: 600,
-            }}
-          >
-            <span
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: '50%',
-                backgroundColor: '#f59e0b',
-                boxShadow: '0 0 8px rgba(245, 158, 11, 0.7)',
-              }}
-            />
-            Protection Suspendue
+        ) : isAdmin ? (
+          <span className="chip" style={{ WebkitAppRegion: 'no-drag' } as any}>
+            <span className="dot" />
+            Système protégé
           </span>
         ) : (
-          <span
-            style={{
-              fontSize: 11,
-              color: 'var(--text-secondary)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 7,
-              backgroundColor: 'rgba(255, 255, 255, 0.03)',
-              padding: '3px 10px',
-              borderRadius: 20,
-              border: '1px solid var(--border)',
-            }}
-          >
-            <span
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: '50%',
-                backgroundColor: 'var(--green)',
-                boxShadow: '0 0 8px rgba(16,217,160,0.6)',
-              }}
-            />
-            Système Protégé
+          <span className="chip warn" style={{ WebkitAppRegion: 'no-drag' } as any}>
+            <span className="dot" />
+            Mode restreint
           </span>
         )}
       </div>
-    </header>
+
+      {/* Window controls */}
+      <div className="win-controls" style={{ display: 'flex', alignItems: 'center', marginLeft: 8 }}>
+        <button
+          className="win-btn"
+          onClick={() => api?.minimizeWindow?.()}
+          title="Réduire"
+          aria-label="Réduire"
+          style={{ WebkitAppRegion: 'no-drag' } as any}
+        >
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <line x1="4.5" y1="9" x2="13.5" y2="9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+        </button>
+        <button
+          className="win-btn"
+          onClick={() => api?.maximizeWindow?.()}
+          title="Agrandir / Restaurer"
+          aria-label="Agrandir / Restaurer"
+          style={{ WebkitAppRegion: 'no-drag' } as any}
+        >
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <rect x="4.5" y="4.5" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
+          </svg>
+        </button>
+        <button
+          className="win-btn close"
+          onClick={() => api?.closeWindow?.()}
+          title="Fermer"
+          aria-label="Fermer"
+          style={{ WebkitAppRegion: 'no-drag' } as any}
+        >
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <line x1="5" y1="5" x2="13" y2="13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            <line x1="13" y1="5" x2="5" y2="13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
+    </div>
   );
 }

@@ -564,6 +564,28 @@ ipcMain.handle('app:quit', () => {
   app.exit(0);
 });
 ipcMain.handle('app:minimize', () => mainWin?.minimize());
+ipcMain.handle('app:toggle-maximize', () => {
+  if (!mainWin) return false;
+  if (mainWin.isMaximized()) {
+    mainWin.unmaximize();
+    return false;
+  } else {
+    mainWin.maximize();
+    return true;
+  }
+});
+ipcMain.handle('app:close', () => {
+  if (minimizeToTray) {
+    mainWin?.hide();
+  } else {
+    minimizeToTray = false;
+    try {
+      tray?.destroy();
+      tray = null;
+    } catch {}
+    app.exit(0);
+  }
+});
 ipcMain.handle('app:hide-to-tray', () => mainWin?.hide());
 
 // Settings IPC

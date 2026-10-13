@@ -1,19 +1,57 @@
 import { useState, useEffect } from 'react';
-import { X, Minus, Maximize2, Zap } from 'lucide-react';
+import { X, Minimize2, Activity, Wifi, Cpu, Layers } from 'lucide-react';
 
 const api = (window as any).vanguard;
 
+interface Metrics {
+  cpu: number;
+  ramPercent: number;
+}
+
+interface PresentMon {
+  status: string;
+  fps: number | null;
+  onePercentLowFps: number | null;
+  isCapturing: boolean;
+}
+
+function MetricBar({ value, color }: { value: number; color: string }) {
+  return (
+    <div style={{ width: 44, height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
+      <div
+        style={{
+          height: '100%',
+          width: `${Math.min(100, Math.max(0, value))}%`,
+          background: color,
+          borderRadius: 2,
+          transition: 'width 0.3s ease',
+        }}
+      />
+    </div>
+  );
+}
+
+function getCpuColor(v: number) {
+  return v > 85 ? 'var(--bad)' : v > 65 ? 'var(--warn)' : 'var(--ok)';
+}
+
+function getRamColor(v: number) {
+  return v > 85 ? 'var(--bad)' : v > 70 ? 'var(--warn)' : 'var(--a1)';
+}
+
+function getFpsColor(fps: number | null) {
+  if (fps === null || fps === undefined) return 'var(--muted)';
+  if (fps >= 60) return 'var(--ok)';
+  if (fps >= 30) return 'var(--warn)';
+  return 'var(--bad)';
+}
+
 export default function OverlayHUD() {
-  const [metrics, setMetrics] = useState({ cpu: 14, ramPercent: 42 });
-  const [ping, setPing] = useState<number>(12);
-  const [compact, setCompact] = useState(false);
-  const [presentmon, setPresentmon] = useState<{
-    status: string;
-    fps: number | null;
-    onePercentLowFps: number | null;
-    isCapturing: boolean;
-  }>({
-    status: 'Indisponible',
+  const [metrics, setMetrics]       = useState<Metrics>({ cpu: 0, ramPercent: 0 });
+  const [ping, setPing]             = useState<number>(0);
+  const [compact, setCompact]       = useState(false);
+  const [presentmon, setPresentmon] = useState<PresentMon>({
+    status: '—',
     fps: null,
     onePercentLowFps: null,
     isCapturing: false,
@@ -25,222 +63,224 @@ export default function OverlayHUD() {
     api.getMetrics?.().then((res: any) => {
       if (res?.data) {
         setMetrics({
-          cpu: Math.round(res.data.cpuPercent || 14),
-          ramPercent: Math.round((res.data.ramUsed / (res.data.ramTotal || 16)) * 100),
+          cpu: Math.round(res.data.cpuPercent || 0),
+          ramPercent: res.data.ramTotal > 0 ? Math.round((res.data.ramUsed / res.data.ramTotal) * 100) : 0,
         });
       }
     }).catch(() => {});
 
     api.getPresentMonStatus?.().then((res: any) => {
-      if (res?.data) {
-        setPresentmon(res.data);
-      }
+      if (res?.data) setPresentmon(res.data);
     }).catch(() => {});
 
-    const cleanupMetrics = api.on('overlay-metrics', (data: any) => {
-      if (data) setMetrics(data);
+    const c1 = api.on?.('overlay-metrics', (d: any) => {
+      if (d) setMetrics(d);
     });
-
-    const cleanupPing = api.on('doctor:ping-update', (data: any) => {
-      if (data?.ping) setPing(data.ping);
+    const c2 = api.on?.('doctor:ping-update', (d: any) => {
+      if (d?.ping) setPing(d.ping);
     });
-
-    const cleanupPm = api.on('overlay-presentmon', (data: any) => {
-      if (data) setPresentmon(data);
+    const c3 = api.on?.('overlay-presentmon', (d: any) => {
+      if (d) setPresentmon(d);
     });
 
     return () => {
-      cleanupMetrics?.();
-      cleanupPing?.();
-      cleanupPm?.();
+      c1?.();
+      c2?.();
+      c3?.();
     };
   }, []);
 
-  const handleClose = () => {
-    api?.overlayHide?.();
-  };
+  const handleClose = () => api?.overlayHide?.();
 
-  const cpuColor = metrics.cpu > 80 ? '#f87171' : metrics.cpu > 60 ? '#fbbf24' : '#38bdf8';
-  const ramColor = metrics.ramPercent > 80 ? '#f87171' : metrics.ramPercent > 65 ? '#fbbf24' : '#818cf8';
-  const pingColor = ping > 80 ? '#f87171' : ping > 40 ? '#fbbf24' : '#34d399';
+  const DRAG: React.CSSProperties = { WebkitAppRegion: 'drag' } as any;
+  const NODRAG: React.CSSProperties = { WebkitAppRegion: 'no-drag' } as any;
 
   return (
     <div
       style={{
-        padding: compact ? '7px 14px' : '14px 16px',
-        backgroundColor: 'rgba(9, 13, 22, 0.90)',
-        backdropFilter: 'blur(24px)',
-        WebkitBackdropFilter: 'blur(24px)',
-        border: '1px solid rgba(255, 255, 255, 0.12)',
-        boxShadow: '0 16px 40px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05)',
-        borderRadius: 12,
-        fontFamily: "'JetBrains Mono', -apple-system, monospace",
-        color: '#f8fafc',
-        userSelect: 'none',
+        position: 'fixed',
+        inset: 0,
         display: 'flex',
-        flexDirection: 'column',
-        gap: compact ? 0 : 10,
-        width: compact ? 360 : 230,
-        transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+        alignItems: 'flex-start',
+        justifyContent: 'flex-end',
+        pointerEvents: 'none',
+        padding: 16,
       }}
     >
-      {/* Draggable Titlebar Bar */}
       <div
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          paddingBottom: compact ? 0 : 8,
-          borderBottom: compact ? 'none' : '1px solid rgba(255, 255, 255, 0.08)',
-          cursor: 'grab',
-          // @ts-ignore
-          WebkitAppRegion: 'drag',
+          background: 'rgba(19, 21, 24, 0.92)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          border: '1px solid rgba(255, 255, 255, 0.10)',
+          borderRadius: 8,
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.65)',
+          minWidth: compact ? 120 : 160,
+          pointerEvents: 'auto',
+          userSelect: 'none',
+          overflow: 'hidden',
+          fontFamily: 'Inter, -apple-system, sans-serif',
+          color: 'var(--text)',
+          ...DRAG,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              backgroundColor: '#10b981',
-              boxShadow: '0 0 8px #10b981',
-            }}
-          />
-          <span
-            style={{
-              fontSize: 10.5,
-              fontWeight: 700,
-              letterSpacing: '0.08em',
-              color: '#f8fafc',
-              fontFamily: "'Space Grotesk', sans-serif",
-            }}
-          >
-            VANGUARD HUD
-          </span>
+        {/* Header Strip */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '6px 10px',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+            background: 'rgba(255, 255, 255, 0.02)',
+            ...NODRAG,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: presentmon.isCapturing ? 'var(--ok)' : 'var(--a1)',
+              }}
+            />
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                letterSpacing: '0.04em',
+                color: 'var(--text)',
+                textTransform: 'uppercase',
+              }}
+            >
+              Vanguard HUD
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button
+              onClick={() => setCompact(c => !c)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 18,
+                height: 18,
+                borderRadius: 4,
+                color: 'var(--muted)',
+                cursor: 'pointer',
+              }}
+              title={compact ? 'Développer' : 'Compacter'}
+            >
+              <Minimize2 size={10} />
+            </button>
+            <button
+              onClick={handleClose}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 18,
+                height: 18,
+                borderRadius: 4,
+                color: 'var(--muted)',
+                cursor: 'pointer',
+              }}
+              title="Fermer"
+            >
+              <X size={10} />
+            </button>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, ...({ WebkitAppRegion: 'no-drag' } as any) }}>
-          <button
-            onClick={() => setCompact(!compact)}
-            title={compact ? 'Agrandir' : 'Mode bandeau compact'}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'rgba(255, 255, 255, 0.45)',
-              cursor: 'pointer',
-              padding: 3,
-              borderRadius: 4,
-              lineHeight: 1,
-            }}
-          >
-            {compact ? <Maximize2 size={11} /> : <Minus size={11} />}
-          </button>
-          <button
-            onClick={handleClose}
-            title="Masquer (Ctrl+Shift+O)"
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'rgba(255, 255, 255, 0.45)',
-              cursor: 'pointer',
-              padding: 3,
-              borderRadius: 4,
-              lineHeight: 1,
-            }}
-          >
-            <X size={12} />
-          </button>
-        </div>
-      </div>
-
-      {/* Main metrics display */}
-      {!compact ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 9, fontSize: 11.5 }}>
-          {/* FPS & 1% Low Section */}
-          <div
-            style={{
-              padding: '8px 10px',
-              borderRadius: 8,
-              backgroundColor: 'rgba(255, 255, 255, 0.03)',
-              border: '1px solid rgba(255, 255, 255, 0.06)',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 10, fontWeight: 600 }}>IPS (FPS)</span>
-              {presentmon.isCapturing && presentmon.fps !== null ? (
-                <span style={{ color: '#10b981', fontSize: 13, fontWeight: 800 }}>
-                  {Math.round(presentmon.fps)} IPS
+        {/* Content Body */}
+        <div style={{ padding: compact ? '8px 10px' : '10px 12px', ...NODRAG }}>
+          {/* FPS Counter */}
+          {presentmon.fps !== null && presentmon.fps !== undefined ? (
+            <div style={{ marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+                <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.06em', color: 'var(--muted)', textTransform: 'uppercase' }}>
+                  FPS
                 </span>
-              ) : (
-                <span style={{ color: '#f59e0b', fontSize: 10, fontWeight: 700 }}>INDISPONIBLE</span>
+                <span
+                  style={{
+                    fontFamily: 'JetBrains Mono, monospace',
+                    fontSize: 22,
+                    fontWeight: 700,
+                    lineHeight: 1,
+                    color: getFpsColor(presentmon.fps),
+                  }}
+                >
+                  {presentmon.fps}
+                </span>
+              </div>
+              {!compact && presentmon.onePercentLowFps !== null && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 9 }}>
+                  <span style={{ color: 'var(--dim)' }}>1% Low</span>
+                  <span style={{ fontFamily: 'JetBrains Mono, monospace', color: getFpsColor(presentmon.onePercentLowFps) }}>
+                    {presentmon.onePercentLowFps} fps
+                  </span>
+                </div>
               )}
             </div>
+          ) : null}
 
-            {presentmon.isCapturing && presentmon.onePercentLowFps !== null ? (
-              <div style={{ fontSize: 9.5, color: 'rgba(255, 255, 255, 0.65)', marginTop: 3 }}>
-                1% Low : {Math.round(presentmon.onePercentLowFps)} IPS
-              </div>
-            ) : (
-              <div style={{ fontSize: 9, color: 'rgba(255, 255, 255, 0.4)', marginTop: 3, lineHeight: 1.3 }}>
-                FPS indisponibles — PresentMon non installé
-              </div>
-            )}
-          </div>
-
-          {/* CPU Metric */}
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-              <span style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 10, fontWeight: 600 }}>PROCESSEUR</span>
-              <span style={{ color: cpuColor, fontWeight: 700 }}>{metrics.cpu}%</span>
-            </div>
-            <div style={{ height: 3, width: '100%', backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: 2, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${metrics.cpu}%`, backgroundColor: cpuColor, transition: 'width 0.2s ease' }} />
+          {/* CPU Row */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--dim)', letterSpacing: '0.04em' }}>CPU</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {!compact && <MetricBar value={metrics.cpu} color={getCpuColor(metrics.cpu)} />}
+              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, fontWeight: 600, color: getCpuColor(metrics.cpu) }}>
+                {metrics.cpu}%
+              </span>
             </div>
           </div>
 
-          {/* RAM Metric */}
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-              <span style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 10, fontWeight: 600 }}>MÉMOIRE VIVE</span>
-              <span style={{ color: ramColor, fontWeight: 700 }}>{metrics.ramPercent}%</span>
-            </div>
-            <div style={{ height: 3, width: '100%', backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: 2, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${metrics.ramPercent}%`, backgroundColor: ramColor, transition: 'width 0.2s ease' }} />
+          {/* RAM Row */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--dim)', letterSpacing: '0.04em' }}>RAM</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {!compact && <MetricBar value={metrics.ramPercent} color={getRamColor(metrics.ramPercent)} />}
+              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, fontWeight: 600, color: getRamColor(metrics.ramPercent) }}>
+                {metrics.ramPercent}%
+              </span>
             </div>
           </div>
 
-          {/* Latency Metric */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 2 }}>
-            <span style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 10, fontWeight: 600 }}>LATENCE</span>
-            <span style={{ color: pingColor, fontWeight: 800 }}>{ping} ms</span>
-          </div>
+          {/* Latency (Ping) Row */}
+          {ping > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--dim)', letterSpacing: '0.04em' }}>PING</span>
+              <span
+                style={{
+                  fontFamily: 'JetBrains Mono, monospace',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: ping < 35 ? 'var(--ok)' : ping < 75 ? 'var(--warn)' : 'var(--bad)',
+                }}
+              >
+                {ping} ms
+              </span>
+            </div>
+          )}
         </div>
-      ) : (
-        /* Compact horizontal ribbon */
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11, gap: 12, paddingTop: 4 }}>
-          <div>
-            <span style={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: 9.5 }}>FPS </span>
-            {presentmon.isCapturing && presentmon.fps !== null ? (
-              <strong style={{ color: '#10b981' }}>{Math.round(presentmon.fps)}</strong>
-            ) : (
-              <span style={{ color: '#f59e0b' }}>N/D</span>
-            )}
+
+        {/* Capture state footer */}
+        {!compact && !presentmon.isCapturing && (
+          <div
+            style={{
+              padding: '4px 10px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+              fontSize: 9,
+              color: 'var(--dim)',
+              textAlign: 'center',
+            }}
+          >
+            {presentmon.status || 'En attente de jeu'}
           </div>
-          <div>
-            <span style={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: 9.5 }}>CPU </span>
-            <strong style={{ color: cpuColor }}>{metrics.cpu}%</strong>
-          </div>
-          <div>
-            <span style={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: 9.5 }}>RAM </span>
-            <strong style={{ color: ramColor }}>{metrics.ramPercent}%</strong>
-          </div>
-          <div>
-            <span style={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: 9.5 }}>PING </span>
-            <strong style={{ color: pingColor }}>{ping}ms</strong>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

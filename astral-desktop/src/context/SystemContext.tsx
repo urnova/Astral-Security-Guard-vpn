@@ -4,8 +4,10 @@ export interface MetricsData {
   cpuModel?: string;
   cpuCores?: number;
   cpuPercent: number;
+  cpuFreq?: number;
   ramUsed: number;
   ramTotal: number;
+  ramPercent?: number;
   gpuName?: string;
   diskUsedGB: number;
   diskFreeGB: number;
@@ -70,8 +72,10 @@ const defaultMetrics: MetricsData = {
   cpuModel: '',
   cpuCores: 0,
   cpuPercent: 0,
+  cpuFreq: 0,
   ramUsed: 0,
   ramTotal: 0,
+  ramPercent: 0,
   gpuName: '',
   diskUsedGB: 0,
   diskFreeGB: 0,
@@ -126,8 +130,10 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
           cpuModel: d.cpuModel || prev.cpuModel,
           cpuCores: d.cpuCores || prev.cpuCores,
           cpuPercent: typeof d.cpuPercent === 'number' ? Math.round(d.cpuPercent) : prev.cpuPercent,
+          cpuFreq: d.cpuFreq || prev.cpuFreq,
           ramUsed: d.ramUsed ? Number(d.ramUsed.toFixed(1)) : prev.ramUsed,
           ramTotal: d.ramTotal ? Number(d.ramTotal.toFixed(1)) : prev.ramTotal,
+          ramPercent: (d.ramTotal && d.ramTotal > 0) ? Math.round((d.ramUsed / d.ramTotal) * 100) : prev.ramPercent,
           gpuName: d.gpuName || prev.gpuName,
           diskUsedGB: d.diskUsedGB ? Math.round(d.diskUsedGB) : prev.diskUsedGB,
           diskFreeGB: d.diskFreeGB ? Math.round(d.diskFreeGB) : prev.diskFreeGB,

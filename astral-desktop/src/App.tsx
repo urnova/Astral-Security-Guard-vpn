@@ -12,7 +12,6 @@ import AppTitlebar from './components/AppTitlebar';
 import OnboardingWizard, { OnboardingData } from './components/OnboardingWizard';
 import UpdateModal from './components/UpdateModal';
 import DownloadScanModal from './components/DownloadScanModal';
-import { NotificationSystem } from './components/NotificationSystem';
 import { ShieldAlert } from 'lucide-react';
 import { SystemProvider } from './context/SystemContext';
 
@@ -137,16 +136,7 @@ export default function App() {
           />
         )}
 
-        {/* Gaming ambient glow */}
-        {gamingModeActive && (
-          <div
-            aria-hidden="true"
-            style={{
-              position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none',
-              background: 'radial-gradient(ellipse at top, rgba(0,212,255,0.07), transparent 65%)',
-            }}
-          />
-        )}
+
 
         {/* Dedicated Window Drag & Full-Width Titlebar Strip (with reserved window controls area) */}
         <AppTitlebar gamingActive={gamingModeActive} currentGame={currentGame} />
@@ -166,7 +156,7 @@ export default function App() {
             {!isAdmin && (
               <div className="admin-banner">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <ShieldAlert size={15} style={{ color: 'var(--orange)', flexShrink: 0 }} />
+                  <ShieldAlert size={15} style={{ color: 'var(--warning)', flexShrink: 0 }} />
                   <span>
                     <strong>Mode restreint —</strong> Certaines fonctions (Defender, optimisations réseau) nécessitent les droits administrateur.
                   </span>
@@ -228,7 +218,6 @@ export default function App() {
           </div>
         </div>
 
-        <NotificationSystem dndEnabled={dndEnabled} />
         <DownloadScanModal />
         {updateInfo && <UpdateModal info={updateInfo} onClose={() => setUpdateInfo(null)} />}
       </div>

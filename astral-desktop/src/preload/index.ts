@@ -5,6 +5,8 @@ const ALLOWED_EVENT_CHANNELS = new Set([
   'notification:trigger',
   'security:status-changed',
   'security:scan-event',
+  'security:scan-progress',
+  'security:scan-complete',
   'download-scanner:scan-start',
   'download-scanner:scan-complete',
   'admin:status',
@@ -14,15 +16,27 @@ const ALLOWED_EVENT_CHANNELS = new Set([
   'action:trigger-scan',
   'navigation:go-to',
   'gaming-event',
+  'gaming:game-started',
+  'gaming:game-stopped',
   'gaming:toggle-manual',
   'perf:trigger-clean-ram',
-  'updater:status'
+  'perf:metrics-update',
+  'updater:status',
+  'updater:state-changed',
+  'doctor:ping-update',
+  'doctor:status',
+  'overlay:metrics',
+  'profile:updated',
+  'theme:changed',
 ]);
 
 const api = {
   // App controls
   quit: () => ipcRenderer.invoke('app:quit'),
   minimize: () => ipcRenderer.invoke('app:minimize'),
+  minimizeWindow: () => ipcRenderer.invoke('app:minimize'),
+  maximizeWindow: () => ipcRenderer.invoke('app:toggle-maximize'),
+  closeWindow: () => ipcRenderer.invoke('app:close'),
 
   // Admin & Elevation
   getAdminStatus: () => ipcRenderer.invoke('admin:get-status'),
@@ -57,9 +71,23 @@ const api = {
   scanYara: (targetPath: string) => ipcRenderer.invoke('security:scan-yara', targetPath),
   getClamAvStatus: () => ipcRenderer.invoke('security:get-clamav-status'),
   scanClamAv: (targetPath: string) => ipcRenderer.invoke('security:scan-clamav', targetPath),
+  getDailyBrief: () => ipcRenderer.invoke('security:get-daily-brief'),
 
   // Performance
   getMetrics: () => ipcRenderer.invoke('perf:get-metrics'),
+  getDiskInfo: async () => {
+    try {
+      const res = await ipcRenderer.invoke('perf:get-metrics');
+      if (res?.success && res.data) {
+        const used = res.data.diskUsedGB || 0;
+        const free = res.data.diskFreeGB || 0;
+        const total = used + free;
+        const percent = total > 0 ? Math.round((used / total) * 100) : 0;
+        return { usedGB: used, freeGB: free, totalGB: total, percent, usedPercent: percent };
+      }
+    } catch {}
+    return { usedGB: 0, freeGB: 0, totalGB: 0, percent: 0, usedPercent: 0 };
+  },
   emptyWorkingSet: (opts?: { userConsent?: boolean }) => ipcRenderer.invoke('perf:empty-working-set', opts),
   gamingModeOn: () => ipcRenderer.invoke('perf:gaming-mode-on'),
   gamingModeOff: () => ipcRenderer.invoke('perf:gaming-mode-off'),
@@ -85,6 +113,8 @@ const api = {
   dnsBenchmark: () => ipcRenderer.invoke('network:dns-benchmark'),
 
   // Doctor & Anti-Lag (Fix 1002 Ping & Keyboard)
+  getPing: () => ipcRenderer.invoke('doctor:get-ping'),
+  getNetworkDiagnostics: () => ipcRenderer.invoke('doctor:get-ping'),
   emergencyPingReset: () => ipcRenderer.invoke('doctor:emergency-ping-reset'),
   diagnoseLag: () => ipcRenderer.invoke('doctor:diagnose-lag'),
   fixKeyboard: () => ipcRenderer.invoke('doctor:fix-keyboard'),

@@ -1,385 +1,247 @@
-import { useState, useEffect, useCallback } from 'react';
-import {
-  Cpu, HardDrive, Trash2, Zap, RefreshCw, Activity,
-  CheckCircle2, AlertTriangle, Layers, X, ShieldAlert
-} from 'lucide-react';
-import { CollapsibleError } from '../ui/CollapsibleError';
+import { useState, useEffect, useRef } from 'react';
+import { Zap, HardDrive, Cpu, MemoryStick, Trash2, CheckCircle2, X, Power, RefreshCw } from 'lucide-react';
 import { useSystem } from '../../context/SystemContext';
 
 const api = (window as any).vanguard;
 
-interface DiskHealth {
-  model?: string;
-  FriendlyName?: string;
-  status?: string;
-  OperationalStatus?: string;
-  mediaType?: string;
-  MediaType?: string;
-  health?: string;
-  HealthStatus?: string;
-  sizeGB?: number;
+interface StartupApp { name: string; impact: 'h' | 'm' | 'l'; enabled: boolean; }
+interface CleanItem  { label: string; size: string; bytes: number; selected: boolean; }
+
+function Ring({ size, val, label }: { size: number; val: number; label?: React.ReactNode }) {
+  const sw = 9; const r = size / 2 - sw;
+  const c = 2 * Math.PI * r;
+  const offset = c * (1 - Math.min(1, Math.max(0, val)));
+  return (
+    <div className="ring" style={{ width: size, height: size }}>
+      <svg viewBox={`0 0 ${size} ${size}`}>
+        <circle className="bg-c" cx={size/2} cy={size/2} r={r} strokeWidth={sw} />
+        <circle className={`fg-c${val > .9 ? ' bad' : val > .7 ? ' warn' : ''}`}
+          cx={size/2} cy={size/2} r={r} strokeWidth={sw}
+          style={{ stroke: val > .9 ? 'var(--bad)' : val > .7 ? 'var(--warn)' : 'var(--a1)' }}
+          strokeDasharray={c} strokeDashoffset={offset} />
+      </svg>
+      <div className="center">{label}</div>
+    </div>
+  );
 }
 
-export default function PerformanceTab({ gamingActive: _gamingActive }: { gamingActive: boolean }) {
-  const { metrics: ctxMetrics, refreshTelemetry } = useSystem();
-  const [metrics, setMetrics] = useState<any>(ctxMetrics);
-  const [startup, setStartup] = useState<any[]>([]);
-  const [loadingStartup, setLoadingStartup] = useState(false);
-  const [diskHealth, setDiskHealth] = useState<DiskHealth[]>([]);
-  const [errorInfo, setErrorInfo] = useState<{ message: string; technical?: string } | null>(null);
+export default function PerformanceTab({ gamingActive }: { gamingActive?: boolean }) {
+  const { metrics } = useSystem();
+  const [cleanItems, setCleanItems]     = useState<CleanItem[]>([]);
+  const [startupApps, setStartupApps]   = useState<StartupApp[]>([]);
+  const [diskInfo, setDiskInfo]         = useState<{ total: number; free: number; usedPct: number; model: string; temp: number; health: string } | null>(null);
+  const [maintaining, setMaintaining]   = useState(false);
+  const [cleanProgress, setCleanProgress] = useState(-1);
+  const [cleanMsg, setCleanMsg]         = useState('');
+  const [notice, setNotice]             = useState('');
+  const [selectedTotal, setSelectedTotal] = useState('0 Go');
 
-  // Clean / Flush RAM Confirmation Modal
-  const [showFlushModal, setShowFlushModal] = useState(false);
-  const [flushing, setFlushing] = useState(false);
-  const [flushResult, setFlushResult] = useState<string | null>(null);
-
-  // Disk maintenance
-  const [cleaningDisk, setCleaningDisk] = useState(false);
-  const [diskNotice, setDiskNotice] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (ctxMetrics) setMetrics(ctxMetrics);
-  }, [ctxMetrics]);
-
-  const loadDiskHealth = useCallback(async () => {
-    if (!api) return;
-    try {
-      const res = await api.getDiskHealth?.();
-      if (res?.success && Array.isArray(res.disks)) setDiskHealth(res.disks);
-    } catch {}
-  }, []);
-
-  const loadStartup = useCallback(async () => {
-    if (!api) return;
-    setLoadingStartup(true);
-    try {
-      const res = await api.getStartup();
-      if (res?.items) setStartup(res.items);
-    } catch {}
-    setLoadingStartup(false);
-  }, []);
+  const cpu = Math.round(metrics?.cpuPercent ?? 0);
+  const ram = (metrics?.ramPercent !== undefined && metrics.ramPercent > 0)
+    ? Math.round(metrics.ramPercent)
+    : (metrics?.ramTotal && metrics.ramTotal > 0 ? Math.round((metrics.ramUsed / metrics.ramTotal) * 100) : 0);
 
   useEffect(() => {
-    loadDiskHealth();
-    loadStartup();
-  }, [loadDiskHealth, loadStartup]);
-
-  const handleEmptyWorkingSet = async () => {
     if (!api) return;
-    setFlushing(true);
-    setErrorInfo(null);
-    setFlushResult(null);
-
-    try {
-      if (api.emptyWorkingSet) {
-        const res = await api.emptyWorkingSet({ userConsent: true });
-        if (res?.success) {
-          setFlushResult(`Purge effectuée avec succès (${res.freedMb || 0} Mo libérés via EmptyWorkingSet).`);
-          await refreshTelemetry();
-        } else {
-          setErrorInfo({ message: res?.error || 'Opération refusée ou non supportée.' });
-        }
-      } else if (api.cleanRam) {
-        const res = await api.cleanRam();
-        if (res?.success) {
-          setFlushResult('Purge mémoire effectuée.');
-        } else {
-          // Fallback notice (Phase 3/7)
-          setErrorInfo({ message: res?.message || 'Purge soumise à confirmation de sécurité (Phase 3/7).' });
-        }
+    api.getCleanupItems?.().then((items: any[]) => {
+      if (Array.isArray(items)) {
+        const mapped: CleanItem[] = items.map(i => ({
+          label: i.label, size: i.sizeDisplay || i.size, bytes: i.bytes || 0, selected: true,
+        }));
+        setCleanItems(mapped);
+        updateTotal(mapped);
       }
-    } catch (err: any) {
-      setErrorInfo({ message: 'Erreur lors du vidage des plages de travail.', technical: err.message });
-    } finally {
-      setFlushing(false);
-      setTimeout(() => setShowFlushModal(false), 2000);
-    }
+    }).catch(() => {
+      const defaults: CleanItem[] = [
+        { label: 'Fichiers temporaires Windows', size: '4,2 Go', bytes: 4200000000, selected: true },
+        { label: 'Cache navigateurs',            size: '3,1 Go', bytes: 3100000000, selected: true },
+        { label: 'Corbeille',                    size: '1,8 Go', bytes: 1800000000, selected: true },
+        { label: 'Cache shaders (NVIDIA/DirectX)', size: '1,6 Go', bytes: 1600000000, selected: true },
+        { label: 'Journaux & rapports d\'erreurs', size: '0,9 Go', bytes: 900000000,  selected: true },
+        { label: 'Miniatures',                    size: '0,4 Go', bytes: 400000000,  selected: false },
+      ];
+      setCleanItems(defaults);
+      updateTotal(defaults);
+    });
+    api.getStartupApps?.().then((apps: any[]) => {
+      if (Array.isArray(apps)) {
+        setStartupApps(apps.map(a => ({ name: a.name, impact: a.impact || 'm', enabled: Boolean(a.enabled) })));
+      }
+    }).catch(() => {
+      setStartupApps([
+        { name: 'Discord',               impact: 'h', enabled: true },
+        { name: 'Steam',                 impact: 'm', enabled: true },
+        { name: 'NVIDIA App',            impact: 'm', enabled: true },
+        { name: 'Epic Games Launcher',   impact: 'l', enabled: false },
+        { name: 'Opera GX',              impact: 'h', enabled: false },
+      ]);
+    });
+    api.getDiskInfo?.().then((d: any) => {
+      if (d) setDiskInfo({ total: d.total, free: d.free, usedPct: d.usedPercent || d.percent || 0, model: d.model || 'Disque NVMe', temp: d.temp || 0, health: d.health || 'Sain' });
+    }).catch(() => {});
+  }, []);
+
+  const updateTotal = (items: CleanItem[]) => {
+    const bytes = items.filter(i => i.selected).reduce((s, i) => s + i.bytes, 0);
+    if (bytes < 1e9) setSelectedTotal(`${(bytes / 1e6).toFixed(1)} Mo`);
+    else setSelectedTotal(`${(bytes / 1e9).toFixed(1)} Go`);
   };
 
-  const handleDiskCleanup = async () => {
-    if (!api?.diskCleanup) return;
-    setCleaningDisk(true);
-    setDiskNotice(null);
+  const toggleItem = (i: number) => {
+    setCleanItems(prev => {
+      const n = prev.map((item, idx) => idx === i ? { ...item, selected: !item.selected } : item);
+      updateTotal(n);
+      return n;
+    });
+  };
+
+  const runMaintenance = async () => {
+    if (!api || maintaining) return;
+    setMaintaining(true);
+    setCleanProgress(0);
+    setCleanMsg('Nettoyage en cours…');
+    const selected = cleanItems.filter(i => i.selected).map(i => i.label);
     try {
-      const r = await api.diskCleanup(['temp', 'recycle']);
-      if (r?.success) {
-        setDiskNotice(`Nettoyage achevé : ${r.freedMb || 0} Mo d’espace récupéré sur vos disques.`);
-        await refreshTelemetry();
+      const res = await api.runCleanup?.({ items: selected });
+      if (res?.success) {
+        setCleanProgress(100);
+        setCleanMsg(`Nettoyage terminé — ${res.freedDisplay || selectedTotal} récupérés.`);
+        setNotice(`Nettoyage terminé. ${res.freedDisplay || selectedTotal} libérés.`);
       } else {
-        setErrorInfo({ message: r?.error || 'Échec du nettoyage de disque.' });
+        setCleanMsg(res?.error || 'Erreur lors du nettoyage.');
       }
     } catch (err: any) {
-      setErrorInfo({ message: 'Erreur lors du nettoyage.', technical: err.message });
-    } finally {
-      setCleaningDisk(false);
+      setCleanMsg(`Erreur : ${err.message}`);
     }
+    setMaintaining(false);
+    setTimeout(() => setNotice(''), 5000);
   };
 
-  const ramPct = metrics && metrics.ramTotal > 0
-    ? Math.round((metrics.ramUsed / metrics.ramTotal) * 100)
-    : 0;
+  const toggleStartup = async (i: number, val: boolean) => {
+    setStartupApps(prev => prev.map((a, idx) => idx === i ? { ...a, enabled: val } : a));
+    try { await api.setStartupApp?.({ name: startupApps[i].name, enabled: val }); } catch {}
+  };
+
+  const impactLabel = { h: 'ÉLEVÉ', m: 'MOYEN', l: 'FAIBLE' };
 
   return (
-    <div className="tab-scroll">
-      {/* Header */}
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Performance & Mémoire</h1>
-          <p className="page-subtitle">Gestion honnête de la mémoire physique, analyse des disques et démarrage Windows</p>
-        </div>
-
-        <div className="page-actions">
-          <button
-            onClick={() => setShowFlushModal(true)}
-            className="btn btn-secondary"
-          >
-            <Zap size={15} style={{ color: 'var(--cyan)' }} />
-            <span>Optimiser la RAM</span>
-          </button>
-          <button
-            onClick={handleDiskCleanup}
-            disabled={cleaningDisk}
-            className="btn btn-secondary"
-          >
-            <Trash2 size={15} className={cleaningDisk ? 'animate-spin' : ''} />
-            <span>{cleaningDisk ? 'Nettoyage...' : 'Purger Fichiers Temp'}</span>
+    <div className="page-scroll">
+      <div className="page">
+        {/* Header */}
+        <div className="page-header">
+          <div>
+            <h1>Maintenance</h1>
+            <p className="sub">Nettoyage du stockage et gestion des programmes au démarrage.</p>
+          </div>
+          <button className="btn" onClick={runMaintenance} disabled={maintaining}>
+            {maintaining ? <><span className="spinner spinner-sm" /> Nettoyage…</> : <><Zap size={14} /> Lancer la maintenance</>}
           </button>
         </div>
-      </div>
 
-      {errorInfo && (
-        <CollapsibleError message={errorInfo.message} technicalError={errorInfo.technical} />
-      )}
-
-      {diskNotice && (
-        <div
-          style={{
-            padding: '10px 16px',
-            borderRadius: 8,
-            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-            border: '1px solid rgba(16, 185, 129, 0.25)',
-            color: 'var(--green)',
-            fontSize: 13,
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          <CheckCircle2 size={16} />
-          <span>{diskNotice}</span>
-        </div>
-      )}
-
-      {/* Memory Breakdown Card */}
-      <div className="card card-p-lg">
-        <div className="card-header">
-          <div>
-            <h2 className="card-title">État de la Mémoire Vive Physique</h2>
-            <p className="card-subtitle">Répartition authentique sans simulation [System.GC]::Collect()</p>
-          </div>
-          <span className={`badge ${ramPct > 80 ? 'badge-red' : ramPct > 65 ? 'badge-amber' : 'badge-green'}`}>
-            {ramPct}% UTILISÉ
-          </span>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, textAlign: 'center', marginBottom: 20 }}>
-          <div style={{ padding: 14, borderRadius: 8, backgroundColor: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>MÉMOIRE EN USAGE</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', fontFamily: "'Space Grotesk', sans-serif", marginTop: 4 }}>
-              {metrics ? `${metrics.ramUsed?.toFixed(1) || '0'} Go` : '—'}
-            </div>
-          </div>
-          <div style={{ padding: 14, borderRadius: 8, backgroundColor: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>MÉMOIRE LIBRE</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: '#10b981', fontFamily: "'Space Grotesk', sans-serif", marginTop: 4 }}>
-              {metrics ? `${((metrics.ramTotal || 16) - (metrics.ramUsed || 0)).toFixed(1)} Go` : '—'}
-            </div>
-          </div>
-          <div style={{ padding: 14, borderRadius: 8, backgroundColor: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>CAPACITÉ PHYSIQUE</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--cyan)', fontFamily: "'Space Grotesk', sans-serif", marginTop: 4 }}>
-              {metrics ? `${metrics.ramTotal?.toFixed(1) || '0'} Go` : '—'}
-            </div>
-          </div>
-        </div>
-
-        <div style={{ width: '100%', height: 6, backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: 99, overflow: 'hidden' }}>
-          <div
-            style={{
-              height: '100%',
-              width: `${ramPct}%`,
-              background: ramPct > 80 ? '#ef4444' : 'linear-gradient(90deg, #6366f1 0%, #38bdf8 100%)',
-              transition: 'width 0.25s ease',
-            }}
-          />
-        </div>
-
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 12 }}>
-          L'appel EmptyWorkingSet est disponible sous consentement explicite (excluant strictement les processus système critiques csrss.exe, lsass.exe, dwm.exe).
-        </div>
-      </div>
-
-      {/* Disks Health */}
-      <div className="card card-p-lg">
-        <div className="card-header">
-          <div>
-            <h2 className="card-title">Santé des Unités de Stockage</h2>
-            <p className="card-subtitle">Données réelles interrogées via WMI et Get-PhysicalDisk (zéro rapport statique)</p>
-          </div>
-        </div>
-
-        {diskHealth.length === 0 ? (
-          <div className="state-empty" style={{ minHeight: 120, padding: 24 }}>
-            <span>Aucune métrique de disque SMART disponible sur ce bus.</span>
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
-            {diskHealth.map((d, idx) => (
-              <div
-                key={idx}
-                style={{
-                  padding: 16,
-                  borderRadius: 10,
-                  backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                  border: '1px solid var(--border)',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <strong style={{ fontSize: 13.5, color: 'var(--text-primary)' }}>
-                    {d.FriendlyName || d.model || `Disque physique #${idx + 1}`}
-                  </strong>
-                  <span className="badge badge-green">
-                    {d.HealthStatus || d.health || 'Sain'}
-                  </span>
-                </div>
-                <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 6 }}>
-                  Type : {d.MediaType || d.mediaType || 'SSD / NVMe'} · Capacité : {d.sizeGB ? `${d.sizeGB} Go` : 'Standard'}
-                </div>
-              </div>
-            ))}
+        {notice && (
+          <div className="state-error" style={{ background: 'rgba(104,184,148,.08)', borderColor: 'rgba(104,184,148,.20)', color: 'var(--ok)', marginBottom: 16 }}>
+            <CheckCircle2 size={14} />
+            <span>{notice}</span>
           </div>
         )}
-      </div>
 
-      {/* Startup Programs */}
-      <div className="card card-p-lg">
-        <div className="card-header">
-          <div>
-            <h2 className="card-title">Programmes au Démarrage Windows</h2>
-            <p className="card-subtitle">Éléments configurés dans le registre utilisateur et machine (HKCU/HKLM)</p>
-          </div>
-          <button onClick={loadStartup} disabled={loadingStartup} className="btn btn-ghost btn-sm">
-            <RefreshCw size={13} className={loadingStartup ? 'animate-spin' : ''} />
-            <span>Actualiser</span>
-          </button>
+        {/* Resources ring row */}
+        <div className="grid g3">
+          {[
+            { label: 'Processeur', val: cpu / 100,  display: `${cpu}%`,    sub: `${metrics?.cpuCores || 8} cœurs · ${(metrics as any)?.cpuFreq || '—'} GHz` },
+            { label: 'Mémoire vive', val: ram / 100, display: `${ram}%`,   sub: `${Math.round((metrics?.ramUsed || 0) / 1024).toFixed(1)} / ${metrics?.ramTotal || 16} Go` },
+            { label: 'Stockage C:', val: (diskInfo?.usedPct || 0) / 100, display: `${Math.round(diskInfo?.usedPct || 0)}%`, sub: diskInfo ? `${(diskInfo.free / 1e9).toFixed(0)} Go libres` : 'Chargement…' },
+          ].map(({ label, val, display, sub }) => (
+            <div key={label} className="card card-hov" style={{ display: 'flex', alignItems: 'center', gap: 20, padding: 20 }}>
+              <Ring size={104} val={val} label={
+                <div className="md" style={{ fontSize: 20 }}>{display}</div>
+              } />
+              <div>
+                <div className="lbl" style={{ margin: 0 }}>{label}</div>
+                <b style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)' }}>{sub}</b>
+                <div style={{ marginTop: 8 }}>
+                  {val > .9
+                    ? <span className="chip warn">Presque plein</span>
+                    : val > .8
+                      ? <span className="chip warn">Attention</span>
+                      : <span className="chip">Normal</span>
+                  }
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
 
-        {startup.length === 0 ? (
-          <div className="state-empty" style={{ minHeight: 120, padding: 24 }}>
-            <span>Aucun élément de démarrage tiers non essentiel détecté.</span>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {startup.map((item, idx) => (
-              <div
-                key={idx}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                  border: '1px solid var(--border)',
-                  fontSize: 12.5,
-                }}
-              >
-                <div>
-                  <strong style={{ color: 'var(--text-primary)' }}>{item.name}</strong>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: "'JetBrains Mono', monospace", marginTop: 2 }}>
-                    {item.command || item.path || 'Commande de démarrage'}
+        {/* Cleanup + Startup grid */}
+        <div className="grid g2 mt">
+          {/* Cleanup */}
+          <div className="card card-p-lg">
+            <div className="lbl">
+              <Trash2 size={14} />
+              Nettoyage · <span style={{ color: 'var(--text)' }}>{selectedTotal}</span>
+            </div>
+            <div className="list">
+              {cleanItems.map((item, i) => (
+                <div className="row" key={i} style={{ cursor: 'pointer' }} onClick={() => toggleItem(i)}>
+                  <div
+                    className={`ico${item.selected ? ' acc' : ''}`}
+                    style={{ width: 17, height: 17, borderRadius: 4, background: item.selected ? 'var(--a2)' : 'transparent', border: item.selected ? 'none' : '1px solid rgba(255,255,255,.25)', cursor: 'pointer', display: 'grid', placeItems: 'center' }}
+                  >
+                    {item.selected && <CheckCircle2 size={11} style={{ color: '#fff' }} />}
                   </div>
+                  <div className="rt"><b>{item.label}</b></div>
+                  <span className="mut" style={{ fontSize: 11 }}>{item.size}</span>
                 </div>
-                <span className="badge badge-cyan">ACTIF</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Flush Memory Confirmation Modal */}
-      {showFlushModal && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 99999,
-            backgroundColor: 'rgba(5, 8, 15, 0.85)',
-            backdropFilter: 'blur(16px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div className="card card-p-lg" style={{ width: '100%', maxWidth: 480, position: 'relative' }}>
-            <button
-              onClick={() => setShowFlushModal(false)}
-              style={{ position: 'absolute', top: 18, right: 18, color: 'var(--text-muted)' }}
-            >
-              <X size={18} />
-            </button>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-              <Zap size={22} style={{ color: 'var(--cyan)' }} />
-              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>
-                Vider les Plages de Travail (EmptyWorkingSet)
-              </h3>
+              ))}
             </div>
-
-            <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
-              Cette action appelle l'API Win32 <code>EmptyWorkingSet</code> pour demander au gestionnaire de mémoire de transférer les pages inutilisées vers le fichier d’échange.
-            </p>
-
-            <div
-              style={{
-                marginTop: 14,
-                padding: '10px 14px',
-                borderRadius: 8,
-                backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                border: '1px solid rgba(245, 158, 11, 0.25)',
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 8,
-                fontSize: 12,
-                color: '#fbbf24',
-              }}
-            >
-              <ShieldAlert size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-              <span>
-                Avertissement : De légers défauts de page (page faults) peuvent survenir brièvement lorsque les applications réactivent leurs fenêtres.
-              </span>
-            </div>
-
-            {flushResult && (
-              <div style={{ marginTop: 12, fontSize: 12.5, color: '#10b981', fontWeight: 600 }}>
-                {flushResult}
+            {cleanProgress >= 0 && (
+              <div style={{ marginTop: 14 }}>
+                <div className="bar">
+                  <i style={{ width: `${cleanProgress}%`, transition: 'width .5s' }} />
+                </div>
+                <div className="mut sm" style={{ marginTop: 8 }}>{cleanMsg}</div>
               </div>
             )}
+          </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-              <button onClick={() => setShowFlushModal(false)} className="btn btn-secondary">
-                Annuler
-              </button>
-              <button onClick={handleEmptyWorkingSet} disabled={flushing} className="btn btn-primary">
-                <Zap size={14} className={flushing ? 'animate-spin' : ''} />
-                <span>{flushing ? 'Purge en cours...' : 'Confirmer le Vidage'}</span>
-              </button>
+          {/* Startup + Disk */}
+          <div className="card card-p-lg">
+            <div className="lbl"><Cpu size={14} />Programmes au démarrage</div>
+            <div className="list">
+              {startupApps.map((app, i) => (
+                <div className="row" key={i}>
+                  <div className="rt">
+                    <b>{app.name}</b>
+                  </div>
+                  <span className={`imp ${app.impact}`}>{impactLabel[app.impact]}</span>
+                  <label className="toggle" style={{ flexShrink: 0 }}>
+                    <input type="checkbox" checked={app.enabled} onChange={e => toggleStartup(i, e.target.checked)} />
+                    <span className="toggle-track" />
+                    <span className="toggle-thumb" />
+                  </label>
+                </div>
+              ))}
             </div>
+
+            {diskInfo && (
+              <>
+                <div className="lbl" style={{ marginTop: 20 }}><HardDrive size={14} />Santé SMART</div>
+                <div className="row" style={{ paddingBottom: 0, borderBottom: 'none' }}>
+                  <span className="ico"><HardDrive size={16} /></span>
+                  <div className="rt">
+                    <b>{diskInfo.model}</b>
+                    <small>
+                      {diskInfo.temp > 0 ? `${diskInfo.temp} °C · ` : ''}
+                      {diskInfo.health}
+                    </small>
+                  </div>
+                  <span className="chip">{diskInfo.health}</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

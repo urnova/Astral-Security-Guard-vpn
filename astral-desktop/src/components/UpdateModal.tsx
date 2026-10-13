@@ -1,44 +1,42 @@
-import React, { useState, useEffect } from 'react';
-import { Download, AlertTriangle, CheckCircle2, X, ShieldAlert, Sparkles } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Download, AlertTriangle, CheckCircle2, X, ShieldAlert, RefreshCw } from 'lucide-react';
 
 const api = (window as any).vanguard;
 
 interface UpdateModalProps {
   info: {
-    version?: string;
-    releaseDate?: string;
+    version?:      string;
+    releaseDate?:  string;
     releaseNotes?: string;
   };
-  onClose: () => void;
+  onClose:       () => void;
   gamingActive?: boolean;
 }
 
 export default function UpdateModal({ info, onClose, gamingActive = false }: UpdateModalProps) {
-  const [updaterState, setUpdaterState] = useState<any>(null);
-  const [downloading, setDownloading] = useState(false);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [updaterState, setUpdaterState]   = useState<any>(null);
+  const [downloading, setDownloading]     = useState(false);
+  const [downloadError, setDownloadError] = useState('');
 
   useEffect(() => {
     if (!api) return;
 
-    // Get initial state
     api.getUpdaterState?.().then((st: any) => {
       if (st) setUpdaterState(st);
     });
 
     const cleanup = api.on?.('updater:state-changed', (st: any) => {
-      if (st) {
-        setUpdaterState(st);
-        if (st.status === 'downloading') {
-          setDownloading(true);
-          setDownloadError(null);
-        } else if (st.status === 'downloaded') {
-          setDownloading(false);
-          setDownloadError(null);
-        } else if (st.status === 'error') {
-          setDownloading(false);
-          setDownloadError(st.error || 'Erreur lors du téléchargement de la mise à jour.');
-        }
+      if (!st) return;
+      setUpdaterState(st);
+      if (st.status === 'downloading') {
+        setDownloading(true);
+        setDownloadError('');
+      } else if (st.status === 'downloaded') {
+        setDownloading(false);
+        setDownloadError('');
+      } else if (st.status === 'error') {
+        setDownloading(false);
+        setDownloadError(st.error || 'Erreur lors du téléchargement de la mise à jour.');
       }
     });
 
@@ -50,7 +48,7 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
   const handleStartDownload = async () => {
     if (!api) return;
     setDownloading(true);
-    setDownloadError(null);
+    setDownloadError('');
     try {
       const res = await api.downloadUpdate?.();
       if (!res?.success && res?.error) {
@@ -58,230 +56,247 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
         setDownloading(false);
       }
     } catch (err: any) {
-      setDownloadError(err.message || 'Échec de connexion');
+      setDownloadError(err.message || 'Échec de connexion au serveur.');
       setDownloading(false);
     }
   };
 
   const handleInstallNow = async () => {
     if (gamingActive) {
-      alert("Une session de jeu est actuellement active. L'installation sera effectuée dès la fermeture de la partie pour éviter toute interruption.");
+      alert('Une session de jeu est en cours. L\'installation s\'effectuera après la fermeture de votre partie.');
       return;
     }
     if (!api) return;
     await api.installUpdate?.();
   };
 
-  const progress = updaterState?.progressPercent || 0;
-  const currentVer = updaterState?.currentVersion || '2.5.0';
-  const targetVer = info?.version || '2.5.0';
+  const progress     = updaterState?.progressPercent || 0;
+  const currentVer   = updaterState?.currentVersion || '2.5.0';
+  const targetVer    = info?.version || '2.5.1';
   const isDownloaded = updaterState?.status === 'downloaded';
-
-  const formatBytes = (bytes: number) => {
-    if (!bytes || bytes <= 0) return '0 Mo';
-    const mb = bytes / (1024 * 1024);
-    return `${mb.toFixed(1)} Mo`;
-  };
 
   return (
     <div
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(5, 7, 13, 0.82)',
-        backdropFilter: 'blur(10px)',
-        zIndex: 99999,
+        zIndex: 10000,
+        background: 'rgba(0, 0, 0, 0.65)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: 20,
+        animation: 'fadeIn .2s var(--ease) both',
       }}
     >
       <div
-        className="glass-card"
         style={{
           width: '100%',
-          maxWidth: 520,
-          padding: 24,
-          position: 'relative',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 16,
-          boxShadow: '0 24px 64px rgba(0, 0, 0, 0.7), 0 0 1px rgba(255, 255, 255, 0.1)',
+          maxWidth: 480,
+          background: 'var(--surface)',
+          border: '1px solid var(--line)',
+          borderRadius: 'var(--r-md)',
+          boxShadow: 'var(--shadow-lg)',
+          overflow: 'hidden',
+          fontFamily: 'Inter, -apple-system, sans-serif',
+          color: 'var(--text)',
         }}
       >
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          style={{
-            position: 'absolute',
-            top: 18,
-            right: 18,
-            background: 'none',
-            border: 'none',
-            color: 'var(--text-muted)',
-            cursor: 'pointer',
-            padding: 4,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: 6,
-          }}
-          title="Fermer"
-        >
-          <X size={18} />
-        </button>
-
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              background: 'rgba(6, 182, 212, 0.15)',
-              border: '1px solid rgba(6, 182, 212, 0.35)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--cyan)',
-            }}
-          >
-            <Download size={22} />
-          </div>
-          <div>
-            <h3 style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.01em' }}>
-              Mise à jour officielle disponible
-            </h3>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>
-              Version actuelle : <span style={{ fontFamily: 'var(--mono)', color: 'var(--text-secondary)' }}>v{currentVer}</span> → Nouvelle : <span style={{ fontFamily: 'var(--mono)', color: 'var(--cyan)', fontWeight: 600 }}>v{targetVer}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Gaming Active Warning */}
-        {gamingActive && (
-          <div
-            style={{
-              padding: '10px 14px',
-              borderRadius: 8,
-              backgroundColor: 'rgba(245, 158, 11, 0.12)',
-              border: '1px solid rgba(245, 158, 11, 0.3)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              fontSize: 12,
-              color: 'var(--yellow)',
-            }}
-          >
-            <ShieldAlert size={16} style={{ flexShrink: 0 }} />
-            <span>Partie en cours : l'installation ne sera pas exécutée pour ne pas interrompre votre session de jeu.</span>
-          </div>
-        )}
-
-        {/* Release Notes */}
         <div
           style={{
-            backgroundColor: 'rgba(0, 0, 0, 0.35)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 10,
-            padding: 14,
-            fontSize: 12,
-            color: 'var(--text-secondary)',
-            lineHeight: 1.5,
-            maxHeight: 140,
-            overflowY: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '16px 20px',
+            borderBottom: '1px solid var(--line)',
+            background: 'var(--bg)',
           }}
         >
-          <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Sparkles size={14} style={{ color: 'var(--cyan)' }} />
-            Notes de version
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 'var(--r-sm)',
+                background: 'rgba(var(--a1r), 0.10)',
+                border: '1px solid rgba(var(--a1r), 0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <RefreshCw size={16} style={{ color: 'var(--a1)' }} />
+            </div>
+            <div>
+              <h2 style={{ fontSize: 14, fontWeight: 600 }}>Mise à jour logicielle</h2>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                <span className="mono">v{currentVer}</span>
+                {' → '}
+                <span className="mono" style={{ color: 'var(--a1)', fontWeight: 600 }}>v{targetVer}</span>
+              </div>
+            </div>
           </div>
-          {info?.releaseNotes ? (
-            <div>{info.releaseNotes}</div>
-          ) : (
-            <div>Refonte complète de l'interface graphique, optimisation des performances, mise à jour des signatures de sécurité et maintien des préférences lors de la mise à jour.</div>
+
+          <button
+            onClick={onClose}
+            style={{ color: 'var(--muted)', padding: 4, borderRadius: 'var(--r-xs)' }}
+            aria-label="Fermer"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Gaming guard warning */}
+          {gamingActive && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 14px',
+                background: 'rgba(214, 173, 104, 0.08)',
+                border: '1px solid rgba(214, 173, 104, 0.20)',
+                borderRadius: 'var(--r-sm)',
+                fontSize: 12,
+                color: 'var(--warn)',
+              }}
+            >
+              <ShieldAlert size={16} style={{ flexShrink: 0 }} />
+              <span>Partie en cours : l'installation sera reportée à la fin de votre session de jeu.</span>
+            </div>
+          )}
+
+          {/* Release Notes */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+              Notes de publication
+            </div>
+            <div
+              style={{
+                background: 'var(--bg)',
+                border: '1px solid var(--line)',
+                borderRadius: 'var(--r-sm)',
+                padding: 12,
+                fontSize: 12,
+                color: 'var(--muted)',
+                maxHeight: 140,
+                overflowY: 'auto',
+                lineHeight: 1.6,
+              }}
+            >
+              {info?.releaseNotes ? (
+                <div style={{ whiteSpace: 'pre-wrap' }}>{info.releaseNotes}</div>
+              ) : (
+                <div>
+                  • Nouvelle interface utilisateur moderne et sobre (Design Pro v3)<br />
+                  • Moteur d'optimisation gaming à latence ultra-faible<br />
+                  • Améliorations de détection automatique des VPN tiers<br />
+                  • Corrections de stabilité et optimisations du pare-feu
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Progress bar if downloading */}
+          {downloading && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 6 }}>
+                <span style={{ color: 'var(--muted)' }}>Téléchargement du paquet signé…</span>
+                <span className="mono" style={{ color: 'var(--text)', fontWeight: 600 }}>{Math.round(progress)}%</span>
+              </div>
+              <div style={{ height: 4, background: 'var(--bg)', borderRadius: 2, overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${progress}%`,
+                    background: 'var(--a1)',
+                    transition: 'width 0.2s ease',
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Downloaded confirmation */}
+          {isDownloaded && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '10px 14px',
+                background: 'rgba(104, 184, 148, 0.08)',
+                border: '1px solid rgba(104, 184, 148, 0.20)',
+                borderRadius: 'var(--r-sm)',
+                fontSize: 12,
+                color: 'var(--ok)',
+              }}
+            >
+              <CheckCircle2 size={15} />
+              <span>Mise à jour téléchargée et certifiée (SHA-256 valide). Prête à être installée.</span>
+            </div>
+          )}
+
+          {/* Error notice */}
+          {downloadError && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '10px 14px',
+                background: 'rgba(223, 133, 133, 0.08)',
+                border: '1px solid rgba(223, 133, 133, 0.20)',
+                borderRadius: 'var(--r-sm)',
+                fontSize: 12,
+                color: 'var(--bad)',
+              }}
+            >
+              <AlertTriangle size={15} />
+              <span>{downloadError}</span>
+            </div>
           )}
         </div>
 
-        {/* Download Progress */}
-        {downloading && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-              <span style={{ color: 'var(--cyan)' }}>Téléchargement du package officiel...</span>
-              <span style={{ fontFamily: 'var(--mono)', color: 'var(--text-primary)', fontWeight: 600 }}>{Math.round(progress)}%</span>
-            </div>
-            <div style={{ height: 6, borderRadius: 9999, backgroundColor: 'rgba(255, 255, 255, 0.08)', overflow: 'hidden' }}>
-              <div
-                style={{
-                  height: '100%',
-                  width: `${progress}%`,
-                  background: 'linear-gradient(90deg, var(--cyan), var(--purple))',
-                  transition: 'width 0.2s ease',
-                }}
-              />
-            </div>
-            {updaterState?.totalBytes > 0 && (
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'right' }}>
-                {formatBytes(updaterState.transferredBytes)} / {formatBytes(updaterState.totalBytes)}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Error message */}
-        {downloadError && (
-          <div
-            style={{
-              padding: '10px 14px',
-              borderRadius: 8,
-              backgroundColor: 'rgba(239, 68, 68, 0.12)',
-              border: '1px solid rgba(239, 68, 68, 0.3)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              fontSize: 12,
-              color: 'var(--red)',
-            }}
-          >
-            <AlertTriangle size={16} style={{ flexShrink: 0 }} />
-            <span>{downloadError}</span>
-          </div>
-        )}
-
-        {/* Actions */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
-          <button
-            onClick={onClose}
-            className="btn btn-ghost"
-            style={{ fontSize: 13 }}
-          >
+        {/* Footer actions */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: 10,
+            padding: '14px 20px',
+            borderTop: '1px solid var(--line)',
+            background: 'var(--bg)',
+          }}
+        >
+          <button className="btn s" onClick={onClose}>
             Plus tard
           </button>
 
           {!isDownloaded ? (
             <button
+              className="btn"
               onClick={handleStartDownload}
               disabled={downloading}
-              className="btn btn-primary"
-              style={{ fontSize: 13 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8 }}
             >
-              <Download size={15} />
-              <span>{downloading ? 'Téléchargement...' : 'Télécharger la mise à jour'}</span>
+              <Download size={13} />
+              <span>{downloading ? 'Téléchargement…' : 'Télécharger la mise à jour'}</span>
             </button>
           ) : (
             <button
+              className="btn"
               onClick={handleInstallNow}
-              disabled={gamingActive}
-              className="btn btn-primary"
-              style={{
-                fontSize: 13,
-                backgroundColor: 'var(--green)',
-                borderColor: 'var(--green)',
-              }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8 }}
             >
-              <CheckCircle2 size={15} />
-              <span>Redémarrer et installer</span>
+              <RefreshCw size={13} />
+              <span>Installer et redémarrer</span>
             </button>
           )}
         </div>

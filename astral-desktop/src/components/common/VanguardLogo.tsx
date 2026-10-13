@@ -12,7 +12,7 @@ export default function VanguardLogo({
   size = 32,
   className = '',
   style = {},
-  glow = true,
+  glow = false,
 }: VanguardLogoProps) {
   return (
     <img
@@ -26,7 +26,7 @@ export default function VanguardLogo({
         height: `${size}px`,
         objectFit: 'contain',
         filter: glow
-          ? 'drop-shadow(0 0 10px rgba(0, 245, 255, 0.45)) drop-shadow(0 0 20px rgba(99, 102, 241, 0.3))'
+          ? 'drop-shadow(0 2px 8px rgba(142, 174, 232, 0.25))'
           : 'none',
         ...style,
       }}

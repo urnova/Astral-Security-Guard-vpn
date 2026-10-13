@@ -1,5 +1,6 @@
 import { BrowserWindow, screen, app } from 'electron';
 import path from 'path';
+import fs from 'fs';
 import { logger } from './logger';
 
 let popupWin: BrowserWindow | null = null;
@@ -13,6 +14,27 @@ function getPopupPosition(width = 390, height = 150) {
     x: Math.round(workArea.x + workArea.width - width - 24),
     y: Math.round(workArea.y + workArea.height - height - 24),
   };
+}
+
+let cachedLogoBase64: string | null = null;
+function getLogoDataUrl(): string {
+  if (cachedLogoBase64) return cachedLogoBase64;
+  try {
+    const candidates = [
+      path.join(app.getAppPath(), 'public/images/vanguard-logo.png'),
+      path.join(app.getAppPath(), 'public/logo.png'),
+      path.join(__dirname, '../../public/images/vanguard-logo.png'),
+      path.join(__dirname, '../../public/logo.png'),
+      path.join(__dirname, '../assets/vanguard-logo.png'),
+    ];
+    for (const p of candidates) {
+      if (fs.existsSync(p)) {
+        cachedLogoBase64 = `data:image/png;base64,${fs.readFileSync(p).toString('base64')}`;
+        return cachedLogoBase64;
+      }
+    }
+  } catch {}
+  return '';
 }
 
 export function createOrGetNotificationWindow(): BrowserWindow {
@@ -88,28 +110,24 @@ export function showAvastStyleToast({
   win.setBounds({ x, y, width: 390, height: 150 });
 
   const borderColor =
-    type === 'threat' ? 'rgba(239, 68, 68, 0.7)' :
-    type === 'gaming' ? 'rgba(168, 85, 247, 0.7)' :
-    type === 'success' ? 'rgba(16, 185, 129, 0.7)' :
-    'rgba(0, 245, 255, 0.6)';
+    type === 'threat' ? 'rgba(223, 133, 133, 0.6)' :
+    type === 'gaming' ? 'rgba(214, 173, 104, 0.6)' :
+    type === 'success' ? 'rgba(104, 184, 148, 0.6)' :
+    '#2c3037';
 
   const accentColor =
-    type === 'threat' ? '#ef4444' :
-    type === 'gaming' ? '#c084fc' :
-    type === 'success' ? '#10b981' :
-    '#00f5ff';
-
-  const glowRgba =
-    type === 'threat' ? 'rgba(239, 68, 68, 0.25)' :
-    type === 'gaming' ? 'rgba(168, 85, 247, 0.25)' :
-    type === 'success' ? 'rgba(16, 185, 129, 0.25)' :
-    'rgba(0, 245, 255, 0.25)';
+    type === 'threat' ? '#df8585' :
+    type === 'gaming' ? '#d6ad68' :
+    type === 'success' ? '#68b894' :
+    '#8eaee8';
 
   const badgeText =
     type === 'threat' ? 'ALERTE SÉCURITÉ' :
-    type === 'gaming' ? 'MODE E-SPORT' :
+    type === 'gaming' ? 'MODE GAMING' :
     type === 'success' ? 'SYSTÈME PROTÉGÉ' :
-    'ASTRAL VANGUARD';
+    'NOTIFICATION VANGUARD';
+
+  const logoUrl = getLogoDataUrl();
 
   const html = `
     <!DOCTYPE html>
@@ -132,29 +150,26 @@ export function showAvastStyleToast({
           .card {
             width: 100%;
             height: 100%;
-            background: linear-gradient(145deg, rgba(12, 16, 32, 0.96) 0%, rgba(6, 8, 20, 0.98) 100%);
-            backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px);
+            background: linear-gradient(145deg, #1b1e23 0%, #131518 100%);
             border: 1px solid ${borderColor};
-            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85), 0 0 24px ${glowRgba};
-            border-radius: 14px;
-            padding: 14px 16px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
+            border-radius: 10px;
+            padding: 13px 15px;
             display: flex;
             flex-direction: column;
             justifyContent: space-between;
-            color: #ffffff;
+            color: #eceef0;
             cursor: pointer;
             position: relative;
-            animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            animation: slideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: border-color 0.15s ease;
           }
           .card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 20px 48px rgba(0, 0, 0, 0.9), 0 0 30px ${glowRgba};
+            border-color: ${accentColor};
           }
           @keyframes slideIn {
-            from { transform: translateY(24px) scale(0.96); opacity: 0; }
-            to { transform: translateY(0) scale(1); opacity: 1; }
+            from { transform: translateY(16px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
           }
           .header {
             display: flex;
@@ -164,47 +179,43 @@ export function showAvastStyleToast({
           }
           .brand {
             font-size: 10px;
-            font-weight: 800;
-            letter-spacing: 0.14em;
+            font-weight: 700;
+            letter-spacing: 0.08em;
             color: ${accentColor};
             text-transform: uppercase;
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 7px;
           }
-          .dot {
-            width: 7px;
-            height: 7px;
-            border-radius: 50%;
-            background-color: ${accentColor};
-            box-shadow: 0 0 8px ${accentColor};
+          .logo-img {
+            width: 16px;
+            height: 16px;
+            object-fit: contain;
           }
           .close-btn {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            color: #94a3b8;
-            border-radius: 6px;
-            width: 22px;
-            height: 22px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #777f8b;
+            border-radius: 5px;
+            width: 20px;
+            height: 20px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            font-size: 11px;
-            font-weight: 700;
+            font-size: 10px;
             line-height: 1;
-            transition: all 0.2s ease;
+            transition: all 0.15s ease;
           }
           .close-btn:hover {
-            background: rgba(239, 68, 68, 0.4);
-            border-color: #ef4444;
+            background: rgba(223, 133, 133, 0.2);
+            border-color: #df8585;
             color: #ffffff;
-            transform: scale(1.1);
           }
           .title {
             font-size: 13px;
-            font-weight: 700;
-            color: #ffffff;
+            font-weight: 600;
+            color: #eceef0;
             line-height: 1.3;
             margin-bottom: 4px;
             white-space: nowrap;
@@ -212,8 +223,8 @@ export function showAvastStyleToast({
             text-overflow: ellipsis;
           }
           .message {
-            font-size: 11px;
-            color: #94a3b8;
+            font-size: 11.5px;
+            color: #a0a6af;
             line-height: 1.4;
             max-height: 44px;
             overflow: hidden;
@@ -224,14 +235,14 @@ export function showAvastStyleToast({
             align-items: center;
             justifyContent: space-between;
             font-size: 10px;
-            color: rgba(148, 163, 184, 0.6);
-            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            color: #777f8b;
+            border-top: 1px solid #2c3037;
             padding-top: 6px;
             margin-top: 4px;
           }
           .action-hint {
             color: ${accentColor};
-            font-weight: 600;
+            font-weight: 500;
           }
         </style>
       </head>
@@ -240,7 +251,7 @@ export function showAvastStyleToast({
           <div>
             <div class="header">
               <div class="brand">
-                <span class="dot"></span>
+                ${logoUrl ? `<img src="${logoUrl}" class="logo-img" alt="" />` : ''}
                 <span>${badgeText}</span>
               </div>
               <button class="close-btn" title="Fermer" onclick="event.stopPropagation(); window.location.href='vanguard://close'">✕</button>
@@ -249,26 +260,24 @@ export function showAvastStyleToast({
             <div class="message">${escapeHtml(message)}</div>
           </div>
           <div class="footer">
-            <span>Astral Vanguard v2.4</span>
-            <span class="action-hint">Cliquer pour afficher ➔</span>
+            <span>Astral Vanguard v2.5.1</span>
+            <span class="action-hint">Ouvrir l'application ➔</span>
           </div>
         </div>
 
         <script>
-          // High-tech sound chime
           try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.type = 'sine';
             osc.frequency.setValueAtTime(${type === 'threat' ? 440 : 587.33}, ctx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(${type === 'threat' ? 220 : 880}, ctx.currentTime + 0.12);
-            gain.gain.setValueAtTime(0.06, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.32);
+            gain.gain.setValueAtTime(0.04, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
             osc.connect(gain);
             gain.connect(ctx.destination);
             osc.start();
-            osc.stop(ctx.currentTime + 0.33);
+            osc.stop(ctx.currentTime + 0.23);
           } catch(e) {}
         </script>
       </body>
@@ -300,25 +309,27 @@ export function showAvastStyleDownloadScan({
   isUnsigned?: boolean;
 }) {
   const win = createOrGetNotificationWindow();
-  const { x, y } = getPopupPosition(420, 190);
-  win.setBounds({ x, y, width: 420, height: 190 });
+  const { x, y } = getPopupPosition(420, 180);
+  win.setBounds({ x, y, width: 420, height: 180 });
 
   const isThreat = status === 'threat';
   const isSuspect = status === 'suspect';
   const isClean = !isThreat && !isSuspect;
 
-  const accentColor = isThreat ? '#ef4444' : isSuspect ? '#f59e0b' : '#10b981';
+  const accentColor = isThreat ? '#df8585' : isSuspect ? '#d6ad68' : '#68b894';
   const statusTitle = isThreat
-    ? 'Menace détectée dans le téléchargement'
+    ? 'Menace bloquée dans le téléchargement'
     : isSuspect
     ? 'Fichier téléchargé suspect'
-    : 'Téléchargement sécurisé et intègre';
+    : 'Téléchargement sain et vérifié';
 
   const statusDesc = isThreat
     ? `Composant malveillant bloqué : ${threatName || 'Malware'}`
     : isSuspect
     ? `${threatName || 'Anomalie détectée'}`
-    : 'Aucune charge hostile détectée. Le fichier peut être exécuté en toute sécurité.';
+    : 'Aucune charge hostile détectée. Le fichier est intègre.';
+
+  const logoUrl = getLogoDataUrl();
 
   const html = `
     <!DOCTYPE html>
@@ -341,20 +352,19 @@ export function showAvastStyleDownloadScan({
           .card {
             width: 100%;
             height: 100%;
-            background: linear-gradient(145deg, rgba(12, 16, 32, 0.97) 0%, rgba(6, 8, 20, 0.99) 100%);
-            backdrop-filter: blur(24px);
+            background: linear-gradient(145deg, #1b1e23 0%, #131518 100%);
             border: 1px solid ${accentColor};
-            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85), 0 0 24px ${accentColor}40;
-            border-radius: 14px;
-            padding: 16px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
+            border-radius: 10px;
+            padding: 14px 16px;
             display: flex;
             flex-direction: column;
             justifyContent: space-between;
-            color: #ffffff;
-            animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            color: #eceef0;
+            animation: slideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
           }
           @keyframes slideIn {
-            from { transform: translateY(24px); opacity: 0; }
+            from { transform: translateY(16px); opacity: 0; }
             to { transform: translateY(0); opacity: 1; }
           }
           .header {
@@ -365,39 +375,43 @@ export function showAvastStyleDownloadScan({
           }
           .brand {
             font-size: 10px;
-            font-weight: 800;
-            letter-spacing: 0.14em;
+            font-weight: 700;
+            letter-spacing: 0.08em;
             color: ${accentColor};
             text-transform: uppercase;
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 7px;
+          }
+          .logo-img {
+            width: 16px;
+            height: 16px;
+            object-fit: contain;
           }
           .close-btn {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            color: #94a3b8;
-            border-radius: 6px;
-            width: 22px;
-            height: 22px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #777f8b;
+            border-radius: 5px;
+            width: 20px;
+            height: 20px;
             display: flex;
             align-items: center;
-            justify-content: center;
+            justifyContent: center;
             cursor: pointer;
-            font-size: 11px;
-            font-weight: 700;
+            font-size: 10px;
             line-height: 1;
-            transition: all 0.2s ease;
+            transition: all 0.15s ease;
           }
           .close-btn:hover {
-            background: rgba(239, 68, 68, 0.4);
-            border-color: #ef4444;
+            background: rgba(223, 133, 133, 0.2);
+            border-color: #df8585;
             color: #ffffff;
           }
           .title {
             font-size: 13px;
-            font-weight: 700;
-            color: #ffffff;
+            font-weight: 600;
+            color: #eceef0;
             margin-bottom: 2px;
           }
           .file-name {
@@ -411,17 +425,17 @@ export function showAvastStyleDownloadScan({
           }
           .message {
             font-size: 11px;
-            color: #94a3b8;
+            color: #a0a6af;
             line-height: 1.35;
           }
           .footer {
             display: flex;
             align-items: center;
             justifyContent: space-between;
-            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            border-top: 1px solid #2c3037;
             padding-top: 6px;
             font-size: 10px;
-            color: rgba(148, 163, 184, 0.6);
+            color: #777f8b;
           }
         </style>
       </head>
@@ -430,6 +444,7 @@ export function showAvastStyleDownloadScan({
           <div>
             <div class="header">
               <div class="brand">
+                ${logoUrl ? `<img src="${logoUrl}" class="logo-img" alt="" />` : ''}
                 <span>SENTINELLE TÉLÉCHARGEMENTS</span>
               </div>
               <button class="close-btn" title="Fermer" onclick="window.location.href='vanguard://close'">✕</button>
@@ -439,27 +454,10 @@ export function showAvastStyleDownloadScan({
             <div class="message">${escapeHtml(statusDesc)}</div>
           </div>
           <div class="footer">
-            <span>Astral Vanguard Defender</span>
-            <span>Moteur heuristique actif</span>
+            <span>Astral Vanguard v2.5.1</span>
+            <span>Moteur heuristique autonome</span>
           </div>
         </div>
-
-        <script>
-          try {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = 'triangle';
-            osc.frequency.setValueAtTime(${isThreat ? 300 : 659.25}, ctx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(${isThreat ? 150 : 880}, ctx.currentTime + 0.18);
-            gain.gain.setValueAtTime(0.06, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start();
-            osc.stop(ctx.currentTime + 0.36);
-          } catch(e) {}
-        </script>
       </body>
     </html>
   `;

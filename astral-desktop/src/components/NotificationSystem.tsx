@@ -1,212 +1,109 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { ShieldAlert, Zap, Radio, CheckCircle2, Info, X } from 'lucide-react';
-import { playSound, SoundEffectType } from '../lib/audioSynth';
+import { useState, useEffect, useCallback } from 'react';
+import { CheckCircle2, AlertTriangle, Info, X, ShieldAlert } from 'lucide-react';
 
-export interface ToastNotification {
-  id: string;
-  type: 'threat' | 'lag' | 'game' | 'sos' | 'update' | 'info' | 'report' | 'success';
-  title: string;
-  message: string;
-  actionLabel?: string;
-  onAction?: () => void;
-  duration?: number;
-  critical?: boolean;
+const api = (window as any).vanguard;
+
+interface Toast {
+  id:       string;
+  type:     'ok' | 'warn' | 'bad' | 'info';
+  title:    string;
+  desc?:    string;
+  exiting?: boolean;
 }
 
-export const NotificationSystem: React.FC<{ dndEnabled?: boolean }> = ({ dndEnabled = false }) => {
-  const [toasts, setToasts] = useState<ToastNotification[]>([]);
+interface Props {
+  dndEnabled: boolean;
+}
 
-  const addToast = (toast: Omit<ToastNotification, 'id'>) => {
-    if (dndEnabled && !toast.critical) {
-      return;
-    }
+const ICONS = {
+  ok:   <CheckCircle2 size={16} />,
+  warn: <AlertTriangle size={16} />,
+  bad:  <ShieldAlert size={16} />,
+  info: <Info size={16} />,
+};
+const COLORS = {
+  ok:   'var(--ok)',
+  warn: 'var(--warn)',
+  bad:  'var(--bad)',
+  info: 'var(--a1)',
+};
 
-    const id = typeof window !== 'undefined' && window.crypto?.randomUUID
-      ? window.crypto.randomUUID()
-      : `toast-${Date.now()}`;
-    const newToast: ToastNotification = { ...toast, id };
+export function NotificationSystem({ dndEnabled }: Props) {
+  const [toasts, setToasts] = useState<Toast[]>([]);
 
-    setToasts((prev) => [...prev.slice(-2), newToast]); // max 3 concurrent toasts
+  const dismiss = useCallback((id: string) => {
+    setToasts(prev => prev.map(t => t.id === id ? { ...t, exiting: true } : t));
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 200);
+  }, []);
 
-    let soundType: SoundEffectType = 'scan_complete';
-    if (toast.type === 'threat') soundType = 'threat_blocked';
-    else if (toast.type === 'game') soundType = 'game_detected';
-    else if (toast.type === 'lag') soundType = 'lag_alert';
-    else if (toast.type === 'sos') soundType = 'sos_resolved';
-    else if (toast.type === 'update') soundType = 'update_ready';
-    else if (toast.type === 'report' || toast.type === 'success') soundType = 'scan_complete';
-
-    playSound(soundType);
-
-    const timeout = toast.duration || (toast.type === 'threat' ? 9000 : 5000);
-    setTimeout(() => {
-      removeToast(id);
-    }, timeout);
-  };
-
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
+  const add = useCallback((t: Omit<Toast, 'id' | 'exiting'>) => {
+    if (dndEnabled) return;
+    const id = Date.now().toString();
+    setToasts(prev => [...prev.slice(-4), { ...t, id }]);
+    setTimeout(() => dismiss(id), 4000);
+  }, [dndEnabled, dismiss]);
 
   useEffect(() => {
-    const vanguard = (window as any).vanguard;
-    if (!vanguard?.on) return;
+    if (!api?.on) return;
+    const handlers: (() => void)[] = [];
 
-    const unsubTrigger = vanguard.on('notification:trigger', (data: any) => {
-      addToast({
-        type: data.type || 'info',
-        title: data.title || 'Notification Vanguard',
-        message: data.message || '',
-        actionLabel: data.actionLabel,
-        critical: data.critical || data.type === 'threat',
-      });
-    });
-
-    const unsubLag = vanguard.on('doctor:lag-alert', (data: any) => {
-      addToast({
-        type: 'lag',
-        title: 'Alerte Latence Réseau',
-        message: data.message || 'Pic de latence inhabituel détecté.',
-        critical: true,
-      });
-    });
-
-    const unsubGame = vanguard.on('gaming:game-started', (data: any) => {
-      addToast({
-        type: 'game',
-        title: 'Mode Gaming Actif',
-        message: `Jeu détecté : ${data.gameName || 'Processus plein écran'}. Optimisations actives.`,
-        critical: false,
-      });
-    });
-
-    return () => {
-      if (typeof unsubTrigger === 'function') unsubTrigger();
-      if (typeof unsubLag === 'function') unsubLag();
-      if (typeof unsubGame === 'function') unsubGame();
+    const on = (event: string, fn: (d: any) => void) => {
+      const off = api.on(event, fn);
+      if (typeof off === 'function') handlers.push(off);
     };
-  }, [dndEnabled]);
+
+    on('notification:show', (d: any) => {
+      add({ type: d.type || 'info', title: d.title || d.message || '', desc: d.desc || d.body });
+    });
+    on('security:threat-detected', (d: any) => {
+      add({ type: 'bad', title: 'Menace détectée', desc: d.name || d.filePath || '' });
+    });
+    on('security:scan-complete', (d: any) => {
+      add({ type: 'ok', title: 'Analyse terminée', desc: `${d.threats || 0} menace(s)` });
+    });
+    on('vpn:connected', (d: any) => {
+      add({ type: 'ok', title: 'VPN connecté', desc: d.serverName || '' });
+    });
+    on('vpn:disconnected', () => {
+      add({ type: 'warn', title: 'VPN déconnecté', desc: 'Le tunnel a été fermé.' });
+    });
+    on('network:issue', (d: any) => {
+      add({ type: 'warn', title: 'Problème réseau détecté', desc: d.message || '' });
+    });
+    on('gaming:game-started', (d: any) => {
+      add({ type: 'info', title: 'Mode Gaming activé', desc: d.gameName || 'Jeu détecté' });
+    });
+    on('updater:state-changed', (d: any) => {
+      if (d?.status === 'available') {
+        add({ type: 'info', title: `Mise à jour v${d.updateInfo?.version || '?'}`, desc: 'Disponible — cliquez sur Mises à jour.' });
+      }
+    });
+
+    return () => handlers.forEach(fn => fn());
+  }, [add]);
+
+  if (toasts.length === 0) return null;
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        bottom: 24,
-        right: 24,
-        zIndex: 9999,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 10,
-        maxWidth: 380,
-        width: '100%',
-        pointerEvents: 'none',
-      }}
-    >
-      <AnimatePresence>
-        {toasts.map((toast) => {
-          let accentColor = 'var(--cyan)';
-          let icon = <Info size={16} style={{ color: 'var(--cyan)' }} />;
-
-          if (toast.type === 'threat') {
-            accentColor = 'var(--red)';
-            icon = <ShieldAlert size={16} style={{ color: 'var(--red)' }} />;
-          } else if (toast.type === 'lag') {
-            accentColor = 'var(--yellow)';
-            icon = <Radio size={16} style={{ color: 'var(--yellow)' }} />;
-          } else if (toast.type === 'game') {
-            accentColor = 'var(--cyan)';
-            icon = <Zap size={16} style={{ color: 'var(--cyan)' }} />;
-          } else if (toast.type === 'sos' || toast.type === 'report' || toast.type === 'success') {
-            accentColor = 'var(--green)';
-            icon = <CheckCircle2 size={16} style={{ color: 'var(--green)' }} />;
-          }
-
-          return (
-            <motion.div
-              key={toast.id}
-              initial={{ opacity: 0, y: 16, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.94, transition: { duration: 0.15 } }}
-              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-              style={{
-                pointerEvents: 'auto',
-                backgroundColor: 'rgba(9, 13, 22, 0.94)',
-                backdropFilter: 'blur(16px)',
-                border: '1px solid var(--border)',
-                borderLeft: `3px solid ${accentColor}`,
-                boxShadow: '0 12px 32px rgba(0, 0, 0, 0.5), 0 0 1px rgba(255, 255, 255, 0.1)',
-                borderRadius: 12,
-                padding: '12px 14px',
-                color: 'var(--text-primary)',
-                position: 'relative',
-                overflow: 'hidden',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                <div
-                  style={{
-                    padding: 6,
-                    borderRadius: 8,
-                    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-                    border: '1px solid var(--border-subtle)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                    marginTop: 1,
-                  }}
-                >
-                  {icon}
-                </div>
-
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
-                    {toast.title}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2, lineHeight: 1.4, wordBreak: 'break-word' }}>
-                    {toast.message}
-                  </div>
-                  {toast.actionLabel && (
-                    <button
-                      onClick={() => {
-                        toast.onAction?.();
-                        removeToast(toast.id);
-                      }}
-                      className="btn btn-primary"
-                      style={{
-                        marginTop: 8,
-                        fontSize: 11,
-                        padding: '4px 10px',
-                      }}
-                    >
-                      {toast.actionLabel}
-                    </button>
-                  )}
-                </div>
-
-                <button
-                  onClick={() => removeToast(toast.id)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--text-muted)',
-                    cursor: 'pointer',
-                    padding: 4,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: 4,
-                  }}
-                  title="Fermer"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            </motion.div>
-          );
-        })}
-      </AnimatePresence>
+    <div className="toast-container">
+      {toasts.map(t => (
+        <div
+          key={t.id}
+          className={`toast-item${t.exiting ? ' exiting' : ''}`}
+          style={{ borderLeftColor: COLORS[t.type], borderLeftWidth: 2 }}
+        >
+          <span className="toast-icon" style={{ color: COLORS[t.type] }}>
+            {ICONS[t.type]}
+          </span>
+          <div className="toast-body">
+            <div className="toast-title">{t.title}</div>
+            {t.desc && <div className="toast-desc">{t.desc}</div>}
+          </div>
+          <button className="toast-close" onClick={() => dismiss(t.id)}>
+            <X size={13} />
+          </button>
+        </div>
+      ))}
     </div>
   );
-};
+}
