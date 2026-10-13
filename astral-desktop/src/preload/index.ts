@@ -53,6 +53,8 @@ const api = {
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),
   installUpdate: () => ipcRenderer.invoke('updater:install'),
   getUpdaterState: () => ipcRenderer.invoke('updater:get-state'),
+  setPreviewChannel: (enabled: boolean) => ipcRenderer.invoke('updater:set-preview-channel', enabled),
+  getPreviewChannel: () => ipcRenderer.invoke('updater:get-preview-channel'),
 
   // Security (100% Offline & Autonomous)
   startScan: (scanType: 'quick' | 'full') => ipcRenderer.invoke('security:start-scan', scanType),

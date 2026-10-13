@@ -7,6 +7,7 @@
 import { autoUpdater, UpdateInfo } from 'electron-updater';
 import { BrowserWindow, ipcMain, app } from 'electron';
 import { logger } from './logger';
+import { loadPreferences, savePreferences } from './profile';
 
 export interface UpdaterState {
   currentVersion: string;
@@ -91,6 +92,11 @@ export function setupAutoUpdater(win: BrowserWindow) {
 
   autoUpdater.autoDownload = false; // Give user choice or trigger via UI
   autoUpdater.autoInstallOnAppQuit = true;
+
+  // Configure preview/beta channel based on user preferences
+  const prefs = loadPreferences();
+  autoUpdater.allowPrerelease = prefs.previewChannel;
+  logger.info(`[AutoUpdater] Canal prévision (bêta) : ${prefs.previewChannel ? 'ACTIVÉ' : 'DÉSACTIVÉ'}`);
 
   autoUpdater.on('checking-for-update', () => {
     logger.info('[AutoUpdater] Checking for updates on GitHub Releases...');
@@ -179,6 +185,22 @@ export function setupAutoUpdater(win: BrowserWindow) {
     logger.info('[AutoUpdater] User confirmed installation, proceeding with quitAndInstall');
     quitAndInstallUpdate(true, true);
     return { success: true };
+  });
+
+  ipcMain.handle('updater:set-preview-channel', async (_, enabled: boolean) => {
+    try {
+      autoUpdater.allowPrerelease = enabled;
+      savePreferences({ previewChannel: enabled });
+      logger.info(`[AutoUpdater] Canal prévision (bêta) changé : ${enabled ? 'ACTIVÉ' : 'DÉSACTIVÉ'}`);
+      return { success: true, previewChannel: enabled };
+    } catch (err: any) {
+      logger.error('[AutoUpdater] Failed to toggle preview channel:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('updater:get-preview-channel', () => {
+    return { previewChannel: autoUpdater.allowPrerelease };
   });
 
   // Check for updates shortly after launch in production (or if forced via env)

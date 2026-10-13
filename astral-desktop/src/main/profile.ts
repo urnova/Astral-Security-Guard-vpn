@@ -16,6 +16,8 @@ export interface UserPreferences {
   downloadScannerEnabled: boolean;
   gamingAutoDetect: boolean; // strictly false by default
   hudEnabled: boolean;        // strictly false by default
+  previewChannel: boolean;   // beta/preview update channel
+  adminElevationEnabled: boolean; // user has acknowledged admin requirement
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = {
@@ -31,6 +33,8 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   downloadScannerEnabled: true,
   gamingAutoDetect: false,
   hudEnabled: false,
+  previewChannel: false,
+  adminElevationEnabled: true,
 };
 
 const PROFILE_DIR = path.join(app.getPath('appData'), 'AstralVanguard');
@@ -61,6 +65,8 @@ export function loadPreferences(): UserPreferences {
           downloadScannerEnabled: typeof parsed.downloadScannerEnabled === 'boolean' ? parsed.downloadScannerEnabled : true,
           gamingAutoDetect: typeof parsed.gamingAutoDetect === 'boolean' ? parsed.gamingAutoDetect : false,
           hudEnabled: typeof parsed.hudEnabled === 'boolean' ? parsed.hudEnabled : false,
+          previewChannel: typeof parsed.previewChannel === 'boolean' ? parsed.previewChannel : false,
+          adminElevationEnabled: typeof parsed.adminElevationEnabled === 'boolean' ? parsed.adminElevationEnabled : true,
         };
       }
     }

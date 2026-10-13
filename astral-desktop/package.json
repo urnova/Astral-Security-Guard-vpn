@@ -1,6 +1,6 @@
 {
   "name": "astral-vanguard",
-  "version": "2.5.1",
+  "version": "2.5.2",
   "description": "Astral Vanguard - Gaming, Security & Anti-Lag Suite",
   "author": "Astral Security",
   "private": true,
@@ -22,7 +22,7 @@
       "target": "nsis",
       "icon": "public/icon.ico",
       "publisherName": "Astral Security",
-      "requestedExecutionLevel": "asInvoker"
+      "requestedExecutionLevel": "requireAdministrator"
     },
     "nsis": {
       "oneClick": false,

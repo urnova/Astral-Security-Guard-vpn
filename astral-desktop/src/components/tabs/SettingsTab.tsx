@@ -3,7 +3,7 @@ import {
   User, Palette, Sliders, Shield, Gamepad2,
   Bell, RefreshCw, Cpu, Info, Check, CheckCircle2,
   AlertTriangle, X, Save, ExternalLink, Monitor,
-  Wifi, Download, Activity, Lock, Volume2
+  Wifi, Download, Activity, Lock, Volume2, Zap, FlaskConical
 } from 'lucide-react';
 
 const api = (window as any).vanguard;
@@ -132,6 +132,11 @@ export default function SettingsTab({
   const [betaChannel, setBetaChannel]       = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateStatus, setUpdateStatus]     = useState('');
+  const [currentVersion, setCurrentVersion] = useState('2.5.1');
+  const [updateInfo, setUpdateInfo]         = useState<{ version?: string; hasUpdate?: boolean } | null>(null);
+
+  // Admin status
+  const [isAdmin, setIsAdmin]               = useState<boolean | null>(null);
 
   // Diagnostic
   const [diagResults, setDiagResults] = useState<{ name: string; status: string; ok: boolean }[]>([]);
@@ -172,6 +177,21 @@ export default function SettingsTab({
       if (res?.data) {
         if (typeof res.data.realTimeProtection === 'boolean') setRealtimeProtection(res.data.realTimeProtection);
       }
+    }).catch(() => {});
+
+    // Load preview channel state from electron-updater
+    api.getPreviewChannel?.().then((res: any) => {
+      if (typeof res?.previewChannel === 'boolean') setBetaChannel(res.previewChannel);
+    }).catch(() => {});
+
+    // Load updater version info
+    api.getUpdaterState?.().then((state: any) => {
+      if (state?.currentVersion) setCurrentVersion(state.currentVersion);
+    }).catch(() => {});
+
+    // Check admin status
+    api.getAdminStatus?.().then((res: any) => {
+      if (typeof res?.isAdmin === 'boolean') setIsAdmin(res.isAdmin);
     }).catch(() => {});
   }, []);
 
@@ -228,19 +248,36 @@ export default function SettingsTab({
   const handleCheckUpdate = async () => {
     if (!api) return;
     setCheckingUpdate(true);
-    setUpdateStatus('Vérification des mises à jour…');
+    setUpdateInfo(null);
+    setUpdateStatus('Connexion aux serveurs GitHub Releases…');
     try {
-      const res = await api.checkForUpdates?.();
-      if (res?.hasUpdate) {
-        setUpdateStatus(`Nouvelle version ${res.version} disponible !`);
+      const res = await api.checkUpdate?.();
+      if (res?.updateInfo?.version) {
+        setUpdateInfo({ version: res.updateInfo.version, hasUpdate: true });
+        setUpdateStatus(`🎉 Nouvelle version ${res.updateInfo.version} disponible !`);
+        showToast(`Mise à jour v${res.updateInfo.version} disponible — téléchargement possible`);
       } else {
-        setUpdateStatus('Vous utilisez la dernière version (v2.5.0)');
+        setUpdateInfo({ hasUpdate: false });
+        setUpdateStatus(`✓ Version ${currentVersion} — vous utilisez la dernière version`);
         showToast('Aucune mise à jour disponible — tout est à jour');
       }
     } catch {
-      setUpdateStatus('Impossible de contacter le serveur de mise à jour.');
+      setUpdateStatus('⚠ Impossible de contacter le serveur de mise à jour.');
     } finally {
       setCheckingUpdate(false);
+    }
+  };
+
+  const handleToggleBetaChannel = async (val: boolean) => {
+    setBetaChannel(val);
+    try {
+      await api?.setPreviewChannel?.(val);
+      showToast(val
+        ? '🧪 Canal Préversion activé — mises à jour bêta autorisées'
+        : 'Canal stable rétabli — mises à jour officielles uniquement'
+      );
+    } catch {
+      showToast('Erreur lors du changement de canal');
     }
   };
 
@@ -431,6 +468,46 @@ export default function SettingsTab({
                 <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
                   Comportement de l'exécutable au démarrage de session et réduction en arrière-plan.
                 </p>
+              </div>
+
+              {/* Admin Status Card */}
+              <div style={{
+                background: isAdmin === false ? 'rgba(239,68,68,.05)' : 'rgba(var(--a1r),.04)',
+                border: `1px solid ${isAdmin === false ? 'rgba(239,68,68,.25)' : isAdmin ? 'rgba(var(--a1r),.2)' : 'var(--line)'}`,
+                borderRadius: 'var(--r-md)',
+                padding: '14px 18px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Lock size={16} style={{ color: isAdmin === false ? 'rgb(239,68,68)' : isAdmin ? 'var(--a1)' : 'var(--dim)', flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                      Droits Administrateur
+                    </div>
+                    <div style={{ fontSize: 11, color: isAdmin === false ? 'rgb(239,68,68)' : 'var(--muted)', marginTop: 2 }}>
+                      {isAdmin === null
+                        ? 'Vérification…'
+                        : isAdmin
+                        ? '✓ Session élevée — l’application dispose des privilèges système complets'
+                        : '⚠ Mode restreint détecté — certaines fonctions peuvent être limitées'}
+                    </div>
+                  </div>
+                </div>
+                {isAdmin === false && (
+                  <button
+                    className="btn"
+                    style={{ fontSize: 11, flexShrink: 0, borderColor: 'rgba(239,68,68,.4)', color: 'rgb(239,68,68)' }}
+                    onClick={async () => {
+                      await api?.relaunchElevated?.();
+                      showToast('Relancement en mode administrateur…');
+                    }}
+                  >
+                    Relancer en admin
+                  </button>
+                )}
               </div>
 
               <div className="list">
@@ -759,25 +836,59 @@ export default function SettingsTab({
               <div>
                 <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Mises à jour logicielles</h2>
                 <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-                  Mises à jour automatiques sécurisées avec vérification d'empreinte SHA-256.
+                  Mises à jour automatiques sécurisées via GitHub Releases avec vérification SHA-256.
                 </p>
               </div>
 
-              <div className="list">
-                <div className="setting-row">
-                  <div className="setting-info">
-                    <div className="setting-title">Astral Vanguard v2.5.0</div>
-                    <div className="setting-desc">{updateStatus || 'Version stable installée'}</div>
+              {/* Version Card */}
+              <div style={{
+                background: 'var(--bg)',
+                border: `1px solid ${updateInfo?.hasUpdate ? 'var(--a1)' : 'var(--line)'}`,
+                borderRadius: 'var(--r-md)',
+                padding: '16px 20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 16,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{
+                    width: 36, height: 36, borderRadius: 'var(--r-sm)',
+                    background: updateInfo?.hasUpdate ? 'rgba(var(--a1r),.12)' : 'var(--surface)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: '1px solid var(--line)',
+                  }}>
+                    <Zap size={16} style={{ color: updateInfo?.hasUpdate ? 'var(--a1)' : 'var(--muted)' }} />
                   </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                      Astral Vanguard v{currentVersion}
+                    </div>
+                    <div style={{ fontSize: 11, color: updateInfo?.hasUpdate ? 'var(--a1)' : 'var(--muted)', marginTop: 2 }}>
+                      {updateStatus || (betaChannel ? '🧪 Canal Préversion actif' : 'Canal stable officiel')}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                  {updateInfo?.hasUpdate && (
+                    <button className="btn" style={{ fontSize: 11 }}
+                      onClick={() => api?.downloadUpdate?.()}>
+                      Télécharger v{updateInfo.version}
+                    </button>
+                  )}
                   <button
                     className="btn s"
                     onClick={handleCheckUpdate}
                     disabled={checkingUpdate}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                   >
-                    {checkingUpdate ? 'Recherche…' : 'Rechercher'}
+                    <RefreshCw size={12} className={checkingUpdate ? 'animate-spin' : ''} />
+                    {checkingUpdate ? 'Vérification…' : 'Rechercher'}
                   </button>
                 </div>
+              </div>
 
+              <div className="list">
                 <div className="setting-row">
                   <div className="setting-info">
                     <div className="setting-title">Mises à jour automatiques</div>
@@ -792,14 +903,34 @@ export default function SettingsTab({
                   />
                 </div>
 
-                <div className="setting-row">
+                <div className="setting-row" style={{ borderTop: '1px solid var(--line)', paddingTop: 14 }}>
                   <div className="setting-info">
-                    <div className="setting-title">Canal Préversion (Bêta)</div>
-                    <div className="setting-desc">Recevoir les nouvelles fonctionnalités et optimisations en avant-première</div>
+                    <div className="setting-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <FlaskConical size={13} style={{ color: betaChannel ? 'var(--a1)' : 'var(--dim)' }} />
+                      Canal Préversion (Bêta)
+                    </div>
+                    <div className="setting-desc">
+                      Recevoir les nouvelles fonctionnalités et optimisations en avant-première.
+                      Les versions bêta sont distribuées exclusivement via ce canal — elles n'apparaissent
+                      pas sur le site officiel.
+                    </div>
+                    {betaChannel && (
+                      <div style={{
+                        marginTop: 8,
+                        padding: '6px 10px',
+                        background: 'rgba(var(--a1r),.06)',
+                        border: '1px solid rgba(var(--a1r),.18)',
+                        borderRadius: 'var(--r-sm)',
+                        fontSize: 11,
+                        color: 'var(--a1)',
+                      }}>
+                        🧪 Les versions marquées <strong>prerelease</strong> sur GitHub seront proposées au téléchargement.
+                      </div>
+                    )}
                   </div>
                   <div
                     className={`sw ${betaChannel ? 'on' : ''}`}
-                    onClick={() => setBetaChannel(!betaChannel)}
+                    onClick={() => handleToggleBetaChannel(!betaChannel)}
                     role="switch"
                     aria-checked={betaChannel}
                     tabIndex={0}

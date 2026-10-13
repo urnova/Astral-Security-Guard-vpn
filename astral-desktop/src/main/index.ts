@@ -158,6 +158,10 @@ function createMainWindow() {
     const admin = isAdmin();
     const osInfo = getWindowsBuildInfo();
     logger.info(`[App] Running with admin rights: ${admin}, OS: ${osInfo.edition} (${osInfo.buildNumber})`);
+    if (!admin) {
+      logger.warn('[App] ATTENTION: Application running without admin rights. Some features (VPN, firewall, performance tuning) may be limited.');
+      logger.warn('[App] In production (packaged), requestedExecutionLevel=requireAdministrator will enforce elevation automatically.');
+    }
     mainWin?.webContents.send('admin:status', { isAdmin: admin, osInfo });
   });
 
@@ -279,7 +283,7 @@ export function updateTrayState(opts: {
 
   const menu = Menu.buildFromTemplate([
     {
-      label: '⚡ Astral Vanguard v2.4',
+      label: '⚡ Astral Vanguard v2.5.1',
       enabled: false,
     },
     {
