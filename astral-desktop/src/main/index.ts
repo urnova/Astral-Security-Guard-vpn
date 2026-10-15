@@ -84,12 +84,7 @@ function createMainWindow() {
     minHeight: 640,
     show: false,
     titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: '#07071a',
-      symbolColor: '#a78bfa',
-      height: 36,
-    },
-    backgroundColor: '#07071a',
+    backgroundColor: '#131518',
     icon: path.join(process.env.PUBLIC!, 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),

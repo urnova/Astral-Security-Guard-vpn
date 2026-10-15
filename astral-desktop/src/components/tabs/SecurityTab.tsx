@@ -66,6 +66,7 @@ export default function SecurityTab() {
   const [sched1, setSched1]       = useState(true);
   const [sched2, setSched2]       = useState(false);
   const [notice, setNotice]       = useState('');
+  const [customPath, setCustomPath] = useState('');
   const timerRef = useRef<any>(null);
   const startRef = useRef(0);
 
@@ -88,6 +89,21 @@ export default function SecurityTab() {
       if (Array.isArray(ex)) setExclusions(ex);
     }).catch(() => {});
 
+    const cleanupScan = api.on?.('security:scan-event', (d: any) => {
+      if (d?.type === 'scan-progress') {
+        if (typeof d.progress === 'number') setProgress(d.progress);
+        else if (typeof d.percent === 'number') setProgress(d.percent);
+        if (d.filesScanned) setScannedFiles(d.filesScanned);
+        if (d.currentFile) addLog({ text: d.currentFile });
+      } else if (d?.type === 'scan-complete') {
+        finishScan(d?.threats ?? 0);
+      } else if (d?.type === 'scan-error') {
+        addLog({ text: `Erreur : ${d.error || 'Échec de l\'analyse'}`, type: 'bad' });
+        setScanning(false);
+        clearInterval(timerRef.current);
+      }
+    });
+
     const c1 = api.on?.('security:scan-progress', (d: any) => {
       if (d?.filesScanned) setScannedFiles(d.filesScanned);
       if (d?.progress)     setProgress(d.progress);
@@ -96,16 +112,26 @@ export default function SecurityTab() {
     const c2 = api.on?.('security:scan-complete', (d: any) => {
       finishScan(d?.threats || 0);
     });
-    return () => { c1?.(); c2?.(); };
+    return () => { cleanupScan?.(); c1?.(); c2?.(); };
   }, []);
 
   const addLog = (log: ScanLog) => setLogs(prev => [...prev.slice(-15), log]);
+
+  const handleBrowseTarget = async () => {
+    try {
+      const res = await api?.selectScanTarget?.('folder');
+      if (res?.success && res.path) {
+        setCustomPath(res.path);
+        addLog({ text: `Cible sélectionnée : ${res.path}`, type: 'ok' });
+      }
+    } catch {}
+  };
 
   const startScan = async () => {
     if (!api || scanning) return;
     setScanning(true);
     setScanDone(null);
-    setProgress(0);
+    setProgress(5);
     setScannedFiles(0);
     setThreats(0);
     setDuration(0);
@@ -117,7 +143,11 @@ export default function SecurityTab() {
     }, 1000);
 
     try {
-      const res = await api.startScan?.({ mode: scanMode.toLowerCase() });
+      const modeKey = scanMode === 'Rapide' ? 'quick' : scanMode === 'Approfondie' ? 'full' : 'custom';
+      if (modeKey === 'custom' && !customPath) {
+        addLog({ text: 'Attention : aucun dossier spécifié, analyse du dossier Téléchargements par défaut.', type: 'warn' });
+      }
+      const res = await api.startScan?.({ mode: modeKey, customPath: customPath || undefined });
       if (res?.threats !== undefined) finishScan(res.threats);
     } catch (err: any) {
       addLog({ text: `Erreur : ${err.message}`, type: 'bad' });
@@ -211,6 +241,32 @@ export default function SecurityTab() {
                 <button key={m} className={scanMode === m ? 'on' : ''} onClick={() => setScanMode(m)}>{m}</button>
               ))}
             </div>
+
+            {scanMode === 'Personnalisée' && (
+              <div style={{ margin: '0 auto 16px', maxWidth: 360, width: '100%', textAlign: 'left', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--line)', padding: '10px 14px', borderRadius: 'var(--r-sm)' }}>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 6 }}>
+                  Dossier ou fichier cible à analyser :
+                </label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="text"
+                    className="inp"
+                    value={customPath}
+                    onChange={e => setCustomPath(e.target.value)}
+                    placeholder="Ex: C:\Dossier ou C:\Fichier.exe..."
+                    style={{ fontSize: 11.5, padding: '6px 10px', height: 32 }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={handleBrowseTarget}
+                    style={{ flexShrink: 0, height: 32 }}
+                  >
+                    Parcourir
+                  </button>
+                </div>
+              </div>
+            )}
 
             <button
               className="btn"

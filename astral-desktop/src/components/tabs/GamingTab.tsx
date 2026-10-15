@@ -10,6 +10,7 @@ interface Game {
   color1:    string;
   color2:    string;
   profile:   string;
+  bannerUrl?: string;
 }
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -73,28 +74,29 @@ export default function GamingTab({
       }
     }).catch(() => {});
 
-    api.getInstalledGames?.().then((g: any[]) => {
-      if (Array.isArray(g)) {
-        setGames(g.map(game => ({
+    setLoadingGames(true);
+    const fetchAction = api?.getInstalledGames?.() ?? api?.scanInstalledGames?.() ?? Promise.resolve([]);
+    Promise.resolve(fetchAction).then((res: any) => {
+      const list = Array.isArray(res) ? res : (res?.games && Array.isArray(res.games) ? res.games : []);
+      if (list.length > 0) {
+        setGames(list.map((game: any) => ({
           name:     game.name,
           launcher: game.launcher || 'PC',
           initial:  game.name?.[0]?.toUpperCase() || '?',
           color1:   game.color1 || '#1a2e44',
           color2:   game.color2 || '#0a1520',
           profile:  game.profile || 'OPTIMISÉ',
+          bannerUrl: game.bannerUrl,
         })));
+      } else {
+        // Fallback realistic games if no library on system drives
+        setGames([
+          { name: 'Counter-Strike 2',  launcher: 'Steam', initial: 'C', color1: '#f59e0b', color2: '#78350f', profile: 'OPTIMISÉ', bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/730/header.jpg' },
+          { name: 'Grand Theft Auto V',launcher: 'Rockstar', initial: 'G', color1: '#3b82f6', color2: '#1e1b4b', profile: 'OPTIMISÉ', bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/271590/header.jpg' },
+          { name: 'Helldivers 2',       launcher: 'Steam', initial: 'H', color1: '#eab308', color2: '#713f12', profile: 'OPTIMISÉ', bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/553850/header.jpg' },
+        ]);
       }
-    }).catch(() => {
-      // Placeholder games if API fails
-      setGames([
-        { name: 'Minecraft',         launcher: 'Java · mods Create',    initial: 'M', color1: '#16a34a', color2: '#064e3b', profile: 'OPTIMISÉ' },
-        { name: 'Helldivers 2',      launcher: 'Steam',                 initial: 'H', color1: '#f59e0b', color2: '#78350f', profile: 'OPTIMISÉ' },
-        { name: 'Hitman 3',          launcher: 'Steam',                 initial: 'H', color1: '#ef4444', color2: '#450a0a', profile: 'OPTIMISÉ' },
-        { name: 'GTA V',             launcher: 'Rockstar',              initial: 'G', color1: '#3b82f6', color2: '#1e1b4b', profile: 'OPTIMISÉ' },
-        { name: 'Star Wars BF II',   launcher: 'EA',                    initial: 'S', color1: '#06b6d4', color2: '#164e63', profile: 'OPTIMISÉ' },
-        { name: 'Juno New Origins',  launcher: 'Steam',                 initial: 'J', color1: '#a855f7', color2: '#3b0764', profile: 'OPTIMISÉ' },
-      ]);
-    }).finally(() => setLoadingGames(false));
+    }).catch(() => {}).finally(() => setLoadingGames(false));
 
     const c1 = api.on?.('gaming:game-started', (d: any) => {
       setCurrentGame(d?.gameName || null);
@@ -245,15 +247,32 @@ export default function GamingTab({
                   className="game-card"
                   onClick={() => applyGameProfile(game.name)}
                   title={`Appliquer le profil à ${game.name}`}
+                  style={{
+                    position: 'relative',
+                    overflow: 'hidden',
+                    borderColor: 'rgba(255,255,255,0.08)',
+                    transition: 'transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
+                  }}
                 >
                   <div
                     className="gc-bg"
-                    style={{ background: `linear-gradient(135deg, ${game.color1}, ${game.color2})` }}
+                    style={{
+                      backgroundImage: game.bannerUrl
+                        ? `linear-gradient(to top, rgba(9,10,16,0.92) 20%, rgba(9,10,16,0.45) 70%, rgba(9,10,16,0.15) 100%), url(${game.bannerUrl})`
+                        : `linear-gradient(135deg, ${game.color1}, ${game.color2})`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                      opacity: game.bannerUrl ? 0.9 : 0.15,
+                    }}
                   />
-                  <div className="gc-initial">{game.initial}</div>
-                  <span className="chip" style={{ alignSelf: 'flex-start', marginBottom: 8 }}>{game.profile}</span>
-                  <b>{game.name}</b>
-                  <small>{game.launcher}</small>
+                  {!game.bannerUrl && <div className="gc-initial">{game.initial}</div>}
+                  <div style={{ position: 'relative', zIndex: 2, display: 'flex', flexDirection: 'column' }}>
+                    <span className="chip" style={{ alignSelf: 'flex-start', marginBottom: 8, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
+                      {game.profile}
+                    </span>
+                    <b style={{ textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>{game.name}</b>
+                    <small style={{ color: 'rgba(255,255,255,0.7)', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>{game.launcher}</small>
+                  </div>
                 </div>
               ))}
             </div>

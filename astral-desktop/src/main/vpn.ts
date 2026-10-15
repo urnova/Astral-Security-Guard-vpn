@@ -113,6 +113,20 @@ export function setupVpnIPC(win: BrowserWindow) {
     return await detectThirdPartyVpn();
   });
 
+  ipcMain.handle('vpn:detect-all', async () => {
+    const status = await detectThirdPartyVpn();
+    if (status.thirdPartyActive && status.vpnName) {
+      return [{
+        id: status.vpnName.toLowerCase().replace(/[^a-z0-9]/g, ''),
+        name: status.vpnName,
+        detected: true,
+        connected: true,
+        serverName: status.adapterName || 'Tunnel actif',
+      }];
+    }
+    return [];
+  });
+
   // ── Fetch Servers (Catalogue dynamique VPN Gate avec cache local) ─────────
   ipcMain.handle('vpn:fetch-servers', async () => {
     try {

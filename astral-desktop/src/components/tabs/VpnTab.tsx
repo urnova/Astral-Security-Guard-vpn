@@ -133,23 +133,23 @@ export default function VpnTab() {
 
     /* Detect third-party VPNs */
     setLoadingProviders(true);
-    api.detectThirdPartyVpns?.().then((vpns: any[]) => {
-      if (Array.isArray(vpns)) {
-        const mapped: ThirdPartyVpn[] = vpns.map(v => ({
-          id:         v.id || v.name.toLowerCase().replace(/\s+/g, ''),
-          name:       v.name,
-          detected:   Boolean(v.detected),
-          connected:  Boolean(v.connected),
-          serverName: v.serverName || v.server || '',
-          ip:         v.ip,
-          servers:    v.servers,
-        }));
-        setThirdPartyVpns(mapped);
+    const detectAction = api?.detectThirdPartyVpns?.() ?? Promise.resolve([]);
+    Promise.resolve(detectAction).then((vpns: any) => {
+      const list = Array.isArray(vpns) ? vpns : (vpns?.thirdPartyActive ? [vpns] : []);
+      const mapped: ThirdPartyVpn[] = list.map((v: any) => ({
+        id:         v.id || (v.name || v.vpnName || 'vpn').toLowerCase().replace(/\s+/g, ''),
+        name:       v.name || v.vpnName || 'VPN Tiers',
+        detected:   Boolean(v.detected ?? v.thirdPartyActive),
+        connected:  Boolean(v.connected ?? v.thirdPartyActive),
+        serverName: v.serverName || v.adapterName || '',
+        ip:         v.ip,
+        servers:    v.servers,
+      }));
+      setThirdPartyVpns(mapped);
 
-        // Auto-select the one that is currently connected
-        const activeVpn = mapped.find(v => v.connected);
-        if (activeVpn) setActiveProvider(activeVpn.id);
-      }
+      // Auto-select the one that is currently connected
+      const activeVpn = mapped.find(v => v.connected);
+      if (activeVpn) setActiveProvider(activeVpn.id);
     }).catch(() => {}).finally(() => setLoadingProviders(false));
 
     /* Astral VPN status */

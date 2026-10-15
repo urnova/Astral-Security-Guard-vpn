@@ -1,4 +1,5 @@
 import { BrowserWindow, ipcMain } from 'electron';
+import https from 'https';
 import { runPowerShell } from './psHelper';
 import { logger } from './logger';
 import { gamingManager } from './gamingManager';
@@ -234,7 +235,20 @@ export function setupGamingIPC(
       let list = res.data || [];
       if (!Array.isArray(list)) list = list ? [list] : [];
       logger.info(`Bibliothèques de jeux : ${list.length} jeux réels détectés sur les disques.`);
-      return { success: true, games: list };
+
+      // Enrich games with official high-res banner URLs
+      const enriched = await Promise.all(
+        list.slice(0, 20).map(async (g: any) => {
+          const banner = await resolveGameBanner(g.name);
+          return {
+            ...g,
+            bannerUrl: banner || undefined,
+          };
+        })
+      );
+      const finalList = [...enriched, ...list.slice(20)];
+
+      return { success: true, games: finalList };
     } catch {
       return { success: true, games: [] };
     }
@@ -242,6 +256,41 @@ export function setupGamingIPC(
 
   ipcMain.handle('gaming:scan-libraries', scanLibraries);
   ipcMain.handle('gaming:scan-installed', scanLibraries);
+}
+
+// In-memory cache for game banners
+const bannerCache = new Map<string, string>();
+
+async function resolveGameBanner(gameName: string): Promise<string | null> {
+  const clean = (gameName || '').trim();
+  if (!clean || clean.length < 2) return null;
+  if (bannerCache.has(clean)) return bannerCache.get(clean)!;
+
+  try {
+    const searchUrl = `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(clean)}&l=french&cc=FR`;
+    const data = await new Promise<string>((resolve) => {
+      const req = https.get(searchUrl, { timeout: 2500 }, (res) => {
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => resolve(body));
+      });
+      req.on('error', () => resolve(''));
+      req.on('timeout', () => { req.destroy(); resolve(''); });
+    });
+
+    if (data) {
+      const parsed = JSON.parse(data);
+      if (parsed?.items && parsed.items.length > 0) {
+        const appId = parsed.items[0].id;
+        if (appId) {
+          const bannerUrl = `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/header.jpg`;
+          bannerCache.set(clean, bannerUrl);
+          return bannerUrl;
+        }
+      }
+    }
+  } catch {}
+  return null;
 }
 
 // Gaming Session States: 'none' | 'proposed' | 'active' | 'background' | 'finished'

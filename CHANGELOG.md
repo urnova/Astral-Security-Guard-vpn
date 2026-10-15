@@ -10,6 +10,37 @@ Ce journal consigne de manière chronologique et détaillée toutes les modifica
 * **`framer-motion-ui` & `opera-gx-aesthetic`** : Conception de l'interface en mode sombre profond, accents néon adaptatifs, micro-interactions, skeleton loaders et compteurs animés fluides.
 * **`native-audio-synth`** : Moteur sonore Web Audio API synthétisant des carillons discrets pour chaque type d'alerte sans dépendance de fichiers audio externes.
 
+## [2.5.3] - Correctifs Critiques, Artwork Haute Résolution & Préservation Données (2026-10-15)
+
+### 🎨 Finitions Graphiques & Ergonomie Titlebar
+- **Logo Titlebar agrandi** : Redimensionnement du blason Vanguard de 20px à 25px avec alignement optique soigné.
+- **Contrôles de fenêtre thématiques** : Suppression de `titleBarOverlay` qui imposait un rectangle violet fixe (`#a78bfa`) ; intégration de boutons personnalisés harmonisés avec chaque thème.
+- **Pill de navigation Sidebar corrigée** : L'indicateur animé se masque proprement lors de la sélection des Paramètres / Profil sans rester bloqué sur "Vue d'ensemble".
+- **Profil utilisateur actif** : Ajout du style actif `.sidebar-user.active` avec liseré lumineux et avatar dynamique.
+- **Défauts CSS corrigés** : Espacement intérieur ajusté sur les lignes du Journal d'intégrité (`10px 18px`) et suppression définitive du contour blanc Chromium sur les jauges circulaires `.ring`.
+
+### 🛡️ Moteur de Scan & Antivirus
+- **Progression en temps réel** : Résolution du blocage à 0% en unifiant l'écouteur `security:scan-event` et le calcul dynamique des pourcentages de scan.
+- **Scan Personnalisé interactif** : Ajout d'une boîte de sélection de cible avec bouton "Parcourir" ouvrant le sélecteur natif de Windows.
+
+### 🎮 Détection Jeux & Bannières Steam Haute Définition
+- **Fin des boucles infinies de scan** : Gestion sécurisée des promesses de détection avec fermeture garantie du spinner.
+- **Artwork officiel Steam** : Résolution automatique et mise en cache des bannières haute définition via CDN Steam pour chaque jeu détecté.
+- **Cartes de jeu immersives** : Rendu en fondu progressif de l'artwork officiel avec typographie lisible et badges de profils.
+
+### 🌐 Diagnostics Réseau & Speed Test Fiabilisé
+- **Informations réelles adaptateur** : Détection authentique de l'IP locale, passerelle par défaut, serveurs DNS (`Get-DnsClientServerAddress`) et FAI.
+- **Speed Test connecté** : Autorisation des canaux `network-event` dans la whitelist du preload et parsing résilient des métriques (débit, latence, gigue).
+
+### 🔔 Centre d'Essai des Notifications
+- **Module de validation en direct** : Ajout d'un panneau d'essai avec 5 déclencheurs instantanés (Menace Critique, Mode Gaming, Alerte Réseau, Scan Terminé, Alerte VPN) dans Paramètres > Notifications.
+
+### 📦 Installateur NSIS & Sauvegarde des Données (Fix Wipe Profil)
+- **Préservation des profils & réglages** : Désactivation de `deleteAppDataOnUninstall` et sécurisation du script `installer.nsh` via `${ifNot} ${isUpdated}`.
+- **Fini les réinitialisations d'onboarding** : Les mises à jour et réinstallations n'effacent plus jamais `%APPDATA%\AstralVanguard`.
+
+---
+
 ## [2.3.0] - Refonte Intégrale Design System & Packaging Officiel (2026-09-28)
 
 ### 🎨 Refonte Visuelle Gaming & Design System

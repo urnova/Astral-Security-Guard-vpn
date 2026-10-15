@@ -73,7 +73,12 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
     const c1 = api.on?.('network:issue', (d: any) => {
       if (d?.message) setAlerts(prev => [...prev.slice(-3), d.message]);
     });
-    return () => { c1?.(); };
+    const c2 = api.on?.('network-event', (d: any) => {
+      if (d?.type === 'speedtest-progress' && typeof d.currentMbps === 'number') {
+        setGaugeVal(Math.min(100, (d.currentMbps / 1000) * 100));
+      }
+    });
+    return () => { c1?.(); c2?.(); };
   }, []);
 
   const runSpeedTest = async () => {
@@ -83,29 +88,35 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
     setGaugeVal(0);
     setError('');
 
-    // Animate gauge
+    // Smooth animation fallback if progress events take a moment
     let animated = false;
     const gauge = setInterval(() => {
       if (animated) { clearInterval(gauge); return; }
-      setGaugeVal(v => v < 90 ? v + Math.random() * 3 : v);
-    }, 100);
+      setGaugeVal(v => v < 75 ? v + Math.random() * 2 : v);
+    }, 120);
 
     try {
       const res = await api.runSpeedTest?.();
       animated = true;
       clearInterval(gauge);
-      if (res?.success && res.down !== undefined) {
-        setSpeedResult({ down: res.down, up: res.up || 0, ping: res.ping || 0, jitter: res.jitter || 0 });
-        setGaugeVal(Math.min(100, (res.down / 1000) * 100));
-        setHist(h => [...h.slice(-6), res.down]);
+
+      const down = res?.down ?? res?.result?.downloadMbps ?? res?.downloadMbps;
+      const up = res?.up ?? res?.result?.uploadMbps ?? res?.uploadMbps ?? 0;
+      const ping = res?.ping ?? res?.result?.pingMs ?? res?.pingMs ?? 0;
+      const jitter = res?.jitter ?? res?.result?.jitterMs ?? res?.jitterMs ?? 0;
+
+      if (res?.success && down !== undefined) {
+        setSpeedResult({ down, up, ping, jitter });
+        setGaugeVal(Math.min(100, (down / 1000) * 100));
+        setHist(h => [...h.slice(-6), down]);
       } else {
-        setError(res?.error || 'Test échoué.');
+        setError(res?.error || 'Test de connexion échoué.');
         setGaugeVal(0);
       }
     } catch (err: any) {
       animated = true;
       clearInterval(gauge);
-      setError(err.message);
+      setError(err.message || 'Erreur lors du test de débit.');
       setGaugeVal(0);
     }
     setTesting(false);

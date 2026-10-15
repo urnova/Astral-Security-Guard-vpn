@@ -188,7 +188,14 @@ export function setupNetworkIPC(win: BrowserWindow) {
 
       logger.info('Speed Test réel achevé', result);
       win.webContents.send('network-event', { type: 'speedtest-complete', result });
-      return { success: true, result };
+      return {
+        success: true,
+        result,
+        down: measuredDlMbps,
+        up: measuredUlMbps,
+        ping: pingMs !== null ? Math.round(pingMs) : 0,
+        jitter: jitterMs !== null ? Number(jitterMs.toFixed(1)) : 0,
+      };
     } catch (error: any) {
       logger.error('Erreur lors du Speed Test', error.message);
       win.webContents.send('network-event', {
@@ -477,5 +484,86 @@ export function setupNetworkIPC(win: BrowserWindow) {
   ipcMain.handle('network:gaming-mode-off', async () => {
     logger.info('[Network] network:gaming-mode-off appelé.');
     return { success: true, active: false };
+  });
+
+  // ── Network Diagnostics (Real IP, Gateway, DNS, Adapter, ISP) ───────────────
+  ipcMain.handle('network:get-diagnostics', async () => {
+    try {
+      const script = `
+        $adapter = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1
+        $ip = $null
+        $gw = $null
+        $dns = @()
+        if ($adapter) {
+          $ipObj = Get-NetIPAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike '169.254*' } | Select-Object -First 1
+          if ($ipObj) { $ip = $ipObj.IPAddress }
+          $gwObj = Get-NetRoute -InterfaceAlias $adapter.Name -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($gwObj) { $gw = $gwObj.NextHop }
+          $dnsAddresses = Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4 -ErrorAction SilentlyContinue
+          if ($dnsAddresses -and $dnsAddresses.ServerAddresses) {
+            $dns = $dnsAddresses.ServerAddresses
+          }
+        }
+        [PSCustomObject]@{
+          adapterName = if ($adapter) { $adapter.Name } else { 'Inconnu' }
+          description = if ($adapter) { $adapter.InterfaceDescription } else { '' }
+          macAddress  = if ($adapter) { $adapter.MacAddress } else { '' }
+          type        = if ($adapter) { if ($adapter.InterfaceDescription -match 'Wi-Fi|Wireless|802\.11') { 'Wi-Fi' } else { 'Ethernet' } } else { 'Inconnu' }
+          localIp     = $ip
+          gateway     = $gw
+          dnsServers  = ($dns -join ', ')
+        } | ConvertTo-Json -Compress
+      `;
+
+      const res = await runPowerShell(script, { asJson: true, timeout: 4000 });
+      const d = res.data || {};
+
+      let isp = '';
+      let externalIp = '';
+      try {
+        await new Promise<void>((resolve) => {
+          const req = https.get('https://ipinfo.io/json', { timeout: 2000 }, (r) => {
+            let body = '';
+            r.on('data', chunk => body += chunk);
+            r.on('end', () => {
+              try {
+                const info = JSON.parse(body);
+                isp = info.org || info.company?.name || '';
+                externalIp = info.ip || '';
+              } catch {}
+              resolve();
+            });
+          });
+          req.on('error', () => resolve());
+          req.on('timeout', () => { req.destroy(); resolve(); });
+        });
+      } catch {}
+
+      return {
+        success: true,
+        adapterName: d.adapterName || 'Ethernet',
+        interface: d.adapterName || 'Ethernet',
+        localIp: d.localIp || '—',
+        externalIp: externalIp || undefined,
+        gateway: d.gateway || '—',
+        dns: d.dnsServers || 'Automatique (FAI)',
+        dnsServer: d.dnsServers || 'Automatique (FAI)',
+        isp: isp || d.description || 'Fournisseur d\'accès',
+        provider: isp || 'Fournisseur d\'accès',
+        macAddress: d.macAddress || '—',
+        connectionType: d.type || 'Ethernet',
+        type: d.type || 'Ethernet',
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message,
+        adapterName: 'Ethernet',
+        localIp: '—',
+        gateway: '—',
+        dns: 'Non détecté',
+        isp: 'Non détecté',
+      };
+    }
   });
 }

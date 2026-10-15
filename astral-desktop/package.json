@@ -1,6 +1,6 @@
 {
   "name": "astral-vanguard",
-  "version": "2.5.2",
+  "version": "2.5.3",
   "description": "Astral Vanguard - Gaming, Security & Anti-Lag Suite",
   "author": "Astral Security",
   "private": true,
@@ -33,7 +33,7 @@
       "installerIcon": "public/installer.ico",
       "uninstallerIcon": "public/uninstaller.ico",
       "installerHeaderIcon": "public/installer.ico",
-      "deleteAppDataOnUninstall": true,
+      "deleteAppDataOnUninstall": false,
       "include": "build/installer.nsh"
     },
     "extraResources": [

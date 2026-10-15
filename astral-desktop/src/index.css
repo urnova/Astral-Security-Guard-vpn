@@ -445,17 +445,37 @@ button.win-btn.close:hover,
 .sidebar-user {
   margin-top: auto;
   display: flex; align-items: center; gap: 10px;
-  padding: 12px 8px 0;
+  padding: 10px 10px;
   border-top: 1px solid var(--line);
   cursor: pointer;
+  border-radius: var(--r-sm);
+  transition: all var(--dur-fast);
+}
+.sidebar-user:hover {
+  background: rgba(255, 255, 255, 0.03);
 }
 .sidebar-user:hover .user-name { color: var(--text); }
+.sidebar-user.active {
+  background: rgba(var(--a1r), 0.08);
+  border-top: 1px solid rgba(var(--a1r), 0.3);
+  box-shadow: inset 0 0 0 1px rgba(var(--a1r), 0.15);
+}
+.sidebar-user.active .user-name {
+  color: var(--text);
+  font-weight: 600;
+}
+.sidebar-user.active .user-avatar {
+  border-color: var(--a1);
+  color: var(--a1);
+  background: rgba(var(--a1r), 0.14);
+}
 .user-avatar {
   width: 32px; height: 32px; border-radius: var(--r-sm);
   background: rgba(255,255,255,.06);
   border: 1px solid var(--line);
   display: grid; place-items: center;
   font-size: 11px; color: var(--muted); font-weight: 600; flex-shrink: 0;
+  transition: all var(--dur-fast);
 }
 .user-name { display: block; font-size: 12px; font-weight: 500; color: var(--text); }
 .user-role { font-size: 11px; color: var(--dim); }
@@ -682,9 +702,22 @@ button.win-btn.close:hover,
 /* ══════════════════════════════════════════════════════════════════════════
    RING / CIRCULAR GAUGE
    ══════════════════════════════════════════════════════════════════════════ */
-.ring { position: relative; flex-shrink: 0; }
-.ring svg { transform: rotate(-90deg); width: 100%; height: 100%; }
-.ring circle { fill: none; stroke-linecap: round; }
+.ring {
+  position: relative; flex-shrink: 0;
+  outline: none !important;
+  box-shadow: none !important;
+  user-select: none;
+}
+.ring:focus, .ring:focus-visible, .ring *:focus, .ring *:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+.ring svg {
+  transform: rotate(-90deg); width: 100%; height: 100%;
+  outline: none !important;
+  box-shadow: none !important;
+}
+.ring circle { fill: none; stroke-linecap: round; outline: none !important; }
 .ring .bg-c { stroke: var(--line); }
 .ring .fg-c { stroke: var(--a1); transition: stroke-dashoffset .8s var(--ease); }
 .ring .center {

@@ -33,13 +33,18 @@ export default function Sidebar({
   useEffect(() => {
     if (!navRef.current || !pillRef.current) return;
     const buttons = navRef.current.querySelectorAll('button[data-id]');
+    let matched = false;
     buttons.forEach(btn => {
       if ((btn as HTMLElement).dataset.id === activeTab) {
+        matched = true;
         const top = (btn as HTMLElement).offsetTop;
         pillRef.current!.style.transform = `translateY(${top}px)`;
         pillRef.current!.style.opacity = '1';
       }
     });
+    if (!matched) {
+      pillRef.current!.style.opacity = '0';
+    }
   }, [activeTab]);
 
   const initials = `${firstName?.[0] ?? ''}${lastName?.[0] ?? ''}`.toUpperCase() || '?';
@@ -76,7 +81,7 @@ export default function Sidebar({
 
       {/* User footer */}
       <div
-        className="sidebar-user"
+        className={`sidebar-user${activeTab === 'settings' ? ' active' : ''}`}
         onClick={() => (onSettings ? onSettings() : onTabChange('settings'))}
         role="button"
         tabIndex={0}

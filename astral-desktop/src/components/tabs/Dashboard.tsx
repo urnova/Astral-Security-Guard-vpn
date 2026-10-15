@@ -431,7 +431,7 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
           <h2>Journal d'intégrité du système</h2>
           <span>{events.length} modules surveillés</span>
         </div>
-        <div className="card" style={{ paddingTop: 4, paddingBottom: 4 }}>
+        <div className="card" style={{ padding: '10px 18px' }}>
           <div className="list">
             {events.map((e, i) => (
               <div className="row" key={i}>

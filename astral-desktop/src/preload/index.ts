@@ -10,6 +10,9 @@ const ALLOWED_EVENT_CHANNELS = new Set([
   'download-scanner:scan-start',
   'download-scanner:scan-complete',
   'admin:status',
+  'network-event',
+  'network:event',
+  'network:issue',
   'vpn-event',
   'vpn:quick-connect',
   'vpn:quick-disconnect',
@@ -74,6 +77,7 @@ const api = {
   getClamAvStatus: () => ipcRenderer.invoke('security:get-clamav-status'),
   scanClamAv: (targetPath: string) => ipcRenderer.invoke('security:scan-clamav', targetPath),
   getDailyBrief: () => ipcRenderer.invoke('security:get-daily-brief'),
+  selectScanTarget: (type?: 'folder' | 'file') => ipcRenderer.invoke('security:select-target', type),
 
   // Performance
   getMetrics: () => ipcRenderer.invoke('perf:get-metrics'),
@@ -102,6 +106,7 @@ const api = {
 
   // Network
   speedtest: () => ipcRenderer.invoke('network:speedtest'),
+  runSpeedTest: () => ipcRenderer.invoke('network:speedtest'),
   cancelSpeedtest: () => ipcRenderer.invoke('network:cancel-speedtest'),
   getAdapters: () => ipcRenderer.invoke('network:get-adapters'),
   networkGamingOn: () => ipcRenderer.invoke('network:gaming-mode-on'),
@@ -116,7 +121,7 @@ const api = {
 
   // Doctor & Anti-Lag (Fix 1002 Ping & Keyboard)
   getPing: () => ipcRenderer.invoke('doctor:get-ping'),
-  getNetworkDiagnostics: () => ipcRenderer.invoke('doctor:get-ping'),
+  getNetworkDiagnostics: () => ipcRenderer.invoke('network:get-diagnostics'),
   emergencyPingReset: () => ipcRenderer.invoke('doctor:emergency-ping-reset'),
   diagnoseLag: () => ipcRenderer.invoke('doctor:diagnose-lag'),
   fixKeyboard: () => ipcRenderer.invoke('doctor:fix-keyboard'),
@@ -133,6 +138,7 @@ const api = {
   vpnGetKillSwitch: () => ipcRenderer.invoke('vpn:get-killswitch'),
   vpnSetKillSwitch: (enabled: boolean) => ipcRenderer.invoke('vpn:set-killswitch', enabled),
   vpnGetCoexistenceStatus: () => ipcRenderer.invoke('vpn:get-coexistence-status'),
+  detectThirdPartyVpns: () => ipcRenderer.invoke('vpn:detect-all'),
   vpnGetStatus: () => ipcRenderer.invoke('vpn:get-status'),
 
   // Gaming & Overlay
@@ -141,6 +147,7 @@ const api = {
   getProfiles: () => ipcRenderer.invoke('gaming:get-profiles'),
   saveProfile: (name: string, settings: any) => ipcRenderer.invoke('gaming:save-profile', name, settings),
   scanInstalledGames: () => ipcRenderer.invoke('gaming:scan-installed'),
+  getInstalledGames: () => ipcRenderer.invoke('gaming:scan-installed'),
   getPresentMonStatus: () => ipcRenderer.invoke('gaming:get-presentmon-status'),
   getHudMetrics: () => ipcRenderer.invoke('gaming:get-hud-metrics'),
   restoreGamingSystemState: () => ipcRenderer.invoke('gaming:restore-system-state'),

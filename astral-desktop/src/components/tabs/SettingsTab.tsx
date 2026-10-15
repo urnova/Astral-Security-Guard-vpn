@@ -827,6 +827,114 @@ export default function SettingsTab({
                   />
                 </div>
               </div>
+
+              {/* Centre d'essai et de test des notifications */}
+              <div style={{ borderTop: '1px solid var(--line)', paddingTop: 18 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>
+                  Centre d'essai & Validation des Notifications
+                </h3>
+                <p style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 14 }}>
+                  Testez instantanément les bannières visuelles et l'habillage sonore en conditions réelles.
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 10 }}>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ justifyContent: 'flex-start', padding: '10px 14px', textAlign: 'left', borderColor: 'rgba(239,68,68,0.3)' }}
+                    onClick={() => {
+                      api?.sendNotification?.({
+                        type: 'threat',
+                        title: 'Menace détectée et neutralisée',
+                        body: 'Trojan:Win32/Wacatac.B!ml bloqué dans C:\\Users\\Temp\\agent.exe',
+                        critical: true,
+                      });
+                      api?.testNotification?.('Menace détectée et neutralisée', 'Trojan:Win32/Wacatac.B!ml bloqué avec succès.');
+                    }}
+                  >
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--bad)', marginRight: 6, flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Alerte Menace Critique</div>
+                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Accent rouge · Alerte prioritaire</div>
+                    </div>
+                  </button>
+
+                  <button
+                    className="btn btn-ghost"
+                    style={{ justifyContent: 'flex-start', padding: '10px 14px', textAlign: 'left', borderColor: 'rgba(var(--a1r),0.3)' }}
+                    onClick={() => {
+                      api?.sendNotification?.({
+                        type: 'gaming',
+                        title: 'Mode Gaming Extrême Activé',
+                        body: 'Jeu détecté : Counter-Strike 2 — Priorité CPU & anti-lag réseau appliqués.',
+                        critical: false,
+                      });
+                    }}
+                  >
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--a1)', marginRight: 6, flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Alerte Mode Gaming</div>
+                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Accent indigo · Confirmation jeu</div>
+                    </div>
+                  </button>
+
+                  <button
+                    className="btn btn-ghost"
+                    style={{ justifyContent: 'flex-start', padding: '10px 14px', textAlign: 'left', borderColor: 'rgba(214,173,104,0.3)' }}
+                    onClick={() => {
+                      api?.sendNotification?.({
+                        type: 'network',
+                        title: 'Latence réseau anormale détectée',
+                        body: 'Ping actuel : 182 ms (seuil dépassé). Correction anti-bufferbloat disponible.',
+                        critical: false,
+                      });
+                    }}
+                  >
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--warn)', marginRight: 6, flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Alerte Réseau & Lag</div>
+                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Accent orange · Signal latence</div>
+                    </div>
+                  </button>
+
+                  <button
+                    className="btn btn-ghost"
+                    style={{ justifyContent: 'flex-start', padding: '10px 14px', textAlign: 'left', borderColor: 'rgba(104,184,148,0.3)' }}
+                    onClick={() => {
+                      api?.sendNotification?.({
+                        type: 'security',
+                        title: 'Analyse antivirus terminée',
+                        body: 'Moteur Microsoft Defender : Système sain, 0 menace détectée sur 4120 fichiers.',
+                        critical: false,
+                      });
+                    }}
+                  >
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--ok)', marginRight: 6, flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Fin d'analyse système</div>
+                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Accent vert · Succès de scan</div>
+                    </div>
+                  </button>
+
+                  <button
+                    className="btn btn-ghost"
+                    style={{ justifyContent: 'flex-start', padding: '10px 14px', textAlign: 'left', borderColor: 'rgba(239,68,68,0.3)' }}
+                    onClick={() => {
+                      api?.sendNotification?.({
+                        type: 'vpn',
+                        title: 'Alerte Tunnel VPN',
+                        body: 'Tunnel WireGuard déconnecté. Kill Switch engagé pour protéger votre IP.',
+                        critical: true,
+                      });
+                    }}
+                  >
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--bad)', marginRight: 6, flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Alerte VPN & Kill Switch</div>
+                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Accent rouge · Rupture de tunnel</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
