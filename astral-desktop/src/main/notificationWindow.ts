@@ -51,6 +51,8 @@ export function createOrGetNotificationWindow(): BrowserWindow {
     y,
     frame: false,
     transparent: true,
+    backgroundColor: '#00000000',
+    roundedCorners: false,
     hasShadow: false,
     alwaysOnTop: true,
     skipTaskbar: true,
@@ -258,7 +260,7 @@ export function showAvastStyleToast({
             <div class="message">${escapeHtml(message)}</div>
           </div>
           <div class="footer">
-            <span>Astral Vanguard v${app.getVersion() || '2.5.5'}</span>
+            <span>Astral Vanguard v${app.getVersion() || '2.5.6'}</span>
             <span class="action-hint">Ouvrir l'application ➔</span>
           </div>
         </div>
@@ -454,7 +456,7 @@ export function showAvastStyleDownloadScan({
             <div class="message">${escapeHtml(statusDesc)}</div>
           </div>
           <div class="footer">
-            <span>Astral Vanguard v${app.getVersion() || "2.5.5"}</span>
+            <span>Astral Vanguard v${app.getVersion() || "2.5.6"}</span>
             <span>Moteur heuristique autonome</span>
           </div>
         </div>

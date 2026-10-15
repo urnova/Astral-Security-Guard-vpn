@@ -132,7 +132,7 @@ export default function SettingsTab({
   const [betaChannel, setBetaChannel]       = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateStatus, setUpdateStatus]     = useState('');
-  const [currentVersion, setCurrentVersion] = useState('2.5.5');
+  const [currentVersion, setCurrentVersion] = useState('2.5.6');
   const [updateInfo, setUpdateInfo]         = useState<{ version?: string; hasUpdate?: boolean } | null>(null);
 
   // Admin status
@@ -245,6 +245,20 @@ export default function SettingsTab({
     }
   };
 
+  const isNewerVersion = (remote: string, current: string): boolean => {
+    try {
+      const r = remote.replace(/^v/i, '').split('-')[0].split('.').map(Number);
+      const c = current.replace(/^v/i, '').split('-')[0].split('.').map(Number);
+      for (let i = 0; i < Math.max(r.length, c.length); i++) {
+        const rNum = r[i] || 0;
+        const cNum = c[i] || 0;
+        if (rNum > cNum) return true;
+        if (rNum < cNum) return false;
+      }
+    } catch {}
+    return false;
+  };
+
   const handleCheckUpdate = async () => {
     if (!api) return;
     setCheckingUpdate(true);
@@ -252,14 +266,15 @@ export default function SettingsTab({
     setUpdateStatus('Connexion aux serveurs GitHub Releases…');
     try {
       const res = await api.checkUpdate?.();
-      if (res?.updateInfo?.version) {
-        setUpdateInfo({ version: res.updateInfo.version, hasUpdate: true });
-        setUpdateStatus(`🎉 Nouvelle version ${res.updateInfo.version} disponible !`);
-        showToast(`Mise à jour v${res.updateInfo.version} disponible — téléchargement possible`);
+      const remoteVer = res?.updateInfo?.version;
+      if (remoteVer && isNewerVersion(remoteVer, currentVersion)) {
+        setUpdateInfo({ version: remoteVer, hasUpdate: true });
+        setUpdateStatus(`🎉 Nouvelle version v${remoteVer} disponible !`);
+        showToast(`Mise à jour v${remoteVer} disponible — téléchargement possible`);
       } else {
         setUpdateInfo({ hasUpdate: false });
-        setUpdateStatus(`✓ Version ${currentVersion} — vous utilisez la dernière version`);
-        showToast('Aucune mise à jour disponible — tout est à jour');
+        setUpdateStatus(`✓ Version v${currentVersion} — vous utilisez la version la plus récente`);
+        showToast('Votre système est à jour — aucune nouvelle version nécessaire');
       }
     } catch {
       setUpdateStatus('⚠ Impossible de contacter le serveur de mise à jour.');
@@ -1180,7 +1195,7 @@ export default function SettingsTab({
                 </div>
                 <div>
                   <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Astral Vanguard</h2>
-                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>v2.5.5 · Suite de Sécurité & Optimisation Gaming</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>v2.5.6 · Suite de Sécurité & Optimisation Gaming</div>
                 </div>
               </div>
 

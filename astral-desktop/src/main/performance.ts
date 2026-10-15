@@ -438,12 +438,33 @@ export function setupPerformanceIPC(win: BrowserWindow) {
     return { success: res.success };
   });
 
-  // ── Multi-Disk Physical Health (SMART) ────────────────────────────────────
+  // ── Multi-Disk Physical Health (SMART) Ordered by Windows Disk Number ───────
   ipcMain.handle('perf:get-disk-health', async () => {
     const script = `
-      Get-PhysicalDisk -ErrorAction SilentlyContinue |
-      Select-Object FriendlyName, MediaType, HealthStatus, OperationalStatus, Size |
-      ConvertTo-Json -Compress
+      $disks = Get-Disk -ErrorAction SilentlyContinue | Sort-Object Number
+      $phys = Get-PhysicalDisk -ErrorAction SilentlyContinue
+      $out = foreach ($d in $disks) {
+        $p = $phys | Where-Object { $_.DeviceId -eq [string]$d.Number -or $_.FriendlyName -eq $d.FriendlyName } | Select-Object -First 1
+        $media = if ($p -and $p.MediaType -and $p.MediaType -ne 'Unspecified') {
+          $p.MediaType
+        } elseif ($d.BusType -eq 'NVMe') {
+          'SSD'
+        } elseif ($d.BusType -eq 'USB') {
+          'USB'
+        } else {
+          'SSD'
+        }
+        [PSCustomObject]@{
+          number = $d.Number
+          FriendlyName = $d.FriendlyName
+          busType = [string]$d.BusType
+          MediaType = [string]$media
+          HealthStatus = [string]$d.HealthStatus
+          OperationalStatus = [string]$d.OperationalStatus
+          Size = $d.Size
+        }
+      }
+      $out | ConvertTo-Json -Compress
     `;
     try {
       const res = await runPowerShell(script, { asJson: true, timeout: 6000 });
@@ -452,13 +473,24 @@ export function setupPerformanceIPC(win: BrowserWindow) {
 
       const disks = rawDisks.map((d: any) => {
         const media = String(d.MediaType || 'SSD');
+        const bus = String(d.busType || '');
         const sizeGB = d.Size ? Math.round(Number(d.Size) / (1024 * 1024 * 1024)) : 0;
-        const isHealthy = d.HealthStatus === 'Healthy' || d.OperationalStatus === 'OK';
+        const isHealthy = d.HealthStatus === 'Healthy' || d.OperationalStatus === 'OK' || d.OperationalStatus === 'Online';
+        const diskNum = typeof d.number === 'number' ? d.number : 0;
+
+        let typeLabel = 'SSD SATA';
+        if (bus === 'NVMe' || media.includes('NVMe')) typeLabel = 'SSD NVMe M.2';
+        else if (media === 'HDD') typeLabel = 'Disque dur HDD';
+        else if (bus === 'USB') typeLabel = 'Disque Externe USB';
+        else if (media === 'SSD') typeLabel = 'SSD Flash SATA';
+
         return {
-          model: d.FriendlyName,
+          diskNumber: diskNum,
+          model: `Disque ${diskNum} · ${d.FriendlyName}`,
           FriendlyName: d.FriendlyName,
-          mediaType: media === 'SSD' ? 'SSD NVMe / SATA' : media === 'HDD' ? 'Disque dur HDD' : 'Stockage Rapide',
+          mediaType: typeLabel,
           MediaType: media,
+          busType: bus,
           health: isHealthy ? 'Sain (SMART OK)' : 'Attention',
           HealthStatus: isHealthy ? 'Sain (100%)' : 'Attention requise',
           status: d.OperationalStatus || 'OK',

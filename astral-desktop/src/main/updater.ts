@@ -183,7 +183,7 @@ export function setupAutoUpdater(win: BrowserWindow) {
 
   ipcMain.handle('updater:install', async () => {
     logger.info('[AutoUpdater] User confirmed installation, proceeding with quitAndInstall');
-    quitAndInstallUpdate(true, true);
+    quitAndInstallUpdate(false, true);
     return { success: true };
   });
 

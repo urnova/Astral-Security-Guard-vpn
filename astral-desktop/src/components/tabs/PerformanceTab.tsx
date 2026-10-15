@@ -509,7 +509,7 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
               Suppression des résidus temporaires en toute sécurité sans impacter vos documents ou logiciels.
             </p>
 
-            <div className="list" style={{ flex: 1 }}>
+            <div className="list custom-scroll" style={{ flex: 1, maxHeight: 380, overflowY: 'auto', paddingRight: 6 }}>
               {cleanItems.map((item, i) => (
                 <div
                   className="row"
@@ -519,11 +519,12 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                     padding: '11px 12px',
                     borderRadius: 8,
                     marginBottom: 6,
-                    background: item.selected ? 'rgba(255,255,255,0.02)' : 'transparent',
-                    border: item.selected ? '1px solid rgba(255,255,255,0.06)' : '1px solid transparent',
+                    background: item.selected ? 'rgba(56, 189, 248, 0.04)' : 'rgba(255,255,255,0.015)',
+                    border: item.selected ? '1px solid rgba(56, 189, 248, 0.2)' : '1px solid rgba(255,255,255,0.04)',
                     display: 'flex',
                     alignItems: 'flex-start',
                     gap: 12,
+                    transition: 'all 0.15s ease',
                   }}
                   onClick={() => toggleItem(i)}
                 >
@@ -621,12 +622,12 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
             </div>
 
             <div
-              className="list"
+              className="list custom-scroll"
               style={{
                 flex: 1,
                 maxHeight: 380,
                 overflowY: 'auto',
-                paddingRight: 4,
+                paddingRight: 6,
               }}
             >
               {filteredApps.length === 0 ? (
@@ -644,12 +645,16 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                       className="row"
                       key={i}
                       style={{
-                        padding: '10px 10px',
+                        padding: '10px 12px',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         gap: 12,
-                        borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
+                        background: 'rgba(255,255,255,0.015)',
+                        border: '1px solid rgba(255,255,255,0.04)',
+                        borderRadius: 8,
+                        marginBottom: 6,
+                        transition: 'background 0.15s ease',
                       }}
                     >
                       <div className="rt" style={{ minWidth: 0, flex: 1 }}>

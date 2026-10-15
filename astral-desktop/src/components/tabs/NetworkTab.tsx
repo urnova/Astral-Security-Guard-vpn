@@ -52,11 +52,16 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
   const [gaugeVal, setGaugeVal]       = useState(0);
   const [livePhase, setLivePhase]     = useState<string>('');
   const [liveMbps, setLiveMbps]       = useState<number | null>(null);
-  const [history, setHistory]         = useState<SpeedHistoryPoint[]>([
-    { time: '14:00', down: 890, up: 640 },
-    { time: '16:30', down: 920, up: 710 },
-    { time: '18:15', down: 940, up: 730 },
-  ]);
+  const [history, setHistory]         = useState<SpeedHistoryPoint[]>(() => {
+    try {
+      const raw = localStorage.getItem('astral_speedtest_history');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [livePing, setLivePing]       = useState<number | null>(null);
+  const [pingStatus, setPingStatus]   = useState<'stable' | 'spike' | 'disconnected'>('stable');
   const [notice, setNotice]           = useState('');
   const [error, setError]             = useState('');
   const [alerts, setAlerts]           = useState<string[]>([]);
@@ -67,6 +72,27 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
 
     // Load real diagnostics from physical adapter
     loadDiagnostics();
+
+    // Background live ping monitor (checks gateway/internet stability every 3s)
+    let pingTimer: NodeJS.Timeout | null = null;
+    const checkPing = async () => {
+      try {
+        const res = await api?.getPing?.();
+        const p = res?.ping ?? res?.currentPing ?? res?.ms;
+        if (typeof p === 'number' && p > 0) {
+          setLivePing(p);
+          if (p > 150) {
+            setPingStatus('spike');
+          } else {
+            setPingStatus('stable');
+          }
+        }
+      } catch {
+        setPingStatus('disconnected');
+      }
+    };
+    checkPing();
+    pingTimer = setInterval(checkPing, 3000);
 
     const c1 = api.on?.('network:issue', (d: any) => {
       if (d?.message) setAlerts(prev => [...prev.slice(-3), d.message]);
@@ -89,7 +115,11 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
       }
     });
 
-    return () => { c1?.(); c2?.(); };
+    return () => {
+      if (pingTimer) clearInterval(pingTimer);
+      c1?.();
+      c2?.();
+    };
   }, []);
 
   const loadDiagnostics = () => {
@@ -141,10 +171,14 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
         setSpeedResult(point);
         setGaugeVal(Math.min(100, (down / 1000) * 100));
 
-        setHistory(prev => [
-          ...prev.slice(-6),
-          { time: point.timestamp || 'Maintenant', down: Math.round(down), up: Math.round(up) },
-        ]);
+        setHistory(prev => {
+          const next = [
+            ...prev.slice(-6),
+            { time: point.timestamp || 'Maintenant', down: Math.round(down), up: Math.round(up) },
+          ];
+          try { localStorage.setItem('astral_speedtest_history', JSON.stringify(next)); } catch {}
+          return next;
+        });
       } else {
         setError(res?.error || 'Test de débit indisponible.');
         setGaugeVal(0);
@@ -270,7 +304,26 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
           {/* Speedtest Card */}
           <div className="card card-p-lg card-hero" style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div>
-              <div className="lbl" style={{ margin: '0 0 12px' }}>Test de débit multi-flux (Fibre / Câble)</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 12px' }}>
+                <div className="lbl" style={{ margin: 0 }}>Test de débit multi-flux (Fibre / Câble)</div>
+                {livePing !== null && (
+                  <span style={{
+                    fontSize: 10.5,
+                    fontWeight: 600,
+                    padding: '2px 8px',
+                    borderRadius: 12,
+                    background: pingStatus === 'spike' ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)',
+                    border: `1px solid ${pingStatus === 'spike' ? 'rgba(239,68,68,0.35)' : 'rgba(34,197,94,0.35)'}`,
+                    color: pingStatus === 'spike' ? '#ef4444' : '#22c55e',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                  }}>
+                    <Activity size={10} />
+                    {pingStatus === 'spike' ? `Pic latence (${livePing} ms)` : `Ping direct : ${livePing} ms`}
+                  </span>
+                )}
+              </div>
 
               {/* Gauge */}
               <div className="gauge" style={{ marginBottom: 10, maxWidth: 280, margin: '0 auto 10px' }}>
@@ -306,16 +359,27 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
               )}
             </div>
 
-            {/* Launch button */}
+            {/* Launch / Cancel buttons */}
             <div>
-              <button
-                className="btn"
-                style={{ padding: '12px 34px', fontSize: 13, fontWeight: 600 }}
-                onClick={runSpeedTest}
-                disabled={testing}
-              >
-                {testing ? <><span className="spinner spinner-sm" /> Mesure multi-flux…</> : <><Play size={15} /> Démarrer le test réel</>}
-              </button>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', alignItems: 'center' }}>
+                <button
+                  className="btn"
+                  style={{ padding: '12px 34px', fontSize: 13, fontWeight: 600 }}
+                  onClick={runSpeedTest}
+                  disabled={testing}
+                >
+                  {testing ? <><span className="spinner spinner-sm" /> Mesure multi-flux…</> : <><Play size={15} /> Démarrer le test réel</>}
+                </button>
+                {testing && (
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => { api?.cancelSpeedtest?.(); setLivePhase('Annulation…'); }}
+                    style={{ padding: '12px 18px', fontSize: 12.5, color: 'var(--bad)', borderColor: 'rgba(239,68,68,0.3)' }}
+                  >
+                    Annuler
+                  </button>
+                )}
+              </div>
 
               {/* Four Stat Boxes */}
               <div className="grid g4 mt" style={{ textAlign: 'left', borderTop: '1px solid var(--line)', paddingTop: 12 }}>
@@ -437,57 +501,65 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
             </div>
 
             {/* SVG Timeseries Line Chart */}
-            <div style={{ width: '100%', height: 160, position: 'relative' }}>
-              <svg viewBox="0 0 500 160" width="100%" height="160" style={{ overflow: 'visible' }}>
-                <defs>
-                  <linearGradient id="chartGradDown" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--a1)" stopOpacity="0.3" />
-                    <stop offset="100%" stopColor="var(--a1)" stopOpacity="0.0" />
-                  </linearGradient>
-                </defs>
+            {history.length === 0 ? (
+              <div style={{ height: 160, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--dim)', gap: 8 }}>
+                <Activity size={24} style={{ opacity: 0.4 }} />
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Aucune mesure enregistrée</span>
+                <small style={{ fontSize: 11, color: 'var(--muted)' }}>Lancez un test de débit pour afficher l'historique et la régularité de votre ligne.</small>
+              </div>
+            ) : (
+              <div style={{ width: '100%', height: 160, position: 'relative' }}>
+                <svg viewBox="0 0 500 160" width="100%" height="160" style={{ overflow: 'visible' }}>
+                  <defs>
+                    <linearGradient id="chartGradDown" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--a1)" stopOpacity="0.3" />
+                      <stop offset="100%" stopColor="var(--a1)" stopOpacity="0.0" />
+                    </linearGradient>
+                  </defs>
 
-                {/* Horizontal Guide Lines */}
-                <line x1="0" y1="30" x2="500" y2="30" stroke="rgba(255,255,255,0.05)" strokeDasharray="4 4" />
-                <line x1="0" y1="80" x2="500" y2="80" stroke="rgba(255,255,255,0.05)" strokeDasharray="4 4" />
-                <line x1="0" y1="130" x2="500" y2="130" stroke="rgba(255,255,255,0.05)" strokeDasharray="4 4" />
+                  {/* Horizontal Guide Lines */}
+                  <line x1="0" y1="30" x2="500" y2="30" stroke="rgba(255,255,255,0.05)" strokeDasharray="4 4" />
+                  <line x1="0" y1="80" x2="500" y2="80" stroke="rgba(255,255,255,0.05)" strokeDasharray="4 4" />
+                  <line x1="0" y1="130" x2="500" y2="130" stroke="rgba(255,255,255,0.05)" strokeDasharray="4 4" />
 
-                {/* Y Axis labels */}
-                <text x="4" y="26" fill="var(--dim)" fontSize="9">1000 Mbps</text>
-                <text x="4" y="76" fill="var(--dim)" fontSize="9">500 Mbps</text>
-                <text x="4" y="126" fill="var(--dim)" fontSize="9">100 Mbps</text>
+                  {/* Y Axis labels */}
+                  <text x="4" y="26" fill="var(--dim)" fontSize="9">1000 Mbps</text>
+                  <text x="4" y="76" fill="var(--dim)" fontSize="9">500 Mbps</text>
+                  <text x="4" y="126" fill="var(--dim)" fontSize="9">100 Mbps</text>
 
-                {/* Area & Line */}
-                {history.length > 1 && (() => {
-                  const maxDown = 1000;
-                  const pts = history.map((p, idx) => {
-                    const x = (idx / (history.length - 1)) * 460 + 20;
-                    const y = 140 - (Math.min(maxDown, p.down) / maxDown) * 110;
-                    return { x, y, ...p };
-                  });
+                  {/* Area & Line */}
+                  {(() => {
+                    const maxDown = 1000;
+                    const pts = history.map((p, idx) => {
+                      const x = history.length === 1 ? 250 : (idx / (history.length - 1)) * 440 + 30;
+                      const y = 140 - (Math.min(maxDown, p.down) / maxDown) * 110;
+                      return { x, y, ...p };
+                    });
 
-                  const lineD = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
-                  const areaD = `${lineD} L ${pts[pts.length - 1].x} 140 L ${pts[0].x} 140 Z`;
+                    const lineD = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
+                    const areaD = `${lineD} L ${pts[pts.length - 1].x} 140 L ${pts[0].x} 140 Z`;
 
-                  return (
-                    <>
-                      <path d={areaD} fill="url(#chartGradDown)" />
-                      <path d={lineD} fill="none" stroke="var(--a1)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                      {pts.map((pt, i) => (
-                        <g key={i}>
-                          <circle cx={pt.x} cy={pt.y} r="4" fill="#38bdf8" stroke="#131518" strokeWidth="2" />
-                          <text x={pt.x} y={pt.y - 8} fill="#fff" fontSize="9.5" fontWeight="600" textAnchor="middle">
-                            {pt.down}
-                          </text>
-                          <text x={pt.x} y={152} fill="var(--dim)" fontSize="8.5" textAnchor="middle">
-                            {pt.time}
-                          </text>
-                        </g>
-                      ))}
-                    </>
-                  );
-                })()}
-              </svg>
-            </div>
+                    return (
+                      <>
+                        {history.length > 1 && <path d={areaD} fill="url(#chartGradDown)" />}
+                        {history.length > 1 && <path d={lineD} fill="none" stroke="var(--a1)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
+                        {pts.map((pt, i) => (
+                          <g key={i}>
+                            <circle cx={pt.x} cy={pt.y} r="4.5" fill="#38bdf8" stroke="#131518" strokeWidth="2" />
+                            <text x={pt.x} y={pt.y - 8} fill="#fff" fontSize="9.5" fontWeight="600" textAnchor="middle">
+                              {pt.down}
+                            </text>
+                            <text x={pt.x} y={152} fill="var(--dim)" fontSize="8.5" textAnchor="middle">
+                              {pt.time}
+                            </text>
+                          </g>
+                        ))}
+                      </>
+                    );
+                  })()}
+                </svg>
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 11, color: 'var(--dim)', justifyContent: 'flex-end' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

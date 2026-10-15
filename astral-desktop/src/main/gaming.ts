@@ -141,11 +141,14 @@ export function setupGamingIPC(
       $games = @()
       $nonGames = @(
         'Steamworks Shared', 'SteamVR', 'Steam Controller Configs',
-        'DirectXRedist', 'DirectX', '_CommonRedist', 'Riot Client',
+        'DirectXRedist', 'DirectX', '_CommonRedist', 'Riot Client', 'Riot Client.old',
         'Installers', 'CrashReport', 'Prerequisites', 'Epic Online Services',
         'Launcher', 'Support', 'CommonRedist', 'Redist', 'wallpaper_engine',
-        'Animaze'
+        'Animaze', 'GameSave', 'Social Club', 'Rockstar Games Launcher'
       )
+
+      # Get all active logical drive roots
+      $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Free -gt 0 } | Select-Object -ExpandProperty Root
 
       # 1. Multi-Drive Steam Libraries detection
       $steamDirs = @("C:\\Program Files (x86)\\Steam\\steamapps\\common")
@@ -163,9 +166,11 @@ export function setupGamingIPC(
         }
       }
 
-      # Common Steam fallback paths across drives
-      @("D:\\SteamLibrary\\steamapps\\common", "E:\\SteamLibrary\\steamapps\\common", "F:\\SteamLibrary\\steamapps\\common", "D:\\Steam\\steamapps\\common") | ForEach-Object {
-        if (Test-Path $_) { $steamDirs += $_ }
+      foreach ($d in $drives) {
+        @("SteamLibrary\\steamapps\\common", "Steam\\steamapps\\common") | ForEach-Object {
+          $p = Join-Path $d $_
+          if (Test-Path $p) { $steamDirs += $p }
+        }
       }
 
       foreach ($sd in ($steamDirs | Select-Object -Unique)) {
@@ -181,27 +186,67 @@ export function setupGamingIPC(
         }
       }
 
-      # 2. Epic Games multi-drive detection
-      @("C:\\Program Files\\Epic Games", "D:\\Epic Games", "E:\\Epic Games", "F:\\Epic Games") | ForEach-Object {
-        if (Test-Path $_) {
-          Get-ChildItem -Path $_ -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-            $isTool = ($nonGames -contains $_.Name) -or ($_.Name -match 'Launcher|DirectX|Prerequisites|Redist')
-            if (-not $isTool) {
-              $games += [PSCustomObject]@{
-                name     = $_.Name
-                launcher = "Epic Games"
-                path     = $_.FullName
+      # 2. Xbox / PC Game Pass detection
+      foreach ($d in $drives) {
+        @("XboxGames", "xboxgames") | ForEach-Object {
+          $xp = Join-Path $d $_
+          if (Test-Path $xp) {
+            Get-ChildItem -Path $xp -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+              if ($nonGames -notcontains $_.Name) {
+                $games += [PSCustomObject]@{
+                  name     = $_.Name
+                  launcher = "Xbox"
+                  path     = $_.FullName
+                }
               }
             }
           }
         }
       }
 
-      # 3. Riot Games multi-drive detection (excluding Riot Client launcher)
-      @("C:\\Riot Games", "D:\\Riot Games", "E:\\Riot Games") | ForEach-Object {
-        if (Test-Path $_) {
-          Get-ChildItem -Path $_ -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-            if ($_.Name -ne 'Riot Client' -and $nonGames -notcontains $_.Name) {
+      # 3. Rockstar Games detection (e.g. E:\\rockstar game, C:\\Program Files\\Rockstar Games)
+      foreach ($d in $drives) {
+        @("rockstar game", "Rockstar Games", "Program Files\\Rockstar Games", "Program Files (x86)\\Rockstar Games") | ForEach-Object {
+          $rp = Join-Path $d $_
+          if (Test-Path $rp) {
+            Get-ChildItem -Path $rp -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+              if ($nonGames -notcontains $_.Name -and $_.Name -notmatch 'Social Club|Launcher') {
+                $games += [PSCustomObject]@{
+                  name     = $_.Name
+                  launcher = "Rockstar"
+                  path     = $_.FullName
+                }
+              }
+            }
+          }
+        }
+      }
+
+      # 4. Epic Games multi-drive detection
+      foreach ($d in $drives) {
+        @("epic game", "Epic Games", "Program Files\\Epic Games", "Program Files (x86)\\Epic Games") | ForEach-Object {
+          $ep = Join-Path $d $_
+          if (Test-Path $ep) {
+            Get-ChildItem -Path $ep -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+              $isTool = ($nonGames -contains $_.Name) -or ($_.Name -match 'Launcher|DirectX|Prerequisites|Redist')
+              if (-not $isTool) {
+                $games += [PSCustomObject]@{
+                  name     = $_.Name
+                  launcher = "Epic Games"
+                  path     = $_.FullName
+                }
+              }
+            }
+          }
+        }
+      }
+
+      # 5. Riot Games multi-drive detection
+      foreach ($d in $drives) {
+        $rip = Join-Path $d "Riot Games"
+        if (Test-Path $rip) {
+          Get-ChildItem -Path $rip -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            if ($_.Name -ne 'Riot Client' -and $_.Name -ne 'Riot Client.old' -and $nonGames -notcontains $_.Name) {
               $games += [PSCustomObject]@{
                 name     = $_.Name
                 launcher = "Riot Games"
@@ -212,14 +257,51 @@ export function setupGamingIPC(
         }
       }
 
-      # 4. GOG Galaxy detection
-      @("C:\\Program Files (x86)\\GOG Galaxy\\Games", "C:\\GOG Games", "D:\\GOG Games") | ForEach-Object {
-        if (Test-Path $_) {
-          Get-ChildItem -Path $_ -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-            $games += [PSCustomObject]@{
-              name     = $_.Name
-              launcher = "GOG"
-              path     = $_.FullName
+      # 6. GOG Galaxy detection
+      foreach ($d in $drives) {
+        @("GOG Games", "Program Files (x86)\\GOG Galaxy\\Games") | ForEach-Object {
+          $gp = Join-Path $d $_
+          if (Test-Path $gp) {
+            Get-ChildItem -Path $gp -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+              if ($nonGames -notcontains $_.Name) {
+                $games += [PSCustomObject]@{
+                  name     = $_.Name
+                  launcher = "GOG"
+                  path     = $_.FullName
+                }
+              }
+            }
+          }
+        }
+      }
+
+      # 7. Ubisoft & EA Games detection
+      foreach ($d in $drives) {
+        @("Program Files (x86)\\Ubisoft\\Ubisoft Game Launcher\\games", "Ubisoft Games") | ForEach-Object {
+          $up = Join-Path $d $_
+          if (Test-Path $up) {
+            Get-ChildItem -Path $up -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+              if ($nonGames -notcontains $_.Name) {
+                $games += [PSCustomObject]@{
+                  name     = $_.Name
+                  launcher = "Ubisoft"
+                  path     = $_.FullName
+                }
+              }
+            }
+          }
+        }
+        @("Program Files\\EA Games", "EA Games") | ForEach-Object {
+          $eap = Join-Path $d $_
+          if (Test-Path $eap) {
+            Get-ChildItem -Path $eap -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+              if ($nonGames -notcontains $_.Name) {
+                $games += [PSCustomObject]@{
+                  name     = $_.Name
+                  launcher = "EA"
+                  path     = $_.FullName
+                }
+              }
             }
           }
         }

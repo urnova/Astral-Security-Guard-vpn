@@ -25,14 +25,15 @@ const PROFILE_META: Record<Profile, { desc: string; color: string; hint: string 
 };
 
 const LAUNCHER_COLORS: Record<string, string> = {
-  Steam:      '#1b2838',
+  Steam:        '#1b2838',
   'Epic Games': '#1f2733',
-  'Riot Games': '#c8102e22',
-  GOG:        '#6c3472',
-  Xbox:       '#107c10',
-  EA:         '#ff8800',
-  Rockstar:   '#1a2e44',
-  PC:         '#1e2030',
+  'Riot Games': '#c8102e',
+  GOG:          '#6c3472',
+  Xbox:         '#107c10',
+  EA:           '#ff4747',
+  Rockstar:     '#fcaf17',
+  Ubisoft:      '#0070ff',
+  PC:           '#1e2030',
 };
 
 function LauncherSvg({ launcher, size = 12 }: { launcher: string; size?: number }) {
@@ -58,25 +59,38 @@ function LauncherSvg({ launcher, size = 12 }: { launcher: string; size?: number 
       </svg>
     );
   }
-  if (l.includes('ea') || l.includes('origin')) {
+  if (l.includes('rockstar')) {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
-        <path d="M12 2L2 7l10 5 10-5-10-5zm0 8.3L4.5 7.1 12 3.3l7.5 3.8L12 10.3zm-8 4.7l8 4 8-4v3l-8 4-8-4v-3z" />
+        <path d="M4 2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm2.5 4v11h2.8v-3.7h1.6l2.9 3.7h3.4l-3.3-4.1c1.8-.6 2.8-2 2.8-3.5 0-2.2-1.6-3.4-4.2-3.4H6.5zm2.8 2.2h2.2c1.2 0 2 .5 2 1.5s-.8 1.5-2 1.5H9.3V8.2zm6.2 5.3l.6 1.8 1.9.1-1.5 1.1.5 1.8-1.5-1.1-1.5 1.1.5-1.8-1.5-1.1 1.9-.1.6-1.8z" />
       </svg>
     );
   }
   if (l.includes('riot')) {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
-        <path d="M12 2L3 7v10l9 5 9-5V7l-9-5zm-1 15.5l-5-2.8V9.3l5 2.8v5.4zm2 0V12.1l5-2.8v5.4l-5 2.8z" />
+        <path d="M13.447 3.518l-9.92 4.417.844 7.42 2.527-.378-.423-3.692 1.348-.198.398 3.51 3.253-.487-.417-3.67 1.353-.203.418 3.693 3.33-.498-.444-3.918 1.402-.21.442 3.921 2.24-.336 1.488-10.781zm-4.32 16.964H2v-1.616l2.36-.353 4.767 1.969zm12.873-1.928l-8.527 1.277-2.614-1.082 1.393-10.092 9.748-1.46 0 11.357z" />
+      </svg>
+    );
+  }
+  if (l.includes('ea') || l.includes('origin')) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+        <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm-1.8 14.5l-1.2-2.3H5.9l-.8 2.3H3.2l3.4-9.3h2.1l3.5 9.3h-2zm9.1 0h-5.9v-9.3h5.7v1.8h-3.8v1.9h3.4v1.8h-3.4v2h4v1.8zm-9.7-4.1l-1.1-2.4-1.1 2.4h2.2z" />
+      </svg>
+    );
+  }
+  if (l.includes('ubisoft')) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10c0-1.78-.47-3.45-1.3-4.89l-2.14 1.53c.59 1 1 2.15 1 3.36 0 4.14-3.36 7.5-7.56 7.5-4.14 0-7.5-3.36-7.5-7.5 0-3.36 2.22-6.19 5.27-7.1l.73 2.5c-1.8.63-3.1 2.36-3.1 4.4 0 2.54 2.06 4.6 4.6 4.6s4.6-2.06 4.6-4.6c0-1.27-.52-2.42-1.35-3.25l1.85-1.85C17.27 7.84 17.9 9.35 17.9 11c0 3.26-2.64 5.9-5.9 5.9-3.26 0-5.9-2.64-5.9-5.9 0-2.35 1.37-4.38 3.36-5.35L8.9 3.2C6.07 4.54 4.1 7.53 4.1 11c0 4.36 3.54 7.9 7.9 7.9s7.9-3.54 7.9-7.9c0-2.2-.9-4.2-2.35-5.65L19.4 3.5C21 5.6 22 8.2 22 11c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2z" />
       </svg>
     );
   }
   if (l.includes('gog')) {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
-        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" />
-        <path d="M12 6a6 6 0 0 0-6 6c0 3.31 2.69 6 6 6 2.38 0 4.43-1.39 5.37-3.41H12v-2h8c.07.46.1 1 .1 1.41 0 4.42-3.58 8-8 8A8 8 0 0 1 4 12a8 8 0 0 1 8-8c2.21 0 4.21.9 5.66 2.34L15.66 8.34A5.96 5.96 0 0 0 12 6z" />
+        <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm-2.8 13.8a4 4 0 1 1 0-7.6v1.9a2.1 2.1 0 1 0 0 3.8zm5.6 0a4 4 0 1 1 0-7.6v1.9a2.1 2.1 0 1 0 0 3.8z" />
       </svg>
     );
   }
@@ -165,8 +179,10 @@ export default function GamingTab({
   };
 
   /* ── Derived ── */
-  const launchers = ['Tous', ...Array.from(new Set(games.map(g => g.launcher)))];
-  const filteredGames = launcherFilter === 'Tous' ? games : games.filter(g => g.launcher === launcherFilter);
+  const rawLaunchers = Array.from(new Set(games.map(g => g.launcher))).filter(Boolean);
+  const launchers = ['Tous', ...rawLaunchers];
+  const effectiveFilter = launchers.includes(launcherFilter) ? launcherFilter : 'Tous';
+  const filteredGames = effectiveFilter === 'Tous' ? games : games.filter(g => g.launcher === effectiveFilter);
 
   /* ── Prop sync ── */
   useEffect(() => {
@@ -246,15 +262,7 @@ export default function GamingTab({
           bannerUrl: g.bannerUrl,
         })));
       } else {
-        /* Realistic fallback library */
-        setGames([
-          { name: 'Counter-Strike 2',    launcher: 'Steam',      initial: 'C', color1: '#f59e0b', color2: '#090a10', profile: 'OPTIMISÉ', bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/730/header.jpg' },
-          { name: 'Valorant',            launcher: 'Riot Games',  initial: 'V', color1: '#ff4655', color2: '#090a10', profile: 'OPTIMISÉ', bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/2358720/header.jpg' },
-          { name: 'Fortnite',            launcher: 'Epic Games',  initial: 'F', color1: '#00d4ff', color2: '#090a10', profile: 'OPTIMISÉ', bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1677740/header.jpg' },
-          { name: 'Grand Theft Auto V',  launcher: 'Rockstar',    initial: 'G', color1: '#3b82f6', color2: '#090a10', profile: 'OPTIMISÉ', bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/271590/header.jpg' },
-          { name: 'Helldivers 2',        launcher: 'Steam',       initial: 'H', color1: '#eab308', color2: '#090a10', profile: 'OPTIMISÉ', bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/553850/header.jpg' },
-          { name: 'EA FC 25',            launcher: 'EA',          initial: 'E', color1: '#ff8800', color2: '#090a10', profile: 'OPTIMISÉ', bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/2195250/header.jpg' },
-        ]);
+        setGames([]);
       }
     } catch {
       setGames([]);

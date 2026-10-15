@@ -132,6 +132,7 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
 
   useEffect(() => {
     refreshBrief();
+    const briefTimer = setInterval(refreshBrief, 30000);
 
     // Live ping polling every 2.5s for real-time latency
     const checkPing = () => {
@@ -157,6 +158,7 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
 
     return () => {
       clearInterval(pingTimer);
+      clearInterval(briefTimer);
       cleanupPing?.();
     };
   }, [refreshBrief]);
@@ -258,19 +260,10 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span className="chip" style={{ fontSize: 11, background: 'rgba(104,184,148,0.12)', color: 'var(--ok)' }}>
-                <CheckCircle2 size={12} />
+              <span className="chip" style={{ fontSize: 11.5, background: 'rgba(104,184,148,0.12)', color: 'var(--ok)', fontWeight: 600, padding: '3px 10px' }}>
+                <CheckCircle2 size={13} />
                 Score : {secScore}/100
               </span>
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={refreshBrief}
-                disabled={loadingBrief}
-                title="Actualiser le diagnostic"
-                style={{ padding: '4px 8px' }}
-              >
-                <RefreshCw size={12} className={loadingBrief ? 'spin' : ''} />
-              </button>
             </div>
           </div>
 

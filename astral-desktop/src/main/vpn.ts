@@ -213,6 +213,17 @@ export function setupVpnIPC(win: BrowserWindow) {
 
   // ── Connect VPN (Vérification OpenVPN / Wintun & Exécution) ───────────────
   ipcMain.handle('vpn:connect', async (_, serverId: string) => {
+    // 1. Block connection if a third-party VPN is currently active to prevent route collisions
+    const coexistence = await detectThirdPartyVpn();
+    if (coexistence.thirdPartyActive) {
+      logger.warn(`[VPN] Connexion rejetée : ${coexistence.vpnName} est déjà actif sur la machine`);
+      return {
+        success: false,
+        status: 'conflict',
+        message: `Conflit réseau : ${coexistence.vpnName || 'Un VPN tiers'} est actuellement connecté (${coexistence.adapterName || 'tunnel actif'}). Déconnectez-le pour éviter tout conflit de routage IP.`,
+      };
+    }
+
     const hasOpenVpn = Boolean(communityVpnEngine.findOpenVpnBinary());
     if (!hasOpenVpn) {
       logger.info('[VPN] Tentative de connexion rejetée : fonctionnalité en cours de développement.');

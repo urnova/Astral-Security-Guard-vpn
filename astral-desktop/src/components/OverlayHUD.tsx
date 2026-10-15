@@ -42,6 +42,21 @@ export default function OverlayHUD() {
   });
 
   useEffect(() => {
+    // Forcer la transparence absolue sous Windows pour éliminer tout rectangle noir
+    document.documentElement.style.background = 'transparent';
+    document.body.style.background = 'transparent';
+    document.body.style.backgroundColor = 'transparent';
+    document.body.style.margin = '0';
+    document.body.style.padding = '0';
+    document.body.style.overflow = 'hidden';
+    const root = document.getElementById('root');
+    if (root) {
+      root.style.background = 'transparent';
+      root.style.backgroundColor = 'transparent';
+    }
+  }, []);
+
+  useEffect(() => {
     if (!api) return;
 
     const fetchMetrics = () => {
@@ -99,7 +114,7 @@ export default function OverlayHUD() {
         width: '100vw',
         height: '100vh',
         margin: 0,
-        padding: '3px 6px',
+        padding: '2px 4px',
         boxSizing: 'border-box',
         background: 'transparent',
         display: 'flex',
@@ -114,12 +129,12 @@ export default function OverlayHUD() {
         style={{
           width: '100%',
           height: '100%',
-          background: 'rgba(10, 12, 16, 0.88)',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          border: '1px solid rgba(56, 189, 248, 0.28)',
-          borderRadius: 21,
-          boxShadow: '0 4px 18px rgba(0, 0, 0, 0.5)',
+          background: 'rgba(10, 12, 16, 0.78)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          border: '1px solid rgba(255, 255, 255, 0.12)',
+          borderRadius: 24,
+          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5), 0 0 1px 1px rgba(255, 255, 255, 0.05) inset',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',

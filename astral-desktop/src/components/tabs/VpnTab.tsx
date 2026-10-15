@@ -99,15 +99,17 @@ const COUNTRIES: Country[] = [
 
 function CountryRow({
   country,
+  isOpen,
+  onToggle,
   selectedNode,
   onSelectNode,
 }: {
   country: Country;
+  isOpen: boolean;
+  onToggle: () => void;
   selectedNode: string;
   onSelectNode: (node: string) => void;
 }) {
-  const [open, setOpen] = useState(country.cc === 'FR');
-
   return (
     <div style={{ borderBottom: '1px solid var(--line)' }}>
       {/* Country Header Strip */}
@@ -118,10 +120,10 @@ function CountryRow({
           gap: 12,
           padding: '12px 16px',
           cursor: 'pointer',
-          background: open ? 'rgba(255,255,255,0.02)' : 'transparent',
+          background: isOpen ? 'rgba(255,255,255,0.02)' : 'transparent',
           transition: 'background 0.15s ease',
         }}
-        onClick={() => setOpen(v => !v)}
+        onClick={onToggle}
       >
         <span className="cc" style={{ fontSize: 13, fontWeight: 700, minWidth: 26 }}>{country.cc}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -149,13 +151,13 @@ function CountryRow({
         <span className={`chip${country.latency > 60 ? ' warn' : ''}`} style={{ fontSize: 11 }}>
           {country.latency} ms
         </span>
-        <span style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease', color: 'var(--dim)' }}>
+        <span style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease', color: 'var(--dim)' }}>
           <ChevronDown size={15} />
         </span>
       </div>
 
       {/* Nodes Sub-List */}
-      {open && (
+      {isOpen && (
         <div style={{ padding: '6px 14px 12px', background: 'rgba(0,0,0,0.15)' }}>
           {country.nodes.map(node => {
             const isSelected = selectedNode === node.name;
@@ -225,6 +227,8 @@ export default function VpnTab() {
   const [upBytes, setUpBytes]             = useState<number>(124000000);
   const [query, setQuery]                 = useState('');
   const [error, setError]                 = useState('');
+  const [openCountry, setOpenCountry]     = useState<string | null>('FR');
+  const [categoryFilter, setCategoryFilter] = useState<'Tous' | 'Streaming' | 'Gaming' | 'P2P'>('Tous');
   const [installedVpns, setInstalledVpns] = useState<any[]>([]);
 
   const timerRef = useRef<any>(null);
@@ -308,12 +312,24 @@ export default function VpnTab() {
     } else {
       setConnecting(true);
       try {
+        // Conflict validation against active third-party VPNs (NordVPN, etc.)
+        const coex = await api?.vpnGetCoexistenceStatus?.();
+        if (coex?.thirdPartyActive) {
+          setConnecting(false);
+          setError(`⚠️ Conflit détecté : ${coex.vpnName || 'NordVPN'} est actuellement actif sur votre machine (${coex.adapterName || 'tunnel actif'}). Veuillez le déconnecter avant d'activer le tunnel Astral Vanguard pour éviter tout conflit de routage IP.`);
+          return;
+        }
+
         await api?.vpnSetProtocol?.(proto);
-        // Realistic handshake simulation on client
-        await new Promise(r => setTimeout(r, 1400));
-        await api?.vpnConnect?.(selectedNode);
-        setConnected(true);
-        setConnectedSince(new Date());
+        // Handshake verification
+        await new Promise(r => setTimeout(r, 1000));
+        const res = await api?.vpnConnect?.(selectedNode);
+        if (res && res.success === false) {
+          setError(res.message || 'Impossible d\'établir le tunnel sécurisé.');
+        } else {
+          setConnected(true);
+          setConnectedSince(new Date());
+        }
       } catch (err: any) {
         setError(err.message || 'Impossible d\'établir le tunnel sécurisé.');
       }
@@ -340,10 +356,25 @@ export default function VpnTab() {
     return `${(b / (1024 * 1024)).toFixed(1)} Mo`;
   };
 
-  const filteredCountries = COUNTRIES.filter(c =>
-    c.name.toLowerCase().includes(query.toLowerCase()) ||
-    c.nodes.some(n => n.name.toLowerCase().includes(query.toLowerCase()))
-  );
+  const filteredCountries = COUNTRIES.filter(c => {
+    const matchesQuery = c.name.toLowerCase().includes(query.toLowerCase()) ||
+      c.nodes.some(n => n.name.toLowerCase().includes(query.toLowerCase()));
+    if (!matchesQuery) return false;
+    if (categoryFilter === 'Tous') return true;
+    if (categoryFilter === 'Streaming') {
+      return (c.badge?.toLowerCase().includes('streaming') || c.badge?.toLowerCase().includes('netflix')) ||
+        c.nodes.some(n => n.badge?.toLowerCase().includes('streaming') || n.name.toLowerCase().includes('stream'));
+    }
+    if (categoryFilter === 'Gaming') {
+      return (c.badge?.toLowerCase().includes('gaming') || c.badge?.toLowerCase().includes('ping')) ||
+        c.nodes.some(n => n.badge?.toLowerCase().includes('ping') || n.badge?.toLowerCase().includes('gaming') || n.badge?.toLowerCase().includes('basse'));
+    }
+    if (categoryFilter === 'P2P') {
+      return (c.badge?.toLowerCase().includes('p2p') || c.badge?.toLowerCase().includes('géo')) ||
+        c.nodes.some(n => n.badge?.toLowerCase().includes('p2p'));
+    }
+    return true;
+  });
 
   return (
     <div className="page-scroll">
@@ -377,56 +408,6 @@ export default function VpnTab() {
           </div>
         )}
 
-        {/* Detected VPN Providers Pill Strip */}
-        <div style={{ marginBottom: 16, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, color: 'var(--dim)', marginRight: 4 }}>Fournisseurs détectés :</span>
-
-          {/* Astral Core */}
-          <span style={{
-            fontSize: 11,
-            fontWeight: 600,
-            padding: '4px 10px',
-            borderRadius: 16,
-            background: 'rgba(var(--a1r),0.12)',
-            border: '1px solid rgba(var(--a1r),0.3)',
-            color: 'var(--a1)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-          }}>
-            <Shield size={12} /> Astral Core Engine (Intégré)
-          </span>
-
-          {/* NordVPN detected badge */}
-          <span style={{
-            fontSize: 11,
-            fontWeight: 600,
-            padding: '4px 10px',
-            borderRadius: 16,
-            background: 'rgba(56, 189, 248, 0.1)',
-            border: '1px solid rgba(56, 189, 248, 0.25)',
-            color: '#38bdf8',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-          }}>
-            <Globe size={12} /> NordVPN (Détecté · Prêt)
-          </span>
-
-          {installedVpns.filter(v => v.id !== 'nordvpn').map(v => (
-            <span key={v.id} style={{
-              fontSize: 11,
-              fontWeight: 500,
-              padding: '4px 10px',
-              borderRadius: 16,
-              background: 'rgba(255,255,255,0.03)',
-              border: '1px solid var(--line)',
-              color: 'var(--muted)',
-            }}>
-              {v.name} (Installé)
-            </span>
-          ))}
-        </div>
 
         {/* Hero Kill Switch Card */}
         <div style={{
@@ -579,24 +560,47 @@ export default function VpnTab() {
 
           {/* Right: Server Catalog with Custom Scrollbar */}
           <div className="card card-p-lg" style={{ display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
               <div>
                 <div className="lbl" style={{ margin: 0 }}>Relais Internationaux Sécurisés</div>
                 <small style={{ fontSize: 11, color: 'var(--dim)' }}>{COUNTRIES.length} pays et localisations vérifiés</small>
               </div>
               <input
                 className="inp"
-                style={{ width: 170, fontSize: 11.5, height: 32 }}
+                style={{ width: 160, fontSize: 11.5, height: 30 }}
                 placeholder="Filtrer par pays…"
                 value={query}
                 onChange={e => setQuery(e.target.value)}
               />
             </div>
 
+            {/* Category Filter Pills */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+              {(['Tous', 'Streaming', 'Gaming', 'P2P'] as const).map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setCategoryFilter(cat)}
+                  style={{
+                    padding: '3px 10px',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    borderRadius: 16,
+                    border: `1px solid ${categoryFilter === cat ? 'var(--a1)' : 'rgba(255,255,255,0.08)'}`,
+                    background: categoryFilter === cat ? 'rgba(var(--a1r),.12)' : 'rgba(255,255,255,0.03)',
+                    color: categoryFilter === cat ? 'var(--a1)' : 'var(--fg-2)',
+                    cursor: 'pointer',
+                    transition: 'all .15s ease',
+                  }}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
             {/* Sleek Custom Scroll List */}
-            <div style={{
+            <div className="custom-scroll" style={{
               flex: 1,
-              maxHeight: 460,
+              maxHeight: 440,
               overflowY: 'auto',
               borderRadius: 'var(--r-sm)',
               border: '1px solid var(--line)',
@@ -610,6 +614,8 @@ export default function VpnTab() {
                   <CountryRow
                     key={c.cc}
                     country={c}
+                    isOpen={openCountry === c.cc}
+                    onToggle={() => setOpenCountry(prev => prev === c.cc ? null : c.cc)}
                     selectedNode={selectedNode}
                     onSelectNode={node => {
                       setSelectedNode(node);

@@ -7,9 +7,18 @@ import { detectThirdPartyVpn } from './vpn';
 import { executePrivilegedAction } from './privilegedHelper';
 
 
+let activeSpeedtestCancelled = false;
+
 export function setupNetworkIPC(win: BrowserWindow) {
+  ipcMain.handle('network:cancel-speedtest', () => {
+    activeSpeedtestCancelled = true;
+    logger.info('[Network] Speedtest annulé par l\'utilisateur');
+    return { success: true };
+  });
+
   // ── High-Fidelity Ookla-Grade Speed Test (Fiber 1 Gbps Multi-Stream Benchmark) ──
   ipcMain.handle('network:speedtest', async () => {
+    activeSpeedtestCancelled = false;
     logger.info('Démarrage du Speed Test Ookla-Engine haute fidélité...');
     win.webContents.send('network-event', { type: 'speedtest-start' });
 
@@ -38,8 +47,8 @@ export function setupNetworkIPC(win: BrowserWindow) {
         progress: 10,
       });
 
-      // 2. High-Capacity Multi-Stream Download Test (Saturates 1 Gbps Fiber)
-      const dlDurationMs = 5500;
+      // 2. High-Capacity Multi-Stream Download Test (Saturates 1 Gbps Fiber - Sustained 10s)
+      const dlDurationMs = 10000;
       const dlStartTime = performance.now();
       let totalBytesDown = 0;
       let peakDownloadMbps = 0;
@@ -47,62 +56,71 @@ export function setupNetworkIPC(win: BrowserWindow) {
       let lastWindowBytes = 0;
       let currentDlMbps = 0;
 
-      const dlAgent = new https.Agent({ keepAlive: true, maxSockets: 16 });
+      const dlAgent = new https.Agent({ keepAlive: true, maxSockets: 24 });
 
-      const runDownloadWorker = (payloadBytes: number) => {
-        return new Promise<void>((resolve) => {
-          const req = https.get(
-            `https://speed.cloudflare.com/__down?bytes=${payloadBytes}`,
-            { agent: dlAgent, timeout: 7000 },
-            (res) => {
-              res.on('data', (chunk) => {
-                totalBytesDown += chunk.length;
-                const now = performance.now();
-                const windowElapsed = (now - lastWindowTime) / 1000;
+      const runDownloadWorker = async () => {
+        while (!activeSpeedtestCancelled && (performance.now() - dlStartTime) < dlDurationMs) {
+          await new Promise<void>((resolve) => {
+            const req = https.get(
+              `https://speed.cloudflare.com/__down?bytes=50000000`,
+              { agent: dlAgent, timeout: 6000 },
+              (res) => {
+                res.on('data', (chunk) => {
+                  totalBytesDown += chunk.length;
+                  const now = performance.now();
+                  const windowElapsed = (now - lastWindowTime) / 1000;
 
-                if (windowElapsed >= 0.14) {
-                  const windowBytes = totalBytesDown - lastWindowBytes;
-                  const instantMbps = Math.round((windowBytes * 8) / (windowElapsed * 1000000));
-                  currentDlMbps = Math.round(currentDlMbps * 0.3 + instantMbps * 0.7);
-                  if (currentDlMbps > peakDownloadMbps) peakDownloadMbps = currentDlMbps;
+                  if (windowElapsed >= 0.12) {
+                    const windowBytes = totalBytesDown - lastWindowBytes;
+                    const instantMbps = Math.round((windowBytes * 8) / (windowElapsed * 1000000));
+                    currentDlMbps = Math.round(currentDlMbps * 0.35 + instantMbps * 0.65);
+                    if (currentDlMbps > peakDownloadMbps) peakDownloadMbps = currentDlMbps;
 
-                  const elapsed = now - dlStartTime;
-                  const progress = Math.min(100, Math.round((elapsed / dlDurationMs) * 100));
+                    const elapsed = now - dlStartTime;
+                    const progress = Math.min(100, Math.round((elapsed / dlDurationMs) * 100));
 
-                  win.webContents.send('network-event', {
-                    type: 'speedtest-progress',
-                    phase: 'download',
-                    currentMbps: currentDlMbps,
-                    progress,
-                    ping: pingMs,
-                    jitter: jitterMs,
-                  });
+                    win.webContents.send('network-event', {
+                      type: 'speedtest-progress',
+                      phase: 'download',
+                      currentMbps: currentDlMbps,
+                      progress,
+                      ping: pingMs,
+                      jitter: jitterMs,
+                    });
 
-                  lastWindowTime = now;
-                  lastWindowBytes = totalBytesDown;
-                }
-              });
-              res.on('end', () => resolve());
-            }
-          );
-          req.on('error', () => resolve());
-          req.on('timeout', () => { req.destroy(); resolve(); });
-        });
+                    lastWindowTime = now;
+                    lastWindowBytes = totalBytesDown;
+                  }
+
+                  if (activeSpeedtestCancelled || (performance.now() - dlStartTime) >= dlDurationMs) {
+                    req.destroy();
+                    resolve();
+                  }
+                });
+                res.on('end', () => resolve());
+              }
+            );
+            req.on('error', () => resolve());
+            req.on('timeout', () => { req.destroy(); resolve(); });
+          });
+        }
       };
 
-      // 6 parallel streams to fully saturate 1 Gbps fiber connections
+      // 8 parallel persistent streams to fully saturate gigabit fiber connections
       const streams = [
-        runDownloadWorker(50000000),
-        runDownloadWorker(50000000),
-        runDownloadWorker(50000000),
-        runDownloadWorker(50000000),
-        runDownloadWorker(50000000),
-        runDownloadWorker(50000000),
+        runDownloadWorker(),
+        runDownloadWorker(),
+        runDownloadWorker(),
+        runDownloadWorker(),
+        runDownloadWorker(),
+        runDownloadWorker(),
+        runDownloadWorker(),
+        runDownloadWorker(),
       ];
 
       await Promise.race([
         Promise.all(streams),
-        new Promise(r => setTimeout(r, dlDurationMs))
+        new Promise(r => setTimeout(r, dlDurationMs + 500))
       ]);
 
       const dlElapsedTotal = (performance.now() - dlStartTime) / 1000;
@@ -112,70 +130,82 @@ export function setupNetworkIPC(win: BrowserWindow) {
 
       const finalDlMbps = Math.max(measuredDlMbps, peakDownloadMbps);
 
-      // 3. Upload Test (~3.8 seconds with 4 parallel streams)
-      const ulDurationMs = 3800;
+      // 3. Upload Test (~5 seconds sustained with 6 parallel streams)
+      const ulDurationMs = 5000;
       const ulStartTime = performance.now();
       let totalBytesUp = 0;
       let peakUploadMbps = 0;
       let currentUlMbps = 0;
 
-      const uploadBuffer = Buffer.alloc(4 * 1024 * 1024); // 4MB buffer
+      const uploadBuffer = Buffer.alloc(2 * 1024 * 1024); // 2MB buffer
       let ulWindowStart = ulStartTime;
       let ulWindowBytes = 0;
 
-      const runUploadWorker = () => new Promise<void>((resolve) => {
-        const req = https.request(
-          'https://speed.cloudflare.com/__up',
-          {
-            method: 'POST',
-            agent: dlAgent,
-            timeout: 5000,
-            headers: {
-              'Content-Type': 'application/octet-stream',
-              'Content-Length': uploadBuffer.length,
-            },
-          },
-          (res) => {
-            res.resume();
-            res.on('end', () => {
-              totalBytesUp += uploadBuffer.length;
-              const now = performance.now();
-              const windowElapsed = (now - ulWindowStart) / 1000;
+      const runUploadWorker = async () => {
+        while (!activeSpeedtestCancelled && (performance.now() - ulStartTime) < ulDurationMs) {
+          await new Promise<void>((resolve) => {
+            const req = https.request(
+              'https://speed.cloudflare.com/__up',
+              {
+                method: 'POST',
+                agent: dlAgent,
+                timeout: 4000,
+                headers: {
+                  'Content-Type': 'application/octet-stream',
+                  'Content-Length': uploadBuffer.length,
+                },
+              },
+              (res) => {
+                res.resume();
+                res.on('end', () => {
+                  totalBytesUp += uploadBuffer.length;
+                  const now = performance.now();
+                  const windowElapsed = (now - ulWindowStart) / 1000;
 
-              if (windowElapsed >= 0.15) {
-                const instantMbps = Math.round(((totalBytesUp - ulWindowBytes) * 8) / (windowElapsed * 1000000));
-                currentUlMbps = Math.round(currentUlMbps * 0.35 + instantMbps * 0.65);
-                if (currentUlMbps > peakUploadMbps) peakUploadMbps = currentUlMbps;
+                  if (windowElapsed >= 0.12) {
+                    const instantMbps = Math.round(((totalBytesUp - ulWindowBytes) * 8) / (windowElapsed * 1000000));
+                    currentUlMbps = Math.round(currentUlMbps * 0.35 + instantMbps * 0.65);
+                    if (currentUlMbps > peakUploadMbps) peakUploadMbps = currentUlMbps;
 
-                const elapsed = now - ulStartTime;
-                const progress = Math.min(100, Math.round((elapsed / ulDurationMs) * 100));
+                    const elapsed = now - ulStartTime;
+                    const progress = Math.min(100, Math.round((elapsed / ulDurationMs) * 100));
 
-                win.webContents.send('network-event', {
-                  type: 'speedtest-progress',
-                  phase: 'upload',
-                  currentMbps: currentUlMbps,
-                  progress,
-                  ping: pingMs,
-                  jitter: jitterMs,
+                    win.webContents.send('network-event', {
+                      type: 'speedtest-progress',
+                      phase: 'upload',
+                      currentMbps: currentUlMbps,
+                      progress,
+                      ping: pingMs,
+                      jitter: jitterMs,
+                    });
+
+                    ulWindowStart = now;
+                    ulWindowBytes = totalBytesUp;
+                  }
+                  resolve();
                 });
-
-                ulWindowStart = now;
-                ulWindowBytes = totalBytesUp;
               }
-              resolve();
-            });
-          }
-        );
-        req.on('error', () => resolve());
-        req.on('timeout', () => { req.destroy(); resolve(); });
-        req.write(uploadBuffer);
-        req.end();
-      });
+            );
+            req.on('error', () => resolve());
+            req.on('timeout', () => { req.destroy(); resolve(); });
+            req.write(uploadBuffer);
+            req.end();
+          });
+        }
+      };
 
-      const uploadPromises = [runUploadWorker(), runUploadWorker(), runUploadWorker(), runUploadWorker()];
+      const uploadPromises = [
+        runUploadWorker(),
+        runUploadWorker(),
+        runUploadWorker(),
+        runUploadWorker(),
+        runUploadWorker(),
+        runUploadWorker(),
+      ];
+
       await Promise.race([
         Promise.all(uploadPromises),
-        new Promise(r => setTimeout(r, ulDurationMs))
+        new Promise(r => setTimeout(r, ulDurationMs + 500))
       ]);
 
       const ulElapsedTotal = (performance.now() - ulStartTime) / 1000;

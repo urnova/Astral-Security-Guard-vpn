@@ -722,7 +722,13 @@ button.win-btn.close:hover,
 .ring .fg-c { stroke: var(--a1); transition: stroke-dashoffset .8s var(--ease); }
 .ring .center {
   position: absolute; inset: 0;
-  display: grid; place-content: center; text-align: center;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center;
+}
+.ring .center .big {
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto; line-height: 1;
 }
 .ring.scanning::after {
   content: '';
@@ -880,13 +886,17 @@ button.win-btn.close:hover,
    ══════════════════════════════════════════════════════════════════════════ */
 .log {
   font-family: "JetBrains Mono", Consolas, monospace;
-  font-size: 11px; height: 150px;
+  font-size: 11px; height: 180px;
   background: var(--bg); border: 1px solid var(--line);
   border-radius: var(--r-sm); color: var(--muted);
-  padding: 14px; overflow: hidden;
-  display: flex; flex-direction: column; justify-content: flex-end; gap: 4px;
+  padding: 12px 14px;
+  overflow-y: auto; overflow-x: hidden;
+  display: flex; flex-direction: column; gap: 4px;
 }
-.log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.log div {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex-shrink: 0; line-height: 1.5;
+}
 .log .ok   { color: var(--ok); }
 .log .warn { color: var(--warn); }
 .log .bad  { color: var(--bad); }
@@ -1238,6 +1248,24 @@ button.win-btn.close:hover,
     animation-duration: .01ms !important;
     transition-duration: .01ms !important;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CUSTOM SLEEK SCROLLBAR
+   ══════════════════════════════════════════════════════════════════════════ */
+.custom-scroll::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.custom-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+}
+.custom-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 189, 248, 0.45);
 }
 .reduce-motion *, .reduce-motion *::before, .reduce-motion *::after {
   animation: none !important;
