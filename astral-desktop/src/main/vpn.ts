@@ -116,16 +116,67 @@ export function setupVpnIPC(win: BrowserWindow) {
   ipcMain.handle('vpn:detect-all', async () => {
     const status = await detectThirdPartyVpn();
     if (status.thirdPartyActive && status.vpnName) {
-      return [{
-        id: status.vpnName.toLowerCase().replace(/[^a-z0-9]/g, ''),
-        name: status.vpnName,
-        detected: true,
-        connected: true,
-        serverName: status.adapterName || 'Tunnel actif',
-      }];
+      return [{ id: status.vpnName.toLowerCase().replace(/[^a-z0-9]/g, ''), name: status.vpnName, detected: true, connected: true, serverName: status.adapterName || 'Tunnel actif' }];
     }
     return [];
   });
+
+  // ── Detect ALL installed VPN software (even when disconnected) ─────────────
+  ipcMain.handle('vpn:detect-installed', async () => {
+    const results: { id: string; name: string; detected: boolean; connected: boolean; serverName: string }[] = [];
+    try {
+      // First, check active tunnel
+      const active = await detectThirdPartyVpn();
+      if (active.thirdPartyActive && active.vpnName) {
+        results.push({
+          id: active.vpnName.toLowerCase().replace(/[^a-z0-9]/g, ''),
+          name: active.vpnName,
+          detected: true,
+          connected: true,
+          serverName: active.adapterName || 'Tunnel actif',
+        });
+      }
+
+      // Then scan for installed but not connected VPN software
+      const script = `
+        $vpns = @()
+        $paths = @(
+          @{ id = 'nordvpn'; name = 'NordVPN'; paths = @('C:\\Program Files\\NordVPN', 'C:\\Users\\Public\\AppData\\Local\\NordVPN') },
+          @{ id = 'protonvpn'; name = 'ProtonVPN'; paths = @('C:\\Program Files (x86)\\Proton VPN', 'C:\\Program Files\\Proton AG\\Proton VPN') },
+          @{ id = 'expressvpn'; name = 'ExpressVPN'; paths = @('C:\\Program Files\\ExpressVPN', 'C:\\Program Files (x86)\\ExpressVPN') },
+          @{ id = 'surfshark'; name = 'Surfshark'; paths = @('C:\\Program Files\\Surfshark') },
+          @{ id = 'mullvad'; name = 'Mullvad VPN'; paths = @('C:\\Program Files\\Mullvad VPN') },
+          @{ id = 'cyberghost'; name = 'CyberGhost'; paths = @('C:\\Program Files\\CyberGhost VPN') },
+          @{ id = 'pia'; name = 'PIA'; paths = @('C:\\Program Files\\Private Internet Access') }
+        )
+        foreach ($v in $paths) {
+          $found = $false
+          foreach ($p in $v.paths) {
+            if (Test-Path $p) { $found = $true; break }
+          }
+          if ($found) {
+            $vpns += [PSCustomObject]@{ id = $v.id; name = $v.name }
+          }
+        }
+        $vpns | ConvertTo-Json -Compress
+      `;
+      const res = await runPowerShell(script, { asJson: true, timeout: 5000 });
+      let installed: any[] = [];
+      if (res.success && res.data) {
+        installed = Array.isArray(res.data) ? res.data : [res.data];
+      }
+      for (const inst of installed) {
+        const alreadyListed = results.some(r => r.id === inst.id);
+        if (!alreadyListed) {
+          results.push({ id: inst.id, name: inst.name, detected: true, connected: false, serverName: 'Installé — déconnecté' });
+        }
+      }
+    } catch (err: any) {
+      logger.warn('[VPN] Erreur detect-installed :', err.message);
+    }
+    return results;
+  });
+
 
   // ── Fetch Servers (Catalogue dynamique VPN Gate avec cache local) ─────────
   ipcMain.handle('vpn:fetch-servers', async () => {

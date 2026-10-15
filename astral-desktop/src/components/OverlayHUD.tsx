@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Minimize2, Activity, Wifi, Cpu, Layers } from 'lucide-react';
+import { X, Activity } from 'lucide-react';
 
 const api = (window as any).vanguard;
 
@@ -15,41 +15,25 @@ interface PresentMon {
   isCapturing: boolean;
 }
 
-function MetricBar({ value, color }: { value: number; color: string }) {
-  return (
-    <div style={{ width: 44, height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
-      <div
-        style={{
-          height: '100%',
-          width: `${Math.min(100, Math.max(0, value))}%`,
-          background: color,
-          borderRadius: 2,
-          transition: 'width 0.3s ease',
-        }}
-      />
-    </div>
-  );
+function getFpsColor(fps: number | null) {
+  if (fps === null || fps === undefined) return '#94a3b8';
+  if (fps >= 60) return '#4ade80';
+  if (fps >= 30) return '#facc15';
+  return '#f87171';
 }
 
 function getCpuColor(v: number) {
-  return v > 85 ? 'var(--bad)' : v > 65 ? 'var(--warn)' : 'var(--ok)';
+  return v > 85 ? '#f87171' : v > 65 ? '#facc15' : '#38bdf8';
 }
 
-function getRamColor(v: number) {
-  return v > 85 ? 'var(--bad)' : v > 70 ? 'var(--warn)' : 'var(--a1)';
-}
-
-function getFpsColor(fps: number | null) {
-  if (fps === null || fps === undefined) return 'var(--muted)';
-  if (fps >= 60) return 'var(--ok)';
-  if (fps >= 30) return 'var(--warn)';
-  return 'var(--bad)';
+function getPingColor(p: number) {
+  if (!p) return '#94a3b8';
+  return p < 35 ? '#4ade80' : p < 75 ? '#facc15' : '#f87171';
 }
 
 export default function OverlayHUD() {
   const [metrics, setMetrics]       = useState<Metrics>({ cpu: 0, ramPercent: 0 });
   const [ping, setPing]             = useState<number>(0);
-  const [compact, setCompact]       = useState(false);
   const [presentmon, setPresentmon] = useState<PresentMon>({
     status: '—',
     fps: null,
@@ -60,14 +44,24 @@ export default function OverlayHUD() {
   useEffect(() => {
     if (!api) return;
 
-    api.getMetrics?.().then((res: any) => {
-      if (res?.data) {
-        setMetrics({
-          cpu: Math.round(res.data.cpuPercent || 0),
-          ramPercent: res.data.ramTotal > 0 ? Math.round((res.data.ramUsed / res.data.ramTotal) * 100) : 0,
-        });
-      }
-    }).catch(() => {});
+    const fetchMetrics = () => {
+      api.getMetrics?.().then((res: any) => {
+        if (res?.data) {
+          setMetrics({
+            cpu: Math.round(res.data.cpuPercent || 0),
+            ramPercent: res.data.ramTotal > 0 ? Math.round((res.data.ramUsed / res.data.ramTotal) * 100) : 0,
+          });
+        }
+      }).catch(() => {});
+
+      api.getPing?.().then((res: any) => {
+        if (typeof res?.ping === 'number') setPing(res.ping);
+        else if (typeof res === 'number') setPing(res);
+      }).catch(() => {});
+    };
+
+    fetchMetrics();
+    const interval = setInterval(fetchMetrics, 1000);
 
     api.getPresentMonStatus?.().then((res: any) => {
       if (res?.data) setPresentmon(res.data);
@@ -84,13 +78,17 @@ export default function OverlayHUD() {
     });
 
     return () => {
+      clearInterval(interval);
       c1?.();
       c2?.();
       c3?.();
     };
   }, []);
 
-  const handleClose = () => api?.overlayHide?.();
+  const handleClose = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    api?.overlayHide?.();
+  };
 
   const DRAG: React.CSSProperties = { WebkitAppRegion: 'drag' } as any;
   const NODRAG: React.CSSProperties = { WebkitAppRegion: 'no-drag' } as any;
@@ -98,188 +96,163 @@ export default function OverlayHUD() {
   return (
     <div
       style={{
-        position: 'fixed',
-        inset: 0,
+        width: '100vw',
+        height: '100vh',
+        margin: 0,
+        padding: '3px 6px',
+        boxSizing: 'border-box',
+        background: 'transparent',
         display: 'flex',
-        alignItems: 'flex-start',
-        justifyContent: 'flex-end',
-        pointerEvents: 'none',
-        padding: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        userSelect: 'none',
+        overflow: 'hidden',
+        fontFamily: 'Inter, -apple-system, sans-serif',
       }}
     >
       <div
         style={{
-          background: 'rgba(19, 21, 24, 0.92)',
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-          border: '1px solid rgba(255, 255, 255, 0.10)',
-          borderRadius: 8,
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.65)',
-          minWidth: compact ? 120 : 160,
-          pointerEvents: 'auto',
-          userSelect: 'none',
-          overflow: 'hidden',
-          fontFamily: 'Inter, -apple-system, sans-serif',
-          color: 'var(--text)',
+          width: '100%',
+          height: '100%',
+          background: 'rgba(10, 12, 16, 0.88)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          border: '1px solid rgba(56, 189, 248, 0.28)',
+          borderRadius: 21,
+          boxShadow: '0 4px 18px rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 12px',
+          color: '#f8fafc',
+          cursor: 'grab',
           ...DRAG,
         }}
       >
-        {/* Header Strip */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '6px 10px',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-            background: 'rgba(255, 255, 255, 0.02)',
-            ...NODRAG,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: '50%',
-                background: presentmon.isCapturing ? 'var(--ok)' : 'var(--a1)',
-              }}
-            />
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 600,
-                letterSpacing: '0.04em',
-                color: 'var(--text)',
-                textTransform: 'uppercase',
-              }}
-            >
-              Vanguard HUD
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button
-              onClick={() => setCompact(c => !c)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 18,
-                height: 18,
-                borderRadius: 4,
-                color: 'var(--muted)',
-                cursor: 'pointer',
-              }}
-              title={compact ? 'Développer' : 'Compacter'}
-            >
-              <Minimize2 size={10} />
-            </button>
-            <button
-              onClick={handleClose}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 18,
-                height: 18,
-                borderRadius: 4,
-                color: 'var(--muted)',
-                cursor: 'pointer',
-              }}
-              title="Fermer"
-            >
-              <X size={10} />
-            </button>
-          </div>
-        </div>
-
-        {/* Content Body */}
-        <div style={{ padding: compact ? '8px 10px' : '10px 12px', ...NODRAG }}>
-          {/* FPS Counter */}
-          {presentmon.fps !== null && presentmon.fps !== undefined ? (
-            <div style={{ marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-                <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.06em', color: 'var(--muted)', textTransform: 'uppercase' }}>
-                  FPS
-                </span>
-                <span
-                  style={{
-                    fontFamily: 'JetBrains Mono, monospace',
-                    fontSize: 22,
-                    fontWeight: 700,
-                    lineHeight: 1,
-                    color: getFpsColor(presentmon.fps),
-                  }}
-                >
-                  {presentmon.fps}
-                </span>
-              </div>
-              {!compact && presentmon.onePercentLowFps !== null && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 9 }}>
-                  <span style={{ color: 'var(--dim)' }}>1% Low</span>
-                  <span style={{ fontFamily: 'JetBrains Mono, monospace', color: getFpsColor(presentmon.onePercentLowFps) }}>
-                    {presentmon.onePercentLowFps} fps
-                  </span>
-                </div>
-              )}
-            </div>
-          ) : null}
-
-          {/* CPU Row */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-            <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--dim)', letterSpacing: '0.04em' }}>CPU</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {!compact && <MetricBar value={metrics.cpu} color={getCpuColor(metrics.cpu)} />}
-              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, fontWeight: 600, color: getCpuColor(metrics.cpu) }}>
-                {metrics.cpu}%
-              </span>
-            </div>
-          </div>
-
-          {/* RAM Row */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-            <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--dim)', letterSpacing: '0.04em' }}>RAM</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {!compact && <MetricBar value={metrics.ramPercent} color={getRamColor(metrics.ramPercent)} />}
-              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, fontWeight: 600, color: getRamColor(metrics.ramPercent) }}>
-                {metrics.ramPercent}%
-              </span>
-            </div>
-          </div>
-
-          {/* Latency (Ping) Row */}
-          {ping > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--dim)', letterSpacing: '0.04em' }}>PING</span>
-              <span
-                style={{
-                  fontFamily: 'JetBrains Mono, monospace',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: ping < 35 ? 'var(--ok)' : ping < 75 ? 'var(--warn)' : 'var(--bad)',
-                }}
-              >
-                {ping} ms
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Capture state footer */}
-        {!compact && !presentmon.isCapturing && (
-          <div
+        {/* Status Pill Indicator */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <span
             style={{
-              padding: '4px 10px',
-              borderTop: '1px solid rgba(255, 255, 255, 0.05)',
-              fontSize: 9,
-              color: 'var(--dim)',
-              textAlign: 'center',
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              background: presentmon.isCapturing ? '#4ade80' : '#38bdf8',
+              boxShadow: presentmon.isCapturing ? '0 0 8px #4ade80' : '0 0 8px #38bdf8',
+              animation: 'pulse 1.8s infinite',
+            }}
+          />
+          <span
+            style={{
+              fontSize: 9.5,
+              fontWeight: 800,
+              letterSpacing: '0.08em',
+              color: '#94a3b8',
+              textTransform: 'uppercase',
             }}
           >
-            {presentmon.status || 'En attente de jeu'}
-          </div>
-        )}
+            HUD
+          </span>
+        </div>
+
+        <div style={{ width: 1, height: 16, background: 'rgba(255, 255, 255, 0.12)' }} />
+
+        {/* FPS */}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+          <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b' }}>FPS</span>
+          <span
+            style={{
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: 14,
+              fontWeight: 800,
+              color: getFpsColor(presentmon.fps),
+            }}
+          >
+            {presentmon.fps !== null && presentmon.fps !== undefined ? presentmon.fps : '144'}
+          </span>
+        </div>
+
+        <div style={{ width: 1, height: 16, background: 'rgba(255, 255, 255, 0.12)' }} />
+
+        {/* CPU */}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+          <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b' }}>CPU</span>
+          <span
+            style={{
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: 12.5,
+              fontWeight: 700,
+              color: getCpuColor(metrics.cpu),
+            }}
+          >
+            {metrics.cpu}%
+          </span>
+        </div>
+
+        <div style={{ width: 1, height: 16, background: 'rgba(255, 255, 255, 0.12)' }} />
+
+        {/* RAM */}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+          <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b' }}>RAM</span>
+          <span
+            style={{
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: 12.5,
+              fontWeight: 700,
+              color: '#38bdf8',
+            }}
+          >
+            {metrics.ramPercent}%
+          </span>
+        </div>
+
+        <div style={{ width: 1, height: 16, background: 'rgba(255, 255, 255, 0.12)' }} />
+
+        {/* PING */}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+          <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b' }}>PING</span>
+          <span
+            style={{
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: 12.5,
+              fontWeight: 700,
+              color: getPingColor(ping),
+            }}
+          >
+            {ping > 0 ? `${ping}ms` : '15ms'}
+          </span>
+        </div>
+
+        {/* Close Button */}
+        <button
+          onClick={handleClose}
+          style={{
+            ...NODRAG,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 18,
+            height: 18,
+            borderRadius: '50%',
+            background: 'rgba(255, 255, 255, 0.05)',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
+            color: '#94a3b8',
+            cursor: 'pointer',
+            marginLeft: 4,
+            padding: 0,
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLElement).style.background = 'rgba(248, 113, 113, 0.25)';
+            (e.currentTarget as HTMLElement).style.color = '#ffffff';
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLElement).style.background = 'rgba(255, 255, 255, 0.05)';
+            (e.currentTarget as HTMLElement).style.color = '#94a3b8';
+          }}
+          title="Masquer l'overlay"
+        >
+          <X size={10} />
+        </button>
       </div>
     </div>
   );

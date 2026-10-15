@@ -139,7 +139,9 @@ const api = {
   vpnSetKillSwitch: (enabled: boolean) => ipcRenderer.invoke('vpn:set-killswitch', enabled),
   vpnGetCoexistenceStatus: () => ipcRenderer.invoke('vpn:get-coexistence-status'),
   detectThirdPartyVpns: () => ipcRenderer.invoke('vpn:detect-all'),
+  detectInstalledVpns: () => ipcRenderer.invoke('vpn:detect-installed'),
   vpnGetStatus: () => ipcRenderer.invoke('vpn:get-status'),
+
 
   // Gaming & Overlay
   getGamingStatus: () => ipcRenderer.invoke('gaming:get-status'),
@@ -155,6 +157,12 @@ const api = {
   overlayShow: () => ipcRenderer.invoke('overlay:show'),
   overlayHide: () => ipcRenderer.invoke('overlay:hide'),
   getOverlayStatus: () => ipcRenderer.invoke('overlay:status'),
+  // New gaming settings handlers
+  getGamingSettings: () => ipcRenderer.invoke('gaming:get-settings'),
+  setGamingMode: (payload: { enabled: boolean; profile?: string }) => ipcRenderer.invoke('gaming:set-mode', payload),
+  setGamingSetting: (payload: { key: string; value: boolean }) => ipcRenderer.invoke('gaming:set-setting', payload),
+  applyGameProfile: (payload: { game: string; profile: string }) => ipcRenderer.invoke('gaming:apply-game-profile', payload),
+  suspendBrowsers: (suspend: boolean) => ipcRenderer.invoke('gaming:suspend-browsers', suspend),
 
   // Rollback & System Restore
   createRestorePoint: (desc: string, options?: any) => ipcRenderer.invoke('rollback:create-restore-point', desc, options),

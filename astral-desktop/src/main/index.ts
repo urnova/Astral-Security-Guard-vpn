@@ -177,12 +177,13 @@ export function createOverlay() {
   if (overlayWin) return;
   logger.info('[App] Creating gaming HUD overlay window...');
   overlayWin = new BrowserWindow({
-    width: 260,
-    height: 160,
-    x: 24,
-    y: 24,
+    width: 340,
+    height: 48,
+    x: 32,
+    y: 32,
     frame: false,
     transparent: true,
+    hasShadow: false,
     alwaysOnTop: true,
     skipTaskbar: true,
     focusable: false,

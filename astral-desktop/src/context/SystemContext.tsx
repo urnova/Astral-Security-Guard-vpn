@@ -159,7 +159,7 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
   // Initial and periodic refresh + IPC tray listeners
   useEffect(() => {
     refreshTelemetry();
-    const interval = setInterval(refreshTelemetry, 8000);
+    const interval = setInterval(refreshTelemetry, 1000);
 
     const cleanupSec = api?.on?.('security:status-changed', (event: any) => {
       if (event) {

@@ -51,6 +51,7 @@ export function createOrGetNotificationWindow(): BrowserWindow {
     y,
     frame: false,
     transparent: true,
+    hasShadow: false,
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
@@ -136,15 +137,18 @@ export function showAvastStyleToast({
         <meta charset="utf-8">
         <style>
           * { box-sizing: border-box; margin: 0; padding: 0; }
+          html, body {
+            width: 100%; height: 100%;
+          }
           body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: transparent;
             overflow: hidden;
             display: flex;
-            align-items: center;
-            justifyContent: center;
+            align-items: stretch;
+            justify-content: stretch;
             height: 100vh;
-            padding: 8px;
+            padding: 0;
             user-select: none;
           }
           .card {
@@ -152,30 +156,22 @@ export function showAvastStyleToast({
             height: 100%;
             background: linear-gradient(145deg, #1b1e23 0%, #131518 100%);
             border: 1px solid ${borderColor};
-            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(255,255,255,0.04) inset;
             border-radius: 10px;
-            padding: 13px 15px;
+            padding: 13px 15px 10px;
             display: flex;
             flex-direction: column;
-            justifyContent: space-between;
+            justify-content: space-between;
             color: #eceef0;
             cursor: pointer;
             position: relative;
             animation: slideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
             transition: border-color 0.15s ease;
           }
-          .card:hover {
-            border-color: ${accentColor};
-          }
+          .card:hover { border-color: ${accentColor}; }
           @keyframes slideIn {
-            from { transform: translateY(16px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-          }
-          .header {
-            display: flex;
-            align-items: center;
-            justifyContent: space-between;
-            margin-bottom: 6px;
+            from { transform: translateY(14px); opacity: 0; }
+            to   { transform: translateY(0);    opacity: 1; }
           }
           .brand {
             font-size: 10px;
@@ -186,29 +182,30 @@ export function showAvastStyleToast({
             display: flex;
             align-items: center;
             gap: 7px;
+            margin-bottom: 6px;
+            padding-right: 26px;
           }
-          .logo-img {
-            width: 16px;
-            height: 16px;
-            object-fit: contain;
-          }
+          .logo-img { width: 16px; height: 16px; object-fit: contain; }
           .close-btn {
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.12);
             color: #777f8b;
-            border-radius: 5px;
-            width: 20px;
-            height: 20px;
+            border-radius: 6px;
+            width: 22px;
+            height: 22px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            font-size: 10px;
+            font-size: 11px;
             line-height: 1;
             transition: all 0.15s ease;
           }
           .close-btn:hover {
-            background: rgba(223, 133, 133, 0.2);
+            background: rgba(223,133,133,0.22);
             border-color: #df8585;
             color: #ffffff;
           }
@@ -233,34 +230,29 @@ export function showAvastStyleToast({
           .footer {
             display: flex;
             align-items: center;
-            justifyContent: space-between;
+            justify-content: space-between;
             font-size: 10px;
             color: #777f8b;
-            border-top: 1px solid #2c3037;
+            border-top: 1px solid rgba(255,255,255,0.06);
             padding-top: 6px;
             margin-top: 4px;
           }
-          .action-hint {
-            color: ${accentColor};
-            font-weight: 500;
-          }
+          .action-hint { color: ${accentColor}; font-weight: 500; }
         </style>
       </head>
       <body>
         <div class="card" id="card" onclick="window.location.href='vanguard://focus'">
+          <button class="close-btn" title="Fermer" onclick="event.stopPropagation(); window.location.href='vanguard://close'">✕</button>
           <div>
-            <div class="header">
-              <div class="brand">
-                ${logoUrl ? `<img src="${logoUrl}" class="logo-img" alt="" />` : ''}
-                <span>${badgeText}</span>
-              </div>
-              <button class="close-btn" title="Fermer" onclick="event.stopPropagation(); window.location.href='vanguard://close'">✕</button>
+            <div class="brand">
+              ${logoUrl ? `<img src="${logoUrl}" class="logo-img" alt="" />` : ''}
+              <span>${badgeText}</span>
             </div>
             <div class="title">${escapeHtml(title)}</div>
             <div class="message">${escapeHtml(message)}</div>
           </div>
           <div class="footer">
-            <span>Astral Vanguard v2.5.1</span>
+            <span>Astral Vanguard v2.5.4</span>
             <span class="action-hint">Ouvrir l'application ➔</span>
           </div>
         </div>

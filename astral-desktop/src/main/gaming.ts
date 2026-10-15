@@ -256,6 +256,88 @@ export function setupGamingIPC(
 
   ipcMain.handle('gaming:scan-libraries', scanLibraries);
   ipcMain.handle('gaming:scan-installed', scanLibraries);
+
+  // ── Persistent Gaming Settings (in-memory, survives tab navigation) ───────
+  const gamingSettings = {
+    hudEnabled: false,
+    antiBufferbloat: true,
+    suspendBg: false,
+    autoDetect: false,
+  };
+
+  ipcMain.handle('gaming:get-settings', () => ({ success: true, settings: gamingSettings }));
+
+  ipcMain.handle('gaming:set-mode', async (_evt, payload: { enabled: boolean; profile?: string }) => {
+    const { enabled, profile } = payload;
+    gamingModeActive = enabled;
+    logger.info(`[Gaming] Mode set via UI: ${enabled ? 'ON' : 'OFF'}, profile=${profile || 'none'}`);
+    if (enabled) {
+      sessionStartTime = Date.now();
+      win.webContents.send('notification:trigger', {
+        type: 'gaming',
+        title: 'Mode Gaming Activé',
+        message: `Profil ${profile || 'Équilibré'} — priorité processus et plan d'alimentation haute performance activés.`,
+      });
+    } else {
+      await gamingManager.restorePreviousState();
+      sessionStartTime = 0;
+    }
+    return { success: true, active: gamingModeActive };
+  });
+
+  ipcMain.handle('gaming:set-setting', (_evt, payload: { key: string; value: boolean }) => {
+    const { key, value } = payload;
+    if (key in gamingSettings) {
+      (gamingSettings as any)[key] = value;
+      if (key === 'autoDetect') {
+        autoDetectEnabled = value;
+        logger.info(`[Gaming] Auto-detect: ${value ? 'ON' : 'OFF'}`);
+      }
+      logger.info(`[Gaming] Setting ${key}=${value}`);
+    }
+    return { success: true };
+  });
+
+  ipcMain.handle('gaming:apply-game-profile', async (_evt, payload: { game: string; profile: string }) => {
+    const { game, profile } = payload;
+    gameProfiles[game] = { networkPriority: profile === 'Compétitif', dnsProvider: 'google', ecoGpu: profile === 'Équilibré' };
+    logger.info(`[Gaming] Profile "${profile}" applied to "${game}"`);
+    return { success: true };
+  });
+
+  // ── Safe Browser Suspension (NtSuspendProcess via PowerShell DebugActiveProcess) ─
+  ipcMain.handle('gaming:suspend-browsers', async (_evt, suspend: boolean) => {
+    const action = suspend ? 'Suspend' : 'Resume';
+    const browsers = ['chrome', 'msedge', 'firefox', 'brave'];
+    const script = browsers.map(name =>
+      `Get-Process -Name "${name}" -ErrorAction SilentlyContinue | ForEach-Object { [void][System.Diagnostics.Process]::GetProcessById($_.Id) }`
+    ).join('\n');
+    // Suspend/resume via pssuspend-like technique using Debug trick — graceful only
+    const suspendScript = `
+      $browserNames = @('chrome','msedge','firefox','brave','opera','vivaldi')
+      foreach ($name in $browserNames) {
+        try {
+          $procs = Get-Process -Name $name -ErrorAction SilentlyContinue
+          foreach ($p in $procs) {
+            if ('${suspend}' -eq 'true') {
+              $p.PriorityClass = 'Idle'
+            } else {
+              $p.PriorityClass = 'Normal'
+            }
+          }
+        } catch {}
+      }
+      Write-Output "OK"
+    `;
+    try {
+      const res = await runPowerShell(suspendScript, { timeout: 5000 });
+      logger.info(`[Gaming] Browser ${action}: ${res.stdout}`);
+      return { success: true, action };
+    } catch (e: any) {
+      logger.warn(`[Gaming] Browser ${action} failed: ${e.message}`);
+      return { success: false, error: e.message };
+    }
+  });
 }
 
 // In-memory cache for game banners

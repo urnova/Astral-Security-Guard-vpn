@@ -1,14 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { Power, RefreshCw, ChevronDown, Lock, Globe, Shield, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Power, RefreshCw, ChevronDown, Lock, Globe, Shield, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
 import { getFeature } from '../../shared/featureAvailability';
 
 const api = (window as any).vanguard;
 
-/* ─────────────── Types ─────────────── */
 interface VpnNode   { name: string; latency?: number; }
 interface Country   { cc: string; name: string; latency: number; nodes: VpnNode[]; }
 interface ThirdPartyVpn {
-  id:         string;   // 'nordvpn' | 'expressvpn' | 'protonvpn' | ...
+  id:         string;
   name:       string;
   detected:   boolean;
   connected:  boolean;
@@ -17,7 +16,6 @@ interface ThirdPartyVpn {
   servers?:   Country[];
 }
 
-/* ─────────────── VPN Countries (Astral) ─────────────── */
 const ASTRAL_COUNTRIES: Country[] = [
   { cc: 'FR', name: 'France',          latency: 12,  nodes: [{ name: 'Paris Core Alpha' }, { name: 'Marseille Edge' }] },
   { cc: 'DE', name: 'Allemagne',       latency: 16,  nodes: [{ name: 'Francfort DE-CIX Main' }, { name: 'Berlin Relay' }] },
@@ -30,7 +28,6 @@ const ASTRAL_COUNTRIES: Country[] = [
   { cc: 'US', name: 'États-Unis',      latency: 110, nodes: [{ name: 'New York NYIIX' }, { name: 'Los Angeles Any2' }] },
 ];
 
-/* ─────────────── Subcomponents ─────────────── */
 function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <label className="toggle" style={{ opacity: disabled ? .4 : 1, cursor: disabled ? 'not-allowed' : 'pointer' }}>
@@ -41,13 +38,7 @@ function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onC
   );
 }
 
-function CountryRow({
-  country, selected, onSelect,
-}: {
-  country: Country;
-  selected: string | null;
-  onSelect: (node: string) => void;
-}) {
+function CountryRow({ country, selected, onSelect }: { country: Country; selected: string | null; onSelect: (node: string) => void }) {
   const [open, setOpen] = useState(false);
   return (
     <div className={`ctry${open ? ' open' : ''}`} style={{ borderBottom: '1px solid var(--line)' }}>
@@ -61,7 +52,7 @@ function CountryRow({
           <small>{country.nodes.length} nœud{country.nodes.length > 1 ? 's' : ''}</small>
         </div>
         <span className={`chip${country.latency > 60 ? ' warn' : ''}`}>{country.latency} ms</span>
-        <span className="chev"><ChevronDown size={16} /></span>
+        <span className="chev" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}><ChevronDown size={16} /></span>
       </div>
       <div className="ctry-nodes">
         {country.nodes.map(node => (
@@ -83,14 +74,12 @@ function CountryRow({
   );
 }
 
-/* ─────────────── Main Component ─────────────── */
 export default function VpnTab() {
   const vpnFeature = getFeature('vpnConnection');
   const ksFeature  = getFeature('vpnKillSwitch');
   const vpnAvailable = vpnFeature.status === 'available' || vpnFeature.status === 'partially-available';
   const ksAvailable  = ksFeature.status === 'available';
 
-  /* Astral VPN state */
   const [connected, setConnected]     = useState(false);
   const [connecting, setConnecting]   = useState(false);
   const [selectedNode, setSelectedNode] = useState('Paris Core Alpha');
@@ -103,14 +92,13 @@ export default function VpnTab() {
   const [query, setQuery]             = useState('');
   const [error, setError]             = useState('');
 
-  /* Third-party VPN state */
   const [thirdPartyVpns, setThirdPartyVpns] = useState<ThirdPartyVpn[]>([]);
-  const [activeProvider, setActiveProvider]  = useState<string>('astral'); // 'astral' | vpn id
+  const [activeProvider, setActiveProvider]  = useState<string>('astral');
   const [loadingProviders, setLoadingProviders] = useState(true);
+  const [showKsInfo, setShowKsInfo]   = useState(false);
 
   const timerRef = useRef<any>(null);
 
-  /* ── Timer ── */
   useEffect(() => {
     if (connected && connectedSince) {
       timerRef.current = setInterval(() => {
@@ -127,13 +115,12 @@ export default function VpnTab() {
     return () => clearInterval(timerRef.current);
   }, [connected, connectedSince]);
 
-  /* ── API init ── */
   useEffect(() => {
     if (!api) { setLoadingProviders(false); return; }
 
-    /* Detect third-party VPNs */
+    /* Detect installed VPNs (connected + installed but off) */
     setLoadingProviders(true);
-    const detectAction = api?.detectThirdPartyVpns?.() ?? Promise.resolve([]);
+    const detectAction = api?.detectInstalledVpns?.() ?? api?.detectThirdPartyVpns?.() ?? Promise.resolve([]);
     Promise.resolve(detectAction).then((vpns: any) => {
       const list = Array.isArray(vpns) ? vpns : (vpns?.thirdPartyActive ? [vpns] : []);
       const mapped: ThirdPartyVpn[] = list.map((v: any) => ({
@@ -146,13 +133,10 @@ export default function VpnTab() {
         servers:    v.servers,
       }));
       setThirdPartyVpns(mapped);
-
-      // Auto-select the one that is currently connected
       const activeVpn = mapped.find(v => v.connected);
       if (activeVpn) setActiveProvider(activeVpn.id);
     }).catch(() => {}).finally(() => setLoadingProviders(false));
 
-    /* Astral VPN status */
     api.vpnGetStatus?.().then((s: any) => {
       if (s?.connected) {
         setConnected(true);
@@ -161,13 +145,11 @@ export default function VpnTab() {
       }
     }).catch(() => {});
 
-    /* Settings */
     api.vpnGetSettings?.().then((s: any) => {
       if (s?.killSwitch !== undefined) setKillSwitch(Boolean(s.killSwitch));
       if (s?.protocol) setProto(s.protocol);
     }).catch(() => {});
 
-    /* Real-time events */
     const c1 = api.on?.('vpn:connected', (d: any) => {
       setConnected(true); setConnecting(false);
       setConnectedSince(new Date());
@@ -191,7 +173,6 @@ export default function VpnTab() {
     return () => { c1?.(); c2?.(); c3?.(); c4?.(); };
   }, []);
 
-  /* ── Connect/Disconnect (Astral VPN) ── */
   const handleConnect = async () => {
     if (!api || !vpnAvailable) return;
     setError('');
@@ -206,7 +187,6 @@ export default function VpnTab() {
     }
   };
 
-  /* ── Connect/Disconnect (Third-Party) ── */
   const handleThirdPartyToggle = async (vpn: ThirdPartyVpn) => {
     if (!api) return;
     setError('');
@@ -231,7 +211,6 @@ export default function VpnTab() {
     c.nodes.some(n => n.name.toLowerCase().includes(query.toLowerCase()))
   );
 
-  /* Status chip for Astral VPN */
   const StatusChip = () => {
     if (connecting) return <span className="chip warn"><span className="dot" />CONNEXION EN COURS…</span>;
     if (connected)  return <span className="chip"><span className="dot" />CONNECTÉ · TUNNEL ACTIF</span>;
@@ -249,11 +228,26 @@ export default function VpnTab() {
             <h1>VPN</h1>
             <p className="sub">Gérez votre connexion et choisissez un serveur.</p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>Kill switch</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>Kill Switch</span>
             <Toggle checked={killSwitch} onChange={v => { setKillSwitch(v); api?.vpnSetKillSwitch?.({ enabled: v }); }} disabled={!ksAvailable} />
+            <button
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dim)', padding: 0, display: 'flex' }}
+              onClick={() => setShowKsInfo(v => !v)}
+              title="Qu'est-ce que le Kill Switch ?"
+            >
+              <Info size={15} />
+            </button>
           </div>
         </div>
+
+        {/* Kill Switch explanation */}
+        {showKsInfo && (
+          <div style={{ marginBottom: 14, padding: '12px 16px', background: 'rgba(var(--a1r),.05)', border: '1px solid rgba(var(--a1r),.14)', borderRadius: 'var(--r-sm)', fontSize: 12, color: 'var(--muted)', lineHeight: 1.65 }}>
+            <b style={{ color: 'var(--text)', display: 'block', marginBottom: 4 }}>🔒 Kill Switch</b>
+            Si la connexion VPN se coupe de façon inattendue, le Kill Switch bloque automatiquement tout le trafic Internet de votre PC jusqu'à la reconnexion. Cela évite les fuites de votre vraie adresse IP.
+          </div>
+        )}
 
         {error && (
           <div className="state-error" style={{ marginBottom: 14 }}>
@@ -262,7 +256,7 @@ export default function VpnTab() {
           </div>
         )}
 
-        {/* Provider tabs — Astral + detected third-party VPNs */}
+        {/* Provider tabs */}
         {(detectedVpns.length > 0 || loadingProviders) && (
           <div style={{ marginBottom: 16 }}>
             <div className="seg">
@@ -281,7 +275,10 @@ export default function VpnTab() {
                 >
                   {v.name}
                   {v.connected && (
-                    <span className="dot" style={{ color: 'var(--ok)', marginLeft: 6 }} />
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ok)', display: 'inline-block', marginLeft: 7, verticalAlign: 'middle', boxShadow: '0 0 6px var(--ok)' }} />
+                  )}
+                  {!v.connected && (
+                    <span style={{ fontSize: 9, color: 'var(--dim)', marginLeft: 6, verticalAlign: 'middle' }}>off</span>
                   )}
                 </button>
               ))}
@@ -295,7 +292,7 @@ export default function VpnTab() {
           </div>
         )}
 
-        {/* ─── Astral VPN panel ─── */}
+        {/* Astral VPN panel */}
         {activeProvider === 'astral' && (
           <div className="grid g12">
             {/* Connection button */}
@@ -308,7 +305,6 @@ export default function VpnTab() {
                 </div>
               ) : (
                 <>
-                  {/* Circle button */}
                   <div
                     className={`vpn-btn${connected ? ' connected' : connecting ? ' loading' : ''}`}
                     onClick={handleConnect}
@@ -381,13 +377,12 @@ export default function VpnTab() {
           </div>
         )}
 
-        {/* ─── Third-party VPN panel ─── */}
+        {/* Third-party VPN panel */}
         {activeProvider !== 'astral' && (() => {
           const vpn = thirdPartyVpns.find(v => v.id === activeProvider);
           if (!vpn) return null;
           return (
             <div className="grid g12">
-              {/* Status card */}
               <div className="card card-p-lg card-hero" style={{ textAlign: 'center' }}>
                 <div
                   className={`vpn-btn${vpn.connected ? ' connected' : ''}`}
@@ -413,11 +408,10 @@ export default function VpnTab() {
 
                 <div style={{ marginTop: 20, padding: '14px', background: 'rgba(var(--a1r),.04)', border: '1px solid rgba(var(--a1r),.12)', borderRadius: 'var(--r-sm)', fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.6 }}>
                   Le contrôle s'effectue via l'application native <b style={{ color: 'var(--text)' }}>{vpn.name}</b>.
-                  Désactiver ici fermera le tunnel depuis {vpn.name}.
+                  {!vpn.connected && <><br /><span style={{ color: 'var(--dim)' }}>Ce VPN est installé mais non connecté. Lancez {vpn.name} pour l'activer.</span></>}
                 </div>
               </div>
 
-              {/* Server list if available */}
               <div className="card card-p-lg">
                 <div className="lbl">Serveurs {vpn.name}</div>
                 {vpn.servers && vpn.servers.length > 0 ? (

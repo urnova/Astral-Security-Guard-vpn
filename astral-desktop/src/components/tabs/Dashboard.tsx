@@ -53,12 +53,13 @@ interface Props {
 
 export default function Dashboard({ gamingActive, currentGame, onTabChange, firstName }: Props) {
   const { metrics, securityStatus } = useSystem();
-  const [cpuHist, setCpuHist] = useState<number[]>([]);
-  const [ramHist, setRamHist] = useState<number[]>([]);
-  const [ping, setPing]       = useState<number>(18);
-  const [events, setEvents]   = useState<{ icon: any; title: string; desc: string; tag: string; when: string }[]>([]);
+  const [cpuHist, setCpuHist]   = useState<number[]>([]);
+  const [ramHist, setRamHist]   = useState<number[]>([]);
+  const [pingHist, setPingHist] = useState<number[]>([]);
+  const [ping, setPing]         = useState<number>(18);
+  const [events, setEvents]     = useState<{ icon: any; title: string; desc: string; tag: string; when: string }[]>([]);
   const [secScore, setSecScore] = useState(96);
-  const [brief, setBrief]     = useState<DailyBrief | null>(null);
+  const [brief, setBrief]       = useState<DailyBrief | null>(null);
   const [loadingBrief, setLoadingBrief] = useState(false);
 
   // Sparklines
@@ -70,6 +71,13 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
     setCpuHist(h => [...h.slice(-19), Math.round(metrics.cpuPercent || 0)]);
     setRamHist(h => [...h.slice(-19), Math.round(ramPct || 0)]);
   }, [metrics]);
+
+  // Ping sparkline update
+  useEffect(() => {
+    if (ping > 0) {
+      setPingHist(h => [...h.slice(-19), ping]);
+    }
+  }, [ping]);
 
   // Load Daily AI Brief
   const refreshBrief = useCallback(async () => {
@@ -125,12 +133,14 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
   useEffect(() => {
     refreshBrief();
 
-    // Initial ping check
-    if (api) {
-      api.getPing?.().then((res: any) => {
+    // Live ping polling every 2.5s for real-time latency
+    const checkPing = () => {
+      api?.getPing?.().then((res: any) => {
         if (res?.ping && res.ping > 0) setPing(res.ping);
       }).catch(() => {});
-    }
+    };
+    checkPing();
+    const pingTimer = setInterval(checkPing, 2500);
 
     // Ping update listener
     const cleanupPing = api?.on?.('doctor:ping-update', (d: any) => {
@@ -146,6 +156,7 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
     ]);
 
     return () => {
+      clearInterval(pingTimer);
       cleanupPing?.();
     };
   }, [refreshBrief]);
@@ -167,8 +178,8 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
   const METRICS = [
     { icon: <Cpu size={14} />,      label: 'Processeur',    val: cpu,     unit: '%',  foot: `${metrics?.cpuCores || 8} cœurs logiques`,   hist: cpuHist },
     { icon: <Zap size={14} />,      label: 'Mémoire vive',  val: ram,     unit: '%',  foot: `${metrics?.ramTotal || 16} Go installés`,     hist: ramHist },
-    { icon: <HardDrive size={14} />,label: 'Disque C:',     val: diskPct, unit: '%',  foot: diskFoot,                                      hist: [] },
-    { icon: <Wifi size={14} />,     label: 'Latence réseau',val: pingVal, unit: ' ms',foot: 'Connexion active (1.1.1.1)',                 hist: [] },
+    { icon: <HardDrive size={14} />,label: 'Disque C:',     val: diskPct, unit: '%',  foot: diskFoot,                                      hist: [], isDisk: true },
+    { icon: <Wifi size={14} />,     label: 'Latence réseau',val: pingVal, unit: ' ms',foot: 'Connexion active (1.1.1.1)',                 hist: pingHist },
   ];
 
   const QUICK = [

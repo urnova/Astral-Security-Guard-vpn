@@ -37,6 +37,8 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
   const [testing, setTesting]         = useState(false);
   const [speedResult, setSpeedResult] = useState<SpeedResult | null>(null);
   const [gaugeVal, setGaugeVal]       = useState(0);
+  const [livePhase, setLivePhase]     = useState<string>('');
+  const [liveMbps, setLiveMbps]       = useState<number | null>(null);
   const [hist, setHist]               = useState<number[]>([]);
   const [notice, setNotice]           = useState('');
   const [error, setError]             = useState('');
@@ -74,8 +76,19 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
       if (d?.message) setAlerts(prev => [...prev.slice(-3), d.message]);
     });
     const c2 = api.on?.('network-event', (d: any) => {
-      if (d?.type === 'speedtest-progress' && typeof d.currentMbps === 'number') {
-        setGaugeVal(Math.min(100, (d.currentMbps / 1000) * 100));
+      if (d?.type === 'speedtest-progress') {
+        if (typeof d.currentMbps === 'number') {
+          setGaugeVal(Math.min(100, (d.currentMbps / 1000) * 100));
+          setLiveMbps(d.currentMbps);
+        }
+        if (d.phase) {
+          const phaseLabels: Record<string, string> = {
+            ping: 'Mesure de latence…',
+            download: 'Test de téléchargement…',
+            upload: 'Test d\'envoi…',
+          };
+          setLivePhase(phaseLabels[d.phase] || d.phase);
+        }
       }
     });
     return () => { c1?.(); c2?.(); };
@@ -99,6 +112,8 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
       const res = await api.runSpeedTest?.();
       animated = true;
       clearInterval(gauge);
+      setLivePhase('');
+      setLiveMbps(null);
 
       const down = res?.down ?? res?.result?.downloadMbps ?? res?.downloadMbps;
       const up = res?.up ?? res?.result?.uploadMbps ?? res?.uploadMbps ?? 0;
@@ -116,6 +131,8 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
     } catch (err: any) {
       animated = true;
       clearInterval(gauge);
+      setLivePhase('');
+      setLiveMbps(null);
       setError(err.message || 'Erreur lors du test de débit.');
       setGaugeVal(0);
     }
@@ -222,6 +239,21 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
               {testing ? <><span className="spinner spinner-sm" /> Test…</> : <><Play size={16} /> Démarrer le test</>}
             </button>
 
+            {/* Live progress during test */}
+            {testing && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>{livePhase || 'Initialisation…'}</div>
+                <div className="bar">
+                  <i style={{ width: `${gaugeVal}%`, transition: 'width .3s' }} />
+                </div>
+                {liveMbps !== null && (
+                  <div style={{ marginTop: 6, fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: 'var(--a1)', fontWeight: 700 }}>
+                    {liveMbps} Mbps ↓
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Stats */}
             <div className="grid g4 mt" style={{ textAlign: 'left' }}>
               {[
@@ -242,19 +274,31 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
           <div className="card card-p-lg">
             <div className="lbl">Serveurs DNS</div>
             <div className="list">
-              {DNS_PRESETS.map(d => (
-                <div
-                  key={d.name}
-                  className={`row clickable${selectedDns === d.name ? ' selected' : ''}`}
-                  onClick={() => applyDns(d.name)}
-                >
-                  <div className="rt">
-                    <b>{d.name}</b>
-                    <small>{d.label}</small>
+              {DNS_PRESETS.map(d => {
+                const isActive = netInfo?.dns && d.ping !== null &&
+                  (netInfo.dns.includes('1.1.1.1') && d.name.includes('Cloudflare') ||
+                   netInfo.dns.includes('8.8.8.8') && d.name.includes('Google') ||
+                   netInfo.dns.includes('9.9.9.9') && d.name.includes('Quad9') ||
+                   netInfo.dns.includes('208.67') && d.name.includes('OpenDNS'));
+                return (
+                  <div
+                    key={d.name}
+                    className={`row clickable${selectedDns === d.name ? ' selected' : ''}`}
+                    onClick={() => applyDns(d.name)}
+                  >
+                    <div className="rt">
+                      <b style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                        {d.name}
+                        {isActive && <span style={{ fontSize: 9, fontWeight: 700, color: '#4ade80', background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: 4, padding: '1px 5px', letterSpacing: '0.04em' }}>ACTIF</span>}
+                      </b>
+                      <small>{d.label}</small>
+                    </div>
+                    {d.ping !== null && (
+                      <span className={`mut sm${d.ping < 15 ? '' : ''}`} style={{ color: d.ping < 15 ? '#4ade80' : d.ping < 30 ? '#facc15' : 'var(--muted)' }}>{d.ping} ms</span>
+                    )}
                   </div>
-                  {d.ping !== null && <span className="mut sm">{d.ping} ms</span>}
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* DNS réel affiché */}
