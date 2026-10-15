@@ -30,8 +30,8 @@ export async function executeSosPing(): Promise<{
   let pingBefore = 0;
   try {
     const pingTestBefore = await runPowerShell(
-      `(Test-Connection -ComputerName 1.1.1.1 -Count 1 -TimeoutSeconds 2 -ErrorAction SilentlyContinue).ResponseTime`,
-      { timeout: 5000 }
+      `(Test-Connection -ComputerName 1.1.1.1 -Count 1 -ErrorAction SilentlyContinue).ResponseTime`,
+      { timeout: 3500 }
     );
     pingBefore = parseInt(pingTestBefore.stdout || '0', 10) || 0;
   } catch {}
@@ -87,8 +87,8 @@ export async function executeSosPing(): Promise<{
   let pingAfter = 0;
   try {
     const pingTestAfter = await runPowerShell(
-      `(Test-Connection -ComputerName 1.1.1.1 -Count 1 -TimeoutSeconds 2 -ErrorAction SilentlyContinue).ResponseTime`,
-      { timeout: 5000 }
+      `(Test-Connection -ComputerName 1.1.1.1 -Count 1 -ErrorAction SilentlyContinue).ResponseTime`,
+      { timeout: 3500 }
     );
     pingAfter = parseInt(pingTestAfter.stdout || '0', 10) || 0;
   } catch {}
@@ -214,7 +214,7 @@ export function setupDoctorIPC(win: BrowserWindow) {
   ipcMain.handle('doctor:get-ping', async () => {
     try {
       const res = await runPowerShell(
-        `(Test-Connection -ComputerName 1.1.1.1 -Count 1 -TimeoutSeconds 2 -ErrorAction SilentlyContinue).ResponseTime`,
+        `(Test-Connection -ComputerName 1.1.1.1 -Count 1 -ErrorAction SilentlyContinue).ResponseTime`,
         { timeout: 3500 }
       );
       const latency = parseInt(res.stdout || '0', 10);
@@ -238,8 +238,8 @@ function setupWatchdog(win: BrowserWindow) {
   const measurePing = async () => {
     try {
       const res = await runPowerShell(
-        `(Test-Connection -ComputerName 1.1.1.1 -Count 1 -TimeoutSeconds 2 -ErrorAction SilentlyContinue).ResponseTime`,
-        { timeout: 4000 }
+        `(Test-Connection -ComputerName 1.1.1.1 -Count 1 -ErrorAction SilentlyContinue).ResponseTime`,
+        { timeout: 3500 }
       );
       const latency = parseInt(res.stdout || '0', 10);
 

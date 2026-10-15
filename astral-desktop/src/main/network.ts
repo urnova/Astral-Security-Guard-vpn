@@ -323,7 +323,7 @@ export function setupNetworkIPC(win: BrowserWindow) {
     const results = [];
     for (const p of providers) {
       const pingTest = await runPowerShell(
-        `(Test-Connection -ComputerName ${p.primary} -Count 2 -TimeoutSeconds 2 -ErrorAction SilentlyContinue | Measure-Object -Property ResponseTime -Average).Average`,
+        `(Test-Connection -ComputerName ${p.primary} -Count 2 -ErrorAction SilentlyContinue | Measure-Object -Property ResponseTime -Average).Average`,
         { timeout: 4000 }
       );
       const avgPing = Math.round(parseFloat(pingTest.stdout || '0')) || 35;
