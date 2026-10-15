@@ -250,11 +250,6 @@ export function setupNetworkIPC(win: BrowserWindow) {
     }
   });
 
-  ipcMain.handle('network:cancel-speedtest', () => {
-    logger.info('[Network] Demande d\'interruption du Speed Test');
-    return { success: true };
-  });
-
   // ── Network Optimization (TCP stack tuning, DNS flush, QoS) ────────────────
   ipcMain.handle('network:optimize', async () => {
     logger.info('[Network] Exécution des optimisations réseau (Stack TCP/IP, QoS, DNS)...');

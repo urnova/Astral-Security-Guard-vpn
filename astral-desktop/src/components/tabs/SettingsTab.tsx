@@ -132,7 +132,7 @@ export default function SettingsTab({
   const [betaChannel, setBetaChannel]       = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateStatus, setUpdateStatus]     = useState('');
-  const [currentVersion, setCurrentVersion] = useState('2.5.6');
+  const [currentVersion, setCurrentVersion] = useState('2.5.7');
   const [updateInfo, setUpdateInfo]         = useState<{ version?: string; hasUpdate?: boolean } | null>(null);
 
   // Admin status
@@ -1195,7 +1195,7 @@ export default function SettingsTab({
                 </div>
                 <div>
                   <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Astral Vanguard</h2>
-                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>v2.5.6 · Suite de Sécurité & Optimisation Gaming</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>v2.5.7 · Suite de Sécurité & Optimisation Gaming</div>
                 </div>
               </div>
 

@@ -125,6 +125,21 @@ function createMainWindow() {
     }
   });
 
+  // Diagnostics: Catch any renderer loading errors or crashed states
+  mainWin.webContents.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL) => {
+    logger.error(`[App] Failed to load "${validatedURL}": ${errorDescription} (code: ${errorCode})`);
+  });
+
+  mainWin.webContents.on('render-process-gone', (_e, details) => {
+    logger.error(`[App] Renderer process gone: ${details.reason} (exitCode: ${details.exitCode})`);
+  });
+
+  mainWin.webContents.on('console-message', (_e, level, message, line, sourceId) => {
+    if (level >= 2) {
+      logger.warn(`[Renderer] [L${line}] ${message} (${sourceId})`);
+    }
+  });
+
   // Setup all IPC modules
   setupSecurityIPC(mainWin);
   setupVpnIPC(mainWin);
@@ -142,23 +157,34 @@ function createMainWindow() {
     mainWin.loadFile(path.join(__dirname, '../../dist/index.html'));
   }
 
-  // Show main window directly without separate popup window or artificial delay
-  mainWin.once('ready-to-show', () => {
-    logger.info('[App] Main window ready-to-show. Revealing main window...');
-    mainWin?.show();
-    setupAutoUpdater(mainWin!);
-    startGameDetection(mainWin!, () => overlayWin, setOverlayWin);
+  let windowShown = false;
+  const revealWindow = () => {
+    if (windowShown || !mainWin || mainWin.isDestroyed()) return;
+    windowShown = true;
+    logger.info('[App] Revealing main window...');
+    mainWin.show();
+    setupAutoUpdater(mainWin);
+    startGameDetection(mainWin, () => overlayWin, setOverlayWin);
 
     // Check elevation and broadcast status
     const admin = isAdmin();
     const osInfo = getWindowsBuildInfo();
     logger.info(`[App] Running with admin rights: ${admin}, OS: ${osInfo.edition} (${osInfo.buildNumber})`);
-    if (!admin) {
-      logger.warn('[App] ATTENTION: Application running without admin rights. Some features (VPN, firewall, performance tuning) may be limited.');
-      logger.warn('[App] In production (packaged), requestedExecutionLevel=requireAdministrator will enforce elevation automatically.');
-    }
-    mainWin?.webContents.send('admin:status', { isAdmin: admin, osInfo });
+    mainWin.webContents.send('admin:status', { isAdmin: admin, osInfo });
+  };
+
+  mainWin.once('ready-to-show', () => {
+    logger.info('[App] Main window ready-to-show fired.');
+    revealWindow();
   });
+
+  // Safety fallback: Reveal window after 2000ms if ready-to-show is delayed
+  setTimeout(() => {
+    if (!windowShown && mainWin && !mainWin.isDestroyed()) {
+      logger.info('[App] Fallback reveal triggered.');
+      revealWindow();
+    }
+  }, 2000);
 
   mainWin.on('close', (e) => {
     if (minimizeToTray) {
@@ -463,8 +489,8 @@ app.whenReady().then(async () => {
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const isDev = Boolean(VITE_DEV_SERVER_URL);
     const csp = isDev
-      ? "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self' ws: http: https:;"
-      : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self';";
+      ? "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https:; connect-src 'self' ws: http: https:;"
+      : "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https:; connect-src 'self' https: http:;";
 
     callback({
       responseHeaders: {
