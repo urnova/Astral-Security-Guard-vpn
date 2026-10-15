@@ -245,9 +245,21 @@ export function setupVpnIPC(win: BrowserWindow) {
     return { success: true, status: 'disconnected' };
   });
 
+  let currentVpnProtocol = 'WireGuard';
+
+  ipcMain.handle('vpn:get-protocol', () => {
+    return { success: true, protocol: currentVpnProtocol };
+  });
+
+  ipcMain.handle('vpn:set-protocol', (_, proto: string) => {
+    if (proto) currentVpnProtocol = proto;
+    logger.info(`[VPN] Protocole actif configuré : ${currentVpnProtocol}`);
+    return { success: true, protocol: currentVpnProtocol };
+  });
+
   // ── VPN Session Status ────────────────────────────────────────────────────
   ipcMain.handle('vpn:get-status', () => {
-    return { success: true, status: communityVpnEngine.getStatus() };
+    return { success: true, status: communityVpnEngine.getStatus(), protocol: currentVpnProtocol };
   });
 
   // ── Kill Switch (Actif uniquement avec pare-feu contrôlé) ─────────────────

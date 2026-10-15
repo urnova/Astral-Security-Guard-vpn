@@ -14,14 +14,14 @@ interface Game {
   bannerUrl?: string;
 }
 
-type Profile = 'Compétitif' | 'Équilibré' | 'Streaming';
+type Profile = 'Compétitif' | 'Équilibré' | 'Qualité';
 
-const PROFILES: Profile[] = ['Compétitif', 'Équilibré', 'Streaming'];
+const PROFILES: Profile[] = ['Compétitif', 'Équilibré', 'Qualité'];
 
-const PROFILE_META: Record<Profile, { desc: string; color: string }> = {
-  'Compétitif': { desc: 'Priorité CPU max, GPU non-limité, DNS gaming', color: 'var(--a1)' },
-  'Équilibré':  { desc: 'Optimisation douce, compatible streaming',       color: '#22c55e' },
-  'Streaming':  { desc: 'GPU éco-mode, bitrate OBS préservé',             color: '#a78bfa' },
+const PROFILE_META: Record<Profile, { desc: string; color: string; hint: string }> = {
+  'Compétitif': { desc: 'Priorité CPU max, GPU non-limité, latence minimale', color: 'var(--a1)', hint: 'Latence min' },
+  'Équilibré':  { desc: 'Optimisation équilibrée et fluide pour tout jeu',   color: '#22c55e',   hint: 'Équilibré' },
+  'Qualité':    { desc: 'Priorité rendu graphique haute fidélité',           color: '#a78bfa',   hint: 'Graphismes max' },
 };
 
 const LAUNCHER_COLORS: Record<string, string> = {
@@ -35,16 +35,53 @@ const LAUNCHER_COLORS: Record<string, string> = {
   PC:         '#1e2030',
 };
 
-const LAUNCHER_ICONS: Record<string, string> = {
-  Steam:       '🎮',
-  'Epic Games': '⚡',
-  'Riot Games': '⚔️',
-  GOG:          '🌟',
-  Xbox:         '🟢',
-  EA:           '🔶',
-  Rockstar:     '⭐',
-  PC:           '💻',
-};
+function LauncherSvg({ launcher, size = 12 }: { launcher: string; size?: number }) {
+  const l = (launcher || '').toLowerCase();
+  if (l.includes('steam')) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+        <path d="M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.031 4.524 4.527s-2.03 4.525-4.524 4.525h-.105l-4.076 2.911c0 .052.005.105.005.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-2.723L.686 14.832C2.016 20.088 6.55 24 11.979 24c6.627 0 12-5.373 12-12s-5.373-12-12-12zm-3.613 16.924c-1.077 0-1.954-.877-1.954-1.957 0-1.078.877-1.955 1.954-1.955.335 0 .65.086.925.234l-1.464 2.122c-.22.257-.184.652.073.873.13.11.29.167.45.167.14 0 .28-.043.397-.128l2.094-1.493c.125.263.197.558.197.87 0 1.08-.876 1.958-1.953 1.958h-.726zm7.573-5.748c-1.25 0-2.262-1.012-2.262-2.262 0-1.25 1.012-2.262 2.262-2.262 1.25 0 2.262 1.012 2.262 2.262 0 1.25-1.012 2.262-2.262 2.262z" />
+      </svg>
+    );
+  }
+  if (l.includes('epic')) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+        <path d="M3.5 2h17l-2 16.5-6.5 3.5-6.5-3.5L3.5 2zm3.8 3.8v7.4h6.8v-1.9H9.4V9.6h4.5V7.7H9.4V5.8h4.5V3.9H7.3v1.9z" />
+      </svg>
+    );
+  }
+  if (l.includes('xbox')) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+        <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm-1.895 4.394c1.196.862 2.628 1.488 3.79 1.488 1.162 0 2.594-.626 3.79-1.488.756 1.026 1.257 2.235 1.439 3.535-1.127.876-2.613 1.542-4.148 1.764 1.483 1.635 2.766 3.42 3.655 5.395-1.745 2.015-4.28 3.284-7.086 3.284-2.806 0-5.341-1.269-7.086-3.284.889-1.975 2.172-3.76 3.655-5.395-1.535-.222-3.021-.888-4.148-1.764.182-1.3.683-2.509 1.439-3.535 1.196.862 2.628 1.488 3.79 1.488 1.162 0 2.594-.626 3.79-1.488-.548.423-1.288.73-1.895.73s-1.347-.307-1.895-.73z" />
+      </svg>
+    );
+  }
+  if (l.includes('ea') || l.includes('origin')) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+        <path d="M12 2L2 7l10 5 10-5-10-5zm0 8.3L4.5 7.1 12 3.3l7.5 3.8L12 10.3zm-8 4.7l8 4 8-4v3l-8 4-8-4v-3z" />
+      </svg>
+    );
+  }
+  if (l.includes('riot')) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+        <path d="M12 2L3 7v10l9 5 9-5V7l-9-5zm-1 15.5l-5-2.8V9.3l5 2.8v5.4zm2 0V12.1l5-2.8v5.4l-5 2.8z" />
+      </svg>
+    );
+  }
+  if (l.includes('gog')) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" />
+        <path d="M12 6a6 6 0 0 0-6 6c0 3.31 2.69 6 6 6 2.38 0 4.43-1.39 5.37-3.41H12v-2h8c.07.46.1 1 .1 1.41 0 4.42-3.58 8-8 8A8 8 0 0 1 4 12a8 8 0 0 1 8-8c2.21 0 4.21.9 5.66 2.34L15.66 8.34A5.96 5.96 0 0 0 12 6z" />
+      </svg>
+    );
+  }
+  return <Gamepad2 size={size} style={{ display: 'inline-block', verticalAlign: 'middle' }} />;
+}
 
 /* ─────────────────────────────── Toggle ────────────────────────────────── */
 function Toggle({ checked, onChange, id }: { checked: boolean; onChange: (v: boolean) => void; id?: string }) {
@@ -108,8 +145,24 @@ export default function GamingTab({
   const [noticeType, setNoticeType]       = useState<'info' | 'success' | 'error'>('info');
   const [launcherFilter, setLauncherFilter] = useState<string>('Tous');
   const [gameProfiles, setGameProfiles]   = useState<Record<string, Profile>>({});
+  const [gameOptEnabled, setGameOptEnabled] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = localStorage.getItem('astral_game_opt_enabled');
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
   const [sessionSec, setSessionSec]       = useState(0);
   const sessionTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const toggleGameOpt = (gameName: string, enabled: boolean) => {
+    setGameOptEnabled(prev => {
+      const next = { ...prev, [gameName]: enabled };
+      try { localStorage.setItem('astral_game_opt_enabled', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
 
   /* ── Derived ── */
   const launchers = ['Tous', ...Array.from(new Set(games.map(g => g.launcher)))];
@@ -452,10 +505,14 @@ export default function GamingTab({
                       background: launcherFilter === l ? 'rgba(var(--a1r),.12)' : 'rgba(255,255,255,0.04)',
                       color: launcherFilter === l ? 'var(--a1)' : 'var(--fg-2)',
                       cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
                       transition: 'all .15s ease',
                     }}
                   >
-                    {LAUNCHER_ICONS[l] || ''} {l}
+                    {l !== 'Tous' && <LauncherSvg launcher={l} size={12} />}
+                    <span>{l}</span>
                   </button>
                 ))}
               </div>
@@ -487,7 +544,9 @@ export default function GamingTab({
           ) : (
             <div className="grid g3" style={{ gap: 14 }}>
               {filteredGames.map(game => {
-                const assignedProfile = gameProfiles[game.name];
+                const assignedProfile = gameProfiles[game.name] || 'Équilibré';
+                const isOpt = gameOptEnabled[game.name] !== false;
+
                 return (
                   <div
                     key={game.name}
@@ -495,9 +554,13 @@ export default function GamingTab({
                     style={{
                       position: 'relative',
                       overflow: 'hidden',
-                      borderColor: assignedProfile ? 'rgba(var(--a1r),.3)' : 'rgba(255,255,255,0.08)',
+                      borderColor: isOpt ? 'rgba(var(--a1r),.35)' : 'rgba(255,255,255,0.08)',
                       transition: 'transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
                       cursor: 'default',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      minHeight: 180,
                     }}
                   >
                     {/* Background */}
@@ -505,7 +568,7 @@ export default function GamingTab({
                       className="gc-bg"
                       style={{
                         backgroundImage: game.bannerUrl
-                          ? `linear-gradient(to top, rgba(9,10,16,0.95) 15%, rgba(9,10,16,0.5) 60%, rgba(9,10,16,0.15) 100%), url(${game.bannerUrl})`
+                          ? `linear-gradient(to top, rgba(9,10,16,0.96) 20%, rgba(9,10,16,0.55) 60%, rgba(9,10,16,0.2) 100%), url(${game.bannerUrl})`
                           : `linear-gradient(135deg, ${game.color1}, ${game.color2})`,
                         backgroundSize: 'cover',
                         backgroundPosition: 'center',
@@ -516,65 +579,130 @@ export default function GamingTab({
                     {!game.bannerUrl && <div className="gc-initial">{game.initial}</div>}
 
                     {/* Content */}
-                    <div style={{ position: 'relative', zIndex: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
-                      {/* Launcher badge */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'auto' }}>
-                        <span style={{
-                          fontSize: 10,
-                          fontWeight: 700,
-                          padding: '3px 8px',
-                          borderRadius: 20,
-                          background: 'rgba(0,0,0,0.65)',
-                          backdropFilter: 'blur(6px)',
-                          color: 'rgba(255,255,255,0.85)',
-                          letterSpacing: '.04em',
-                        }}>
-                          {LAUNCHER_ICONS[game.launcher] || '🎮'} {game.launcher}
-                        </span>
-                        {assignedProfile && (
+                    <div style={{ position: 'relative', zIndex: 2, display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between' }}>
+                      {/* Launcher badge & Profile Pill */}
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                           <span style={{
-                            fontSize: 9,
+                            fontSize: 10,
                             fontWeight: 700,
-                            padding: '3px 7px',
+                            padding: '3px 8px',
                             borderRadius: 20,
-                            background: `rgba(var(--a1r),.2)`,
+                            background: 'rgba(0,0,0,0.7)',
                             backdropFilter: 'blur(6px)',
-                            color: 'var(--a1)',
-                            letterSpacing: '.04em',
+                            color: 'rgba(255,255,255,0.9)',
+                            letterSpacing: '.03em',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
                           }}>
-                            {assignedProfile.toUpperCase()}
+                            <LauncherSvg launcher={game.launcher} size={12} />
+                            {game.launcher}
                           </span>
-                        )}
+
+                          {isOpt && (
+                            <span style={{
+                              fontSize: 9.5,
+                              fontWeight: 700,
+                              padding: '2px 7px',
+                              borderRadius: 20,
+                              background: `${PROFILE_META[assignedProfile].color}25`,
+                              border: `1px solid ${PROFILE_META[assignedProfile].color}50`,
+                              backdropFilter: 'blur(6px)',
+                              color: PROFILE_META[assignedProfile].color,
+                              letterSpacing: '.03em',
+                            }}>
+                              {assignedProfile.toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Game name */}
+                        <b
+                          style={{
+                            textShadow: '0 1px 6px rgba(0,0,0,0.9)',
+                            fontSize: 13,
+                            marginBottom: 8,
+                            display: 'block',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            color: 'var(--text)',
+                          }}
+                          title={game.name}
+                        >
+                          {game.name}
+                        </b>
                       </div>
 
-                      {/* Game name */}
-                      <b style={{ textShadow: '0 1px 6px rgba(0,0,0,0.9)', fontSize: 13, marginBottom: 8, marginTop: 8 }}>{game.name}</b>
+                      {/* Controls Bottom Area */}
+                      <div>
+                        {/* Per-Game Optimization Switch */}
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            marginBottom: 8,
+                            padding: '4px 8px',
+                            background: 'rgba(0,0,0,0.5)',
+                            borderRadius: 6,
+                            border: '1px solid rgba(255,255,255,0.06)',
+                          }}
+                        >
+                          <span style={{ fontSize: 10, color: isOpt ? 'var(--a1)' : 'var(--muted)', fontWeight: 600 }}>
+                            {isOpt ? 'Optimisation active' : 'Par défaut Windows'}
+                          </span>
+                          <label className="toggle" style={{ transform: 'scale(0.75)', transformOrigin: 'right center', margin: 0 }}>
+                            <input
+                              type="checkbox"
+                              checked={isOpt}
+                              onChange={e => toggleGameOpt(game.name, e.target.checked)}
+                            />
+                            <span className="toggle-track" />
+                            <span className="toggle-thumb" />
+                          </label>
+                        </div>
 
-                      {/* Profile quick-assign */}
-                      <div style={{ display: 'flex', gap: 5 }}>
-                        {PROFILES.map(p => (
-                          <button
-                            key={p}
-                            id={`profile-${game.name.replace(/\s/g,'-')}-${p}`}
-                            onClick={() => assignGameProfile(game.name, p)}
-                            style={{
-                              flex: 1,
-                              fontSize: 9,
-                              fontWeight: 700,
-                              padding: '4px 2px',
-                              borderRadius: 6,
-                              border: `1px solid ${assignedProfile === p ? PROFILE_META[p].color : 'rgba(255,255,255,0.12)'}`,
-                              background: assignedProfile === p ? `${PROFILE_META[p].color}22` : 'rgba(0,0,0,0.5)',
-                              color: assignedProfile === p ? PROFILE_META[p].color : 'rgba(255,255,255,0.55)',
-                              cursor: 'pointer',
-                              transition: 'all .15s ease',
-                              backdropFilter: 'blur(4px)',
-                              letterSpacing: '.03em',
-                            }}
-                          >
-                            {p === 'Compétitif' ? 'COMP' : p === 'Équilibré' ? 'EQU' : 'STR'}
-                          </button>
-                        ))}
+                        {/* Profile Selection: Compétitif / Équilibré / Qualité */}
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: 4,
+                            opacity: isOpt ? 1 : 0.4,
+                            pointerEvents: isOpt ? 'auto' : 'none',
+                            transition: 'opacity 0.2s ease',
+                          }}
+                        >
+                          {PROFILES.map(p => {
+                            const isCurrent = assignedProfile === p;
+                            return (
+                              <button
+                                key={p}
+                                id={`profile-${game.name.replace(/\s/g,'-')}-${p}`}
+                                onClick={() => assignGameProfile(game.name, p)}
+                                title={PROFILE_META[p].desc}
+                                style={{
+                                  flex: 1,
+                                  fontSize: 9.5,
+                                  fontWeight: 700,
+                                  padding: '5px 2px',
+                                  borderRadius: 5,
+                                  border: `1px solid ${isCurrent ? PROFILE_META[p].color : 'rgba(255,255,255,0.1)'}`,
+                                  background: isCurrent ? `${PROFILE_META[p].color}26` : 'rgba(0,0,0,0.45)',
+                                  color: isCurrent ? PROFILE_META[p].color : 'rgba(255,255,255,0.6)',
+                                  cursor: 'pointer',
+                                  transition: 'all .15s ease',
+                                  backdropFilter: 'blur(4px)',
+                                  whiteSpace: 'nowrap',
+                                  textAlign: 'center',
+                                }}
+                              >
+                                {p}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -593,7 +721,7 @@ export default function GamingTab({
               <p className="mut sm" style={{ marginTop: 4 }}>
                 {profile === 'Compétitif' && 'Priorité CPU AboveNormal, plan alimentation Haute Performance, DNS gaming activé.'}
                 {profile === 'Équilibré' && 'Optimisations douces, thermique préservé, streaming OBS compatible.'}
-                {profile === 'Streaming' && 'GPU éco-mode, priorisation du bitrate OBS, CPU équilibré streaming/jeu.'}
+                {profile === 'Qualité' && 'Priorité rendu haute fidélité, synchronisation fluide et stabilité de trame.'}
               </p>
             </div>
           </div>

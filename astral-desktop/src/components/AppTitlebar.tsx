@@ -26,7 +26,7 @@ export default function AppTitlebar({ gamingActive, currentGame }: Props) {
           Astral Vanguard
         </span>
         <span className="tb-ver" style={{ fontSize: 10, color: 'var(--dim)', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--line)' }}>
-          v2.5.4
+          v2.5.5
         </span>
         <span
           style={{

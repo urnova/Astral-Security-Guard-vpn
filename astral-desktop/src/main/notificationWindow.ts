@@ -101,7 +101,7 @@ export function showAvastStyleToast({
 }: {
   title: string;
   message: string;
-  type?: 'info' | 'threat' | 'gaming' | 'success';
+  type?: 'info' | 'threat' | 'gaming' | 'success' | 'network' | 'ping' | 'stability';
   onClickFocus?: () => void;
 }) {
   currentClickFocusCallback = onClickFocus || null;
@@ -114,18 +114,24 @@ export function showAvastStyleToast({
     type === 'threat' ? 'rgba(223, 133, 133, 0.6)' :
     type === 'gaming' ? 'rgba(214, 173, 104, 0.6)' :
     type === 'success' ? 'rgba(104, 184, 148, 0.6)' :
+    type === 'network' || type === 'ping' ? 'rgba(142, 174, 232, 0.6)' :
+    type === 'stability' ? 'rgba(234, 179, 8, 0.6)' :
     '#2c3037';
 
   const accentColor =
     type === 'threat' ? '#df8585' :
     type === 'gaming' ? '#d6ad68' :
     type === 'success' ? '#68b894' :
+    type === 'network' || type === 'ping' ? '#8eaee8' :
+    type === 'stability' ? '#eab308' :
     '#8eaee8';
 
   const badgeText =
     type === 'threat' ? 'ALERTE SÉCURITÉ' :
     type === 'gaming' ? 'MODE GAMING' :
     type === 'success' ? 'SYSTÈME PROTÉGÉ' :
+    type === 'network' || type === 'ping' ? 'RÉSEAU & LATENCE' :
+    type === 'stability' ? 'STABILITÉ SYSTÈME' :
     'NOTIFICATION VANGUARD';
 
   const logoUrl = getLogoDataUrl();
@@ -252,7 +258,7 @@ export function showAvastStyleToast({
             <div class="message">${escapeHtml(message)}</div>
           </div>
           <div class="footer">
-            <span>Astral Vanguard v2.5.4</span>
+            <span>Astral Vanguard v${app.getVersion() || '2.5.5'}</span>
             <span class="action-hint">Ouvrir l'application ➔</span>
           </div>
         </div>
@@ -338,7 +344,7 @@ export function showAvastStyleDownloadScan({
             align-items: center;
             justifyContent: center;
             height: 100vh;
-            padding: 8px;
+            padding: 0;
             user-select: none;
           }
           .card {
@@ -346,9 +352,10 @@ export function showAvastStyleDownloadScan({
             height: 100%;
             background: linear-gradient(145deg, #1b1e23 0%, #131518 100%);
             border: 1px solid ${accentColor};
-            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65), 0 0 0 0.5px rgba(255,255,255,0.04) inset;
             border-radius: 10px;
-            padding: 14px 16px;
+            padding: 13px 15px 10px;
+            position: relative;
             display: flex;
             flex-direction: column;
             justifyContent: space-between;
@@ -381,17 +388,20 @@ export function showAvastStyleDownloadScan({
             object-fit: contain;
           }
           .close-btn {
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.12);
             color: #777f8b;
-            border-radius: 5px;
-            width: 20px;
-            height: 20px;
+            border-radius: 6px;
+            width: 22px;
+            height: 22px;
             display: flex;
             align-items: center;
-            justifyContent: center;
+            justify-content: center;
             cursor: pointer;
-            font-size: 10px;
+            font-size: 11px;
             line-height: 1;
             transition: all 0.15s ease;
           }
@@ -434,19 +444,17 @@ export function showAvastStyleDownloadScan({
       <body>
         <div class="card">
           <div>
-            <div class="header">
-              <div class="brand">
+            <button class="close-btn" title="Fermer" onclick="window.location.href='vanguard://close'">✕</button>
+          <div class="brand">
                 ${logoUrl ? `<img src="${logoUrl}" class="logo-img" alt="" />` : ''}
                 <span>SENTINELLE TÉLÉCHARGEMENTS</span>
               </div>
-              <button class="close-btn" title="Fermer" onclick="window.location.href='vanguard://close'">✕</button>
-            </div>
             <div class="title">${escapeHtml(statusTitle)}</div>
             <div class="file-name">${escapeHtml(fileName)}</div>
             <div class="message">${escapeHtml(statusDesc)}</div>
           </div>
           <div class="footer">
-            <span>Astral Vanguard v2.5.1</span>
+            <span>Astral Vanguard v${app.getVersion() || "2.5.5"}</span>
             <span>Moteur heuristique autonome</span>
           </div>
         </div>

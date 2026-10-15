@@ -78,22 +78,57 @@ const api = {
   scanClamAv: (targetPath: string) => ipcRenderer.invoke('security:scan-clamav', targetPath),
   getDailyBrief: () => ipcRenderer.invoke('security:get-daily-brief'),
   selectScanTarget: (type?: 'folder' | 'file') => ipcRenderer.invoke('security:select-target', type),
+  applyRemediation: () => ipcRenderer.invoke('security:apply-remediation'),
+  getScheduledScans: () => ipcRenderer.invoke('security:get-scheduled-scans'),
+  saveScheduledScan: (scan: any) => ipcRenderer.invoke('security:save-scheduled-scan', scan),
+  deleteScheduledScan: (id: string) => ipcRenderer.invoke('security:delete-scheduled-scan', id),
+  toggleScheduledScan: (payload: { id: string; enabled: boolean }) => ipcRenderer.invoke('security:toggle-scheduled-scan', payload),
+  setDefenderOption: (payload: { option: string; value: boolean }) => ipcRenderer.invoke('security:set-defender-option', payload),
 
-  // Performance
+  // Performance & Maintenance
   getMetrics: () => ipcRenderer.invoke('perf:get-metrics'),
   getDiskInfo: async () => {
     try {
       const res = await ipcRenderer.invoke('perf:get-metrics');
+      const diskHealth = await ipcRenderer.invoke('perf:get-disk-health').catch(() => null);
+      const disks = diskHealth?.disks || [];
       if (res?.success && res.data) {
         const used = res.data.diskUsedGB || 0;
         const free = res.data.diskFreeGB || 0;
         const total = used + free;
         const percent = total > 0 ? Math.round((used / total) * 100) : 0;
-        return { usedGB: used, freeGB: free, totalGB: total, percent, usedPercent: percent };
+        return {
+          usedGB: used,
+          freeGB: free,
+          totalGB: total,
+          total: total * 1e9,
+          free: free * 1e9,
+          percent,
+          usedPercent: percent,
+          model: disks[0]?.model || 'Disque Principal (C:)',
+          health: disks[0]?.health || 'Sain (SMART OK)',
+          temp: 0,
+          disks,
+        };
       }
     } catch {}
-    return { usedGB: 0, freeGB: 0, totalGB: 0, percent: 0, usedPercent: 0 };
+    return { usedGB: 0, freeGB: 0, totalGB: 0, total: 0, free: 0, percent: 0, usedPercent: 0, model: 'Disque Principal', health: 'Sain', temp: 0, disks: [] };
   },
+  getStartupApps: async () => {
+    try {
+      const res = await ipcRenderer.invoke('perf:get-startup');
+      return res?.items || [];
+    } catch { return []; }
+  },
+  setStartupApp: (payload: { name: string; enabled: boolean; rawName?: string; location?: string }) => ipcRenderer.invoke('perf:disable-startup', payload),
+  getCleanupItems: async () => {
+    try {
+      const res = await ipcRenderer.invoke('perf:analyze-disk-cleanup');
+      if (res?.items && Array.isArray(res.items)) return res.items;
+      return [];
+    } catch { return []; }
+  },
+  runCleanup: (params?: any) => ipcRenderer.invoke('perf:disk-cleanup', params),
   emptyWorkingSet: (opts?: { userConsent?: boolean }) => ipcRenderer.invoke('perf:empty-working-set', opts),
   gamingModeOn: () => ipcRenderer.invoke('perf:gaming-mode-on'),
   gamingModeOff: () => ipcRenderer.invoke('perf:gaming-mode-off'),
@@ -117,6 +152,7 @@ const api = {
   getNetworkProcesses: () => ipcRenderer.invoke('network:get-processes'),
   wifiInterference: () => ipcRenderer.invoke('network:wifi-interference'),
   getWifiDiag: () => ipcRenderer.invoke('network:get-wifi-diag'),
+  optimizeNetwork: () => ipcRenderer.invoke('network:optimize'),
   dnsBenchmark: () => ipcRenderer.invoke('network:dns-benchmark'),
 
   // Doctor & Anti-Lag (Fix 1002 Ping & Keyboard)
@@ -140,6 +176,8 @@ const api = {
   vpnGetCoexistenceStatus: () => ipcRenderer.invoke('vpn:get-coexistence-status'),
   detectThirdPartyVpns: () => ipcRenderer.invoke('vpn:detect-all'),
   detectInstalledVpns: () => ipcRenderer.invoke('vpn:detect-installed'),
+  vpnSetProtocol: (proto: string) => ipcRenderer.invoke('vpn:set-protocol', proto),
+  vpnGetProtocol: () => ipcRenderer.invoke('vpn:get-protocol'),
   vpnGetStatus: () => ipcRenderer.invoke('vpn:get-status'),
 
 
