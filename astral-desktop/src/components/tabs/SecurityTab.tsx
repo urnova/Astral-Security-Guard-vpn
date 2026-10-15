@@ -395,11 +395,23 @@ export default function SecurityTab() {
                     />
                   </svg>
                   <div className="center">
-                    <div className="big" style={{ fontSize: 32, fontWeight: 700, color: threats > 0 ? '#ef4444' : scanDone ? 'var(--ok)' : 'var(--text)' }}>
-                      {scanning ? `${Math.round(progress)}%` : threats > 0 ? threats : scanDone ? '✔' : <ShieldCheck size={36} style={{ color: 'var(--a1)' }} />}
+                    <div className="ring-icon-box">
+                      {scanning ? (
+                        <span style={{ fontSize: 32, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--text)' }}>
+                          {Math.round(progress)}%
+                        </span>
+                      ) : threats > 0 ? (
+                        <span style={{ fontSize: 36, fontWeight: 700, color: '#ef4444' }}>
+                          {threats}
+                        </span>
+                      ) : scanDone ? (
+                        <CheckCircle2 size={40} style={{ color: 'var(--ok)', display: 'block' }} />
+                      ) : (
+                        <ShieldCheck size={40} style={{ color: 'var(--a1)', display: 'block' }} />
+                      )}
                     </div>
-                    <div className="mut sm" style={{ fontSize: 11, marginTop: 4 }}>
-                      {scanning ? 'Analyse…' : threats > 0 ? 'Menaces' : scanDone ? 'Système sain' : 'Prêt'}
+                    <div className="mut sm" style={{ fontSize: 11, marginTop: 4, fontWeight: 500 }}>
+                      {scanning ? (scanPhase || 'Analyse…') : threats > 0 ? 'Menace(s)' : scanDone ? 'Système sain' : 'Prêt à analyser'}
                     </div>
                   </div>
                 </div>

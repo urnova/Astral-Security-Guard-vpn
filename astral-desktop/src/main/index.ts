@@ -203,8 +203,8 @@ export function createOverlay() {
   if (overlayWin) return;
   logger.info('[App] Creating gaming HUD overlay window...');
   overlayWin = new BrowserWindow({
-    width: 340,
-    height: 48,
+    width: 360,
+    height: 42,
     x: 32,
     y: 32,
     frame: false,
@@ -225,7 +225,8 @@ export function createOverlay() {
       allowRunningInsecureContent: false,
     },
   });
-  overlayWin.setIgnoreMouseEvents(true, { forward: true });
+  // Allow dragging and clicking close button on the HUD pill
+  overlayWin.setIgnoreMouseEvents(false);
 
   overlayWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   overlayWin.webContents.on('will-navigate', (e) => e.preventDefault());

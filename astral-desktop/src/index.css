@@ -725,10 +725,15 @@ button.win-btn.close:hover,
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   text-align: center;
+  pointer-events: none;
 }
 .ring .center .big {
   display: flex; align-items: center; justify-content: center;
-  margin: 0 auto; line-height: 1;
+  margin: 0 auto; line-height: 1; letter-spacing: 0;
+}
+.ring-icon-box {
+  display: flex; align-items: center; justify-content: center;
+  width: 48px; height: 48px; margin: 0 auto; line-height: 1;
 }
 .ring.scanning::after {
   content: '';
@@ -900,6 +905,46 @@ button.win-btn.close:hover,
 .log .ok   { color: var(--ok); }
 .log .warn { color: var(--warn); }
 .log .bad  { color: var(--bad); }
+
+/* Custom Thin Smooth Scrollbar */
+.custom-scroll::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.custom-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+}
+.custom-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* HUD Pill in Gaming tab */
+.hud-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: rgba(10, 14, 22, 0.75);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 10px rgba(56, 189, 248, 0.08);
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 11px;
+}
+.hud-pill span {
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.hud-pill b {
+  color: #38bdf8;
+  font-weight: 700;
+}
 
 /* ══════════════════════════════════════════════════════════════════════════
    SPARKLINE SVG

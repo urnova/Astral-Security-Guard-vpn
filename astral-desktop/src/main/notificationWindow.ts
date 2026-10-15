@@ -162,24 +162,29 @@ export function showAvastStyleToast({
           .card {
             width: 100%;
             height: 100%;
-            background: linear-gradient(145deg, #1b1e23 0%, #131518 100%);
-            border: 1px solid ${borderColor};
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(255,255,255,0.04) inset;
-            border-radius: 10px;
-            padding: 13px 15px 10px;
+            background: rgba(15, 18, 25, 0.90);
+            backdrop-filter: blur(28px) saturate(190%);
+            -webkit-backdrop-filter: blur(28px) saturate(190%);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65), 0 0 24px ${accentColor}25, 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+            border-radius: 12px;
+            padding: 13px 16px 11px;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            color: #eceef0;
+            color: #f1f5f9;
             cursor: pointer;
             position: relative;
-            animation: slideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-            transition: border-color 0.15s ease;
+            animation: slideIn 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
           }
-          .card:hover { border-color: ${accentColor}; }
+          .card:hover {
+            border-color: ${accentColor};
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.75), 0 0 28px ${accentColor}35;
+          }
           @keyframes slideIn {
-            from { transform: translateY(14px); opacity: 0; }
-            to   { transform: translateY(0);    opacity: 1; }
+            from { transform: translateY(18px) scale(0.97); opacity: 0; }
+            to   { transform: translateY(0) scale(1);    opacity: 1; }
           }
           .brand {
             font-size: 10px;
@@ -193,14 +198,22 @@ export function showAvastStyleToast({
             margin-bottom: 6px;
             padding-right: 26px;
           }
+          .status-pulse {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: ${accentColor};
+            box-shadow: 0 0 8px ${accentColor};
+            display: inline-block;
+          }
           .logo-img { width: 16px; height: 16px; object-fit: contain; }
           .close-btn {
             position: absolute;
             top: 10px;
             right: 10px;
-            background: rgba(255,255,255,0.05);
+            background: rgba(255,255,255,0.06);
             border: 1px solid rgba(255,255,255,0.12);
-            color: #777f8b;
+            color: #94a3b8;
             border-radius: 6px;
             width: 22px;
             height: 22px;
@@ -213,14 +226,14 @@ export function showAvastStyleToast({
             transition: all 0.15s ease;
           }
           .close-btn:hover {
-            background: rgba(223,133,133,0.22);
-            border-color: #df8585;
+            background: rgba(239, 68, 68, 0.25);
+            border-color: #ef4444;
             color: #ffffff;
           }
           .title {
             font-size: 13px;
             font-weight: 600;
-            color: #eceef0;
+            color: #ffffff;
             line-height: 1.3;
             margin-bottom: 4px;
             white-space: nowrap;
@@ -229,8 +242,8 @@ export function showAvastStyleToast({
           }
           .message {
             font-size: 11.5px;
-            color: #a0a6af;
-            line-height: 1.4;
+            color: #94a3b8;
+            line-height: 1.45;
             max-height: 44px;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -240,12 +253,12 @@ export function showAvastStyleToast({
             align-items: center;
             justify-content: space-between;
             font-size: 10px;
-            color: #777f8b;
+            color: #64748b;
             border-top: 1px solid rgba(255,255,255,0.06);
             padding-top: 6px;
             margin-top: 4px;
           }
-          .action-hint { color: ${accentColor}; font-weight: 500; }
+          .action-hint { color: ${accentColor}; font-weight: 600; }
         </style>
       </head>
       <body>
@@ -253,6 +266,7 @@ export function showAvastStyleToast({
           <button class="close-btn" title="Fermer" onclick="event.stopPropagation(); window.location.href='vanguard://close'">✕</button>
           <div>
             <div class="brand">
+              <span class="status-pulse"></span>
               ${logoUrl ? `<img src="${logoUrl}" class="logo-img" alt="" />` : ''}
               <span>${badgeText}</span>
             </div>
@@ -260,7 +274,7 @@ export function showAvastStyleToast({
             <div class="message">${escapeHtml(message)}</div>
           </div>
           <div class="footer">
-            <span>Astral Vanguard v${app.getVersion() || '2.5.7'}</span>
+            <span>Astral Vanguard v${app.getVersion() || "2.5.8"}</span>
             <span class="action-hint">Ouvrir l'application ➔</span>
           </div>
         </div>
@@ -315,8 +329,7 @@ export function showAvastStyleDownloadScan({
   const isThreat = status === 'threat';
   const isSuspect = status === 'suspect';
   const isClean = !isThreat && !isSuspect;
-
-  const accentColor = isThreat ? '#df8585' : isSuspect ? '#d6ad68' : '#68b894';
+  const accentColor = isThreat ? '#ef4444' : isSuspect ? '#f59e0b' : '#10b981';
   const statusTitle = isThreat
     ? 'Menace bloquée dans le téléchargement'
     : isSuspect
@@ -352,27 +365,28 @@ export function showAvastStyleDownloadScan({
           .card {
             width: 100%;
             height: 100%;
-            background: linear-gradient(145deg, #1b1e23 0%, #131518 100%);
-            border: 1px solid ${accentColor};
-            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65), 0 0 0 0.5px rgba(255,255,255,0.04) inset;
-            border-radius: 10px;
-            padding: 13px 15px 10px;
+            background: rgba(15, 18, 25, 0.90);
+            backdrop-filter: blur(28px) saturate(190%);
+            -webkit-backdrop-filter: blur(28px) saturate(190%);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65), 0 0 24px ${accentColor}25, 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+            border-radius: 12px;
+            padding: 13px 16px 11px;
             position: relative;
             display: flex;
             flex-direction: column;
             justifyContent: space-between;
-            color: #eceef0;
+            color: #f1f5f9;
             animation: slideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+          }
+          .card:hover {
+            border-color: ${accentColor};
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.75), 0 0 28px ${accentColor}35;
           }
           @keyframes slideIn {
             from { transform: translateY(16px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-          }
-          .header {
-            display: flex;
-            align-items: center;
-            justifyContent: space-between;
-            margin-bottom: 6px;
+            to   { transform: translateY(0);    opacity: 1; }
           }
           .brand {
             font-size: 10px;
@@ -383,6 +397,16 @@ export function showAvastStyleDownloadScan({
             display: flex;
             align-items: center;
             gap: 7px;
+            margin-bottom: 5px;
+            padding-right: 26px;
+          }
+          .status-pulse {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: ${accentColor};
+            box-shadow: 0 0 8px ${accentColor};
+            display: inline-block;
           }
           .logo-img {
             width: 16px;
@@ -393,53 +417,59 @@ export function showAvastStyleDownloadScan({
             position: absolute;
             top: 10px;
             right: 10px;
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.06);
             border: 1px solid rgba(255, 255, 255, 0.12);
-            color: #777f8b;
+            color: #94a3b8;
             border-radius: 6px;
             width: 22px;
             height: 22px;
             display: flex;
             align-items: center;
-            justify-content: center;
+            justifyContent: center;
             cursor: pointer;
             font-size: 11px;
             line-height: 1;
             transition: all 0.15s ease;
           }
           .close-btn:hover {
-            background: rgba(223, 133, 133, 0.2);
-            border-color: #df8585;
+            background: rgba(239, 68, 68, 0.25);
+            border-color: #ef4444;
             color: #ffffff;
           }
           .title {
             font-size: 13px;
             font-weight: 600;
-            color: #eceef0;
+            color: #ffffff;
             margin-bottom: 2px;
+            line-height: 1.3;
           }
           .file-name {
             font-size: 11px;
-            font-family: monospace;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
             color: ${accentColor};
             margin-bottom: 4px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            background: rgba(255, 255, 255, 0.04);
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: inline-block;
+            max-width: 100%;
           }
           .message {
-            font-size: 11px;
-            color: #a0a6af;
-            line-height: 1.35;
+            font-size: 11.5px;
+            color: #94a3b8;
+            line-height: 1.4;
           }
           .footer {
             display: flex;
             align-items: center;
             justifyContent: space-between;
-            border-top: 1px solid #2c3037;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
             padding-top: 6px;
             font-size: 10px;
-            color: #777f8b;
+            color: #64748b;
           }
         </style>
       </head>
@@ -447,16 +477,17 @@ export function showAvastStyleDownloadScan({
         <div class="card">
           <div>
             <button class="close-btn" title="Fermer" onclick="window.location.href='vanguard://close'">✕</button>
-          <div class="brand">
-                ${logoUrl ? `<img src="${logoUrl}" class="logo-img" alt="" />` : ''}
-                <span>SENTINELLE TÉLÉCHARGEMENTS</span>
-              </div>
+            <div class="brand">
+              <span class="status-pulse"></span>
+              ${logoUrl ? `<img src="${logoUrl}" class="logo-img" alt="" />` : ''}
+              <span>SENTINELLE TÉLÉCHARGEMENTS</span>
+            </div>
             <div class="title">${escapeHtml(statusTitle)}</div>
             <div class="file-name">${escapeHtml(fileName)}</div>
             <div class="message">${escapeHtml(statusDesc)}</div>
           </div>
           <div class="footer">
-            <span>Astral Vanguard v${app.getVersion() || "2.5.7"}</span>
+            <span>Astral Vanguard v${app.getVersion() || "2.5.8"}</span>
             <span>Moteur heuristique autonome</span>
           </div>
         </div>

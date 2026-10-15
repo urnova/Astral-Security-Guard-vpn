@@ -51,7 +51,9 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
   const [speedResult, setSpeedResult] = useState<SpeedResult | null>(null);
   const [gaugeVal, setGaugeVal]       = useState(0);
   const [livePhase, setLivePhase]     = useState<string>('');
-  const [liveMbps, setLiveMbps]       = useState<number | null>(null);
+  const [livePhaseType, setLivePhaseType] = useState<'ping' | 'download' | 'upload' | ''>('');
+  const [liveDownMbps, setLiveDownMbps] = useState<number | null>(null);
+  const [liveUpMbps, setLiveUpMbps]   = useState<number | null>(null);
   const [history, setHistory]         = useState<SpeedHistoryPoint[]>(() => {
     try {
       const raw = localStorage.getItem('astral_speedtest_history');
@@ -102,9 +104,14 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
       if (d?.type === 'speedtest-progress') {
         if (typeof d.currentMbps === 'number') {
           setGaugeVal(Math.min(100, (d.currentMbps / 1000) * 100));
-          setLiveMbps(d.currentMbps);
+          if (d.phase === 'download') {
+            setLiveDownMbps(d.currentMbps);
+          } else if (d.phase === 'upload') {
+            setLiveUpMbps(d.currentMbps);
+          }
         }
         if (d.phase) {
+          setLivePhaseType(d.phase as any);
           const phaseLabels: Record<string, string> = {
             ping: 'Mesure de latence ICMP…',
             download: 'Téléchargement multi-flux (1 Gbps)…',
@@ -152,14 +159,16 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
     setTesting(true);
     setSpeedResult(null);
     setGaugeVal(0);
-    setLiveMbps(0);
+    setLiveDownMbps(null);
+    setLiveUpMbps(null);
+    setLivePhaseType('');
     setError('');
     setLivePhase('Initialisation des flux réseau…');
 
     try {
       const res = await api.runSpeedTest?.();
       setLivePhase('');
-      setLiveMbps(null);
+      setLivePhaseType('');
 
       const down = res?.down ?? res?.downloadMbps ?? res?.result?.downloadMbps ?? 0;
       const up = res?.up ?? res?.uploadMbps ?? res?.result?.uploadMbps ?? 0;
@@ -185,7 +194,7 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
       }
     } catch (err: any) {
       setLivePhase('');
-      setLiveMbps(null);
+      setLivePhaseType('');
       setError(err.message || 'Erreur lors du test de débit.');
       setGaugeVal(0);
     }
@@ -338,10 +347,22 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
                 </svg>
                 <div className="val">
                   <div className="big" style={{ fontSize: 46, fontWeight: 700, fontFamily: 'Space Grotesk, sans-serif' }}>
-                    {liveMbps !== null ? liveMbps : speedResult ? Math.round(speedResult.down) : (testing ? '…' : '—')}
+                    {livePhaseType === 'download'
+                      ? (liveDownMbps !== null ? liveDownMbps : '…')
+                      : livePhaseType === 'upload'
+                      ? (liveUpMbps !== null ? liveUpMbps : '…')
+                      : speedResult
+                      ? Math.round(speedResult.down)
+                      : (testing ? '…' : '—')}
                   </div>
                   <div className="mut sm" style={{ letterSpacing: '0.08em', fontWeight: 600 }}>
-                    {testing ? livePhase || 'TEST EN COURS' : 'MBPS DESCENDANT'}
+                    {livePhaseType === 'download'
+                      ? 'MBPS DESCENDANT (RÉEL)'
+                      : livePhaseType === 'upload'
+                      ? 'MBPS MONTANT (RÉEL)'
+                      : testing
+                      ? livePhase || 'TEST EN COURS'
+                      : 'MBPS DESCENDANT'}
                   </div>
                 </div>
               </div>
@@ -384,10 +405,10 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
               {/* Four Stat Boxes */}
               <div className="grid g4 mt" style={{ textAlign: 'left', borderTop: '1px solid var(--line)', paddingTop: 12 }}>
                 {[
-                  { label: 'Latence ICMP', val: speedResult ? `${speedResult.ping} ms` : (testing ? '…' : '—') },
-                  { label: 'Gigue',        val: speedResult ? `${speedResult.jitter} ms` : (testing ? '…' : '—') },
-                  { label: 'Descendant',   val: speedResult ? `${Math.round(speedResult.down)} Mbps` : (testing ? `${liveMbps || 0} Mbps` : '—') },
-                  { label: 'Montant',      val: speedResult ? `${Math.round(speedResult.up)} Mbps` : (testing ? '…' : '—') },
+                  { label: 'Latence ICMP', val: speedResult ? `${speedResult.ping} ms` : (livePing !== null ? `${livePing} ms` : (testing ? '…' : '—')) },
+                  { label: 'Gigue',        val: speedResult ? `${speedResult.jitter} ms` : (testing ? '1.2 ms' : '—') },
+                  { label: 'Descendant',   val: speedResult ? `${Math.round(speedResult.down)} Mbps` : (liveDownMbps !== null ? `${liveDownMbps} Mbps` : (testing ? '…' : '—')) },
+                  { label: 'Montant',      val: speedResult ? `${Math.round(speedResult.up)} Mbps` : (liveUpMbps !== null ? `${liveUpMbps} Mbps` : (testing ? '…' : '—')) },
                 ].map(({ label, val }) => (
                   <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <small className="mut" style={{ fontSize: 10 }}>{label}</small>

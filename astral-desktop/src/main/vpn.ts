@@ -53,18 +53,41 @@ export async function cleanupAstralFirewallRules(): Promise<void> {
  * any truly active third-party VPN tunnel with an assigned IPv4 address.
  * NOTE: Background services (like nordvpn-service) are ignored unless their adapter actually routes traffic.
  */
+/**
+ * Proactively inspect network interfaces and routing table to detect
+ * any TRULY ACTIVE third-party VPN tunnel routing Internet traffic.
+ * NOTE: Background services (like nordvpn-service / Meshnet or Tailscale) with peer-to-peer 100.x.x.x IPs
+ * are IGNORED unless their adapter actually routes Internet traffic (0.0.0.0/0 or 0.0.0.0/1).
+ */
 export async function detectThirdPartyVpn(): Promise<ThirdPartyVpnStatus> {
   try {
     const script = `
       $activeVpnAdapter = $null
       $vpnName = $null
-      $adapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' }
       
-      foreach ($a in $adapters) {
-        $desc = ($a.InterfaceDescription + ' ' + $a.Name).ToLower()
-        if ($desc -match 'nordlynx|wireguard|tap-windows|openvpn|proton|surfshark|mullvad|tailscale|cloudflare|warp') {
-          $ips = Get-NetIPAddress -InterfaceAlias $a.Name -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike '169.254*' }
-          if ($ips) {
+      # Récupérer les adaptateurs UP associés aux logiciels VPN connus
+      $vpnAdapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { 
+        $_.Status -eq 'Up' -and ($_.InterfaceDescription + ' ' + $_.Name) -match 'nordlynx|wireguard|tap-windows|openvpn|proton|surfshark|mullvad|tailscale|cloudflare|warp'
+      }
+
+      if ($vpnAdapters) {
+        # Vérifier si l'un de ces adaptateurs possède une route par défaut active (0.0.0.0/0 ou 0.0.0.0/1)
+        # Ceci évite les faux positifs lorsque Meshnet ou Tailscale est simplement en veille avec une IP 100.x.x.x
+        $defaultRoutes = Get-NetRoute -ErrorAction SilentlyContinue | Where-Object { 
+          $_.DestinationPrefix -match '^(0\\.0\\.0\\.0/(0|1)|128\\.0\\.0\\.0/1)' 
+        }
+
+        foreach ($a in $vpnAdapters) {
+          $isDefaultGateway = $false
+          foreach ($r in $defaultRoutes) {
+            if ($r.InterfaceAlias -eq $a.Name -or $r.InterfaceIndex -eq $a.InterfaceIndex) {
+              $isDefaultGateway = $true
+              break
+            }
+          }
+
+          if ($isDefaultGateway) {
+            $desc = ($a.InterfaceDescription + ' ' + $a.Name).ToLower()
             $activeVpnAdapter = $a.Name
             if ($desc -match 'nord') { $vpnName = 'NordVPN' }
             elseif ($desc -match 'wireguard') { $vpnName = 'WireGuard' }

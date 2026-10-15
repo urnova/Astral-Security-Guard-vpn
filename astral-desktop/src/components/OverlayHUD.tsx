@@ -122,19 +122,19 @@ export default function OverlayHUD() {
         justifyContent: 'center',
         userSelect: 'none',
         overflow: 'hidden',
-        fontFamily: 'Inter, -apple-system, sans-serif',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       }}
     >
       <div
         style={{
           width: '100%',
-          height: '100%',
-          background: 'rgba(10, 12, 16, 0.78)',
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
+          height: 36,
+          background: 'rgba(12, 15, 22, 0.88)',
+          backdropFilter: 'blur(24px) saturate(190%)',
+          WebkitBackdropFilter: 'blur(24px) saturate(190%)',
           border: '1px solid rgba(255, 255, 255, 0.12)',
-          borderRadius: 24,
-          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5), 0 0 1px 1px rgba(255, 255, 255, 0.05) inset',
+          borderRadius: 20,
+          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6), 0 0 14px rgba(56, 189, 248, 0.08), 0 0 0 1px rgba(255, 255, 255, 0.04) inset',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -158,7 +158,7 @@ export default function OverlayHUD() {
           />
           <span
             style={{
-              fontSize: 9.5,
+              fontSize: 10,
               fontWeight: 800,
               letterSpacing: '0.08em',
               color: '#94a3b8',
@@ -176,8 +176,8 @@ export default function OverlayHUD() {
           <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b' }}>FPS</span>
           <span
             style={{
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: 14,
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+              fontSize: 13.5,
               fontWeight: 800,
               color: getFpsColor(presentmon.fps),
             }}
@@ -193,7 +193,7 @@ export default function OverlayHUD() {
           <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b' }}>CPU</span>
           <span
             style={{
-              fontFamily: 'JetBrains Mono, monospace',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
               fontSize: 12.5,
               fontWeight: 700,
               color: getCpuColor(metrics.cpu),
@@ -210,7 +210,7 @@ export default function OverlayHUD() {
           <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b' }}>RAM</span>
           <span
             style={{
-              fontFamily: 'JetBrains Mono, monospace',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
               fontSize: 12.5,
               fontWeight: 700,
               color: '#38bdf8',
@@ -227,7 +227,7 @@ export default function OverlayHUD() {
           <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b' }}>PING</span>
           <span
             style={{
-              fontFamily: 'JetBrains Mono, monospace',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
               fontSize: 12.5,
               fontWeight: 700,
               color: getPingColor(ping),

@@ -1,5 +1,7 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import https from 'https';
+import fs from 'fs';
+import path from 'path';
 import { runPowerShell } from './psHelper';
 import { logger } from './logger';
 import { gamingManager } from './gamingManager';
@@ -133,207 +135,153 @@ export function setupGamingIPC(
 
   ipcMain.handle('gaming:get-auto-detect', () => ({ autoDetectEnabled }));
 
-  // ── Scan Installed Game Libraries (Multi-drive Steam, Epic, GOG, Riot) ──
+  // ── Scan Installed Game Libraries (Multi-drive Steam, Epic, GOG, Riot, Xbox, PC Games) ──
   const scanLibraries = async () => {
-    logger.info('Scan heuristique approfondi des jeux installés multi-disques...');
+    logger.info('[Gaming] Scan haute performance des jeux installés multi-disques...');
+    const games: any[] = [];
+    const seenPaths = new Set<string>();
+    const seenNames = new Set<string>();
 
-    const script = `
-      $games = @()
-      $nonGames = @(
-        'Steamworks Shared', 'SteamVR', 'Steam Controller Configs',
-        'DirectXRedist', 'DirectX', '_CommonRedist', 'Riot Client', 'Riot Client.old',
-        'Installers', 'CrashReport', 'Prerequisites', 'Epic Online Services',
-        'Launcher', 'Support', 'CommonRedist', 'Redist', 'wallpaper_engine',
-        'Animaze', 'GameSave', 'Social Club', 'Rockstar Games Launcher'
-      )
+    const IGNORED_NAMES = new Set([
+      'directx & you must install', 'directxredist', 'directx', 'redist', '_commonredist',
+      'gamesave', 'steamvr', 'wallpaper engine', 'wallpaper_engine', 'steamworks shared',
+      'launcher', 'social club', 'support', 'crashreport', 'prerequisites', 'epic online services',
+      'riot client', 'riot client.old', 'animaze', 'rockstar games launcher'
+    ]);
 
-      # Get all active logical drive roots
-      $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Free -gt 0 } | Select-Object -ExpandProperty Root
+    // 1. Steam Libraries (Multi-Drive via libraryfolders.vdf & standard locations)
+    const steamFolders = [
+      'C:\\Program Files (x86)\\Steam\\steamapps',
+      'C:\\Steam\\steamapps',
+      'D:\\SteamLibrary\\steamapps',
+      'D:\\Steam\\steamapps',
+      'E:\\SteamLibrary\\steamapps',
+      'E:\\Steam\\steamapps',
+      'F:\\SteamLibrary\\steamapps',
+      'F:\\Steam\\steamapps',
+    ];
 
-      # 1. Multi-Drive Steam Libraries detection
-      $steamDirs = @("C:\\Program Files (x86)\\Steam\\steamapps\\common")
-      $vdf = "C:\\Program Files (x86)\\Steam\\steamapps\\libraryfolders.vdf"
-      if (Test-Path $vdf) {
-        $lines = Get-Content $vdf -ErrorAction SilentlyContinue
-        foreach ($line in $lines) {
-          if ($line -match '"path"\\s+"([^"]+)"') {
-            $rawPath = $matches[1].Replace('\\\\', '\\')
-            $commonPath = Join-Path $rawPath "steamapps\\common"
-            if (Test-Path $commonPath) {
-              $steamDirs += $commonPath
-            }
-          }
+    const vdfPath = 'C:\\Program Files (x86)\\Steam\\steamapps\\libraryfolders.vdf';
+    if (fs.existsSync(vdfPath)) {
+      try {
+        const vdf = fs.readFileSync(vdfPath, 'utf8');
+        const matches = vdf.matchAll(/"path"\s+"([^"]+)"/g);
+        for (const m of matches) {
+          const raw = m[1].replace(/\\\\/g, '\\');
+          const sa = path.join(raw, 'steamapps');
+          if (!steamFolders.includes(sa)) steamFolders.push(sa);
         }
-      }
-
-      foreach ($d in $drives) {
-        @("SteamLibrary\\steamapps\\common", "Steam\\steamapps\\common") | ForEach-Object {
-          $p = Join-Path $d $_
-          if (Test-Path $p) { $steamDirs += $p }
-        }
-      }
-
-      foreach ($sd in ($steamDirs | Select-Object -Unique)) {
-        Get-ChildItem -Path $sd -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-          $isTool = ($nonGames -contains $_.Name) -or ($_.Name -match 'Steamworks|SteamVR|Controller|DirectX|Redist|_CommonRedist|Launcher|Prerequisites|CrashReport')
-          if (-not $isTool) {
-            $games += [PSCustomObject]@{
-              name     = $_.Name
-              launcher = "Steam"
-              path     = $_.FullName
-            }
-          }
-        }
-      }
-
-      # 2. Xbox / PC Game Pass detection
-      foreach ($d in $drives) {
-        @("XboxGames", "xboxgames") | ForEach-Object {
-          $xp = Join-Path $d $_
-          if (Test-Path $xp) {
-            Get-ChildItem -Path $xp -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-              if ($nonGames -notcontains $_.Name) {
-                $games += [PSCustomObject]@{
-                  name     = $_.Name
-                  launcher = "Xbox"
-                  path     = $_.FullName
-                }
-              }
-            }
-          }
-        }
-      }
-
-      # 3. Rockstar Games detection (e.g. E:\\rockstar game, C:\\Program Files\\Rockstar Games)
-      foreach ($d in $drives) {
-        @("rockstar game", "Rockstar Games", "Program Files\\Rockstar Games", "Program Files (x86)\\Rockstar Games") | ForEach-Object {
-          $rp = Join-Path $d $_
-          if (Test-Path $rp) {
-            Get-ChildItem -Path $rp -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-              if ($nonGames -notcontains $_.Name -and $_.Name -notmatch 'Social Club|Launcher') {
-                $games += [PSCustomObject]@{
-                  name     = $_.Name
-                  launcher = "Rockstar"
-                  path     = $_.FullName
-                }
-              }
-            }
-          }
-        }
-      }
-
-      # 4. Epic Games multi-drive detection
-      foreach ($d in $drives) {
-        @("epic game", "Epic Games", "Program Files\\Epic Games", "Program Files (x86)\\Epic Games") | ForEach-Object {
-          $ep = Join-Path $d $_
-          if (Test-Path $ep) {
-            Get-ChildItem -Path $ep -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-              $isTool = ($nonGames -contains $_.Name) -or ($_.Name -match 'Launcher|DirectX|Prerequisites|Redist')
-              if (-not $isTool) {
-                $games += [PSCustomObject]@{
-                  name     = $_.Name
-                  launcher = "Epic Games"
-                  path     = $_.FullName
-                }
-              }
-            }
-          }
-        }
-      }
-
-      # 5. Riot Games multi-drive detection
-      foreach ($d in $drives) {
-        $rip = Join-Path $d "Riot Games"
-        if (Test-Path $rip) {
-          Get-ChildItem -Path $rip -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-            if ($_.Name -ne 'Riot Client' -and $_.Name -ne 'Riot Client.old' -and $nonGames -notcontains $_.Name) {
-              $games += [PSCustomObject]@{
-                name     = $_.Name
-                launcher = "Riot Games"
-                path     = $_.FullName
-              }
-            }
-          }
-        }
-      }
-
-      # 6. GOG Galaxy detection
-      foreach ($d in $drives) {
-        @("GOG Games", "Program Files (x86)\\GOG Galaxy\\Games") | ForEach-Object {
-          $gp = Join-Path $d $_
-          if (Test-Path $gp) {
-            Get-ChildItem -Path $gp -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-              if ($nonGames -notcontains $_.Name) {
-                $games += [PSCustomObject]@{
-                  name     = $_.Name
-                  launcher = "GOG"
-                  path     = $_.FullName
-                }
-              }
-            }
-          }
-        }
-      }
-
-      # 7. Ubisoft & EA Games detection
-      foreach ($d in $drives) {
-        @("Program Files (x86)\\Ubisoft\\Ubisoft Game Launcher\\games", "Ubisoft Games") | ForEach-Object {
-          $up = Join-Path $d $_
-          if (Test-Path $up) {
-            Get-ChildItem -Path $up -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-              if ($nonGames -notcontains $_.Name) {
-                $games += [PSCustomObject]@{
-                  name     = $_.Name
-                  launcher = "Ubisoft"
-                  path     = $_.FullName
-                }
-              }
-            }
-          }
-        }
-        @("Program Files\\EA Games", "EA Games") | ForEach-Object {
-          $eap = Join-Path $d $_
-          if (Test-Path $eap) {
-            Get-ChildItem -Path $eap -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-              if ($nonGames -notcontains $_.Name) {
-                $games += [PSCustomObject]@{
-                  name     = $_.Name
-                  launcher = "EA"
-                  path     = $_.FullName
-                }
-              }
-            }
-          }
-        }
-      }
-
-      # Deduplicate games by name
-      $uniqueGames = $games | Group-Object -Property name | ForEach-Object { $_.Group[0] }
-      $uniqueGames | ConvertTo-Json -Compress
-    `;
-
-    try {
-      const res = await runPowerShell(script, { asJson: true, timeout: 10000 });
-      let list = res.data || [];
-      if (!Array.isArray(list)) list = list ? [list] : [];
-      logger.info(`Bibliothèques de jeux : ${list.length} jeux réels détectés sur les disques.`);
-
-      // Enrich games with official high-res banner URLs
-      const enriched = await Promise.all(
-        list.slice(0, 20).map(async (g: any) => {
-          const banner = await resolveGameBanner(g.name);
-          return {
-            ...g,
-            bannerUrl: banner || undefined,
-          };
-        })
-      );
-      const finalList = [...enriched, ...list.slice(20)];
-
-      return { success: true, games: finalList };
-    } catch {
-      return { success: true, games: [] };
+      } catch {}
     }
+
+    for (const sf of steamFolders) {
+      if (fs.existsSync(sf)) {
+        try {
+          const files = fs.readdirSync(sf);
+          for (const f of files) {
+            if (f.startsWith('appmanifest_') && f.endsWith('.acf')) {
+              try {
+                const content = fs.readFileSync(path.join(sf, f), 'utf8');
+                const appIdMatch = content.match(/"appid"\s+"(\d+)"/);
+                const nameMatch = content.match(/"name"\s+"([^"]+)"/);
+                const installDirMatch = content.match(/"installdir"\s+"([^"]+)"/);
+                if (appIdMatch && nameMatch) {
+                  const appId = appIdMatch[1];
+                  const rawName = nameMatch[1];
+                  const norm = rawName.toLowerCase().trim();
+                  if (IGNORED_NAMES.has(norm) || norm.includes('proton') || norm.includes('steam linux runtime') || appId === '228980') {
+                    continue;
+                  }
+                  const gamePath = installDirMatch ? path.join(sf, 'common', installDirMatch[1]) : sf;
+                  if (!seenPaths.has(gamePath)) {
+                    seenPaths.add(gamePath);
+                    seenNames.add(rawName.toLowerCase());
+                    games.push({
+                      name: rawName,
+                      launcher: 'Steam',
+                      appId,
+                      path: gamePath,
+                      bannerUrl: `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appId}/header.jpg`,
+                    });
+                  }
+                }
+              } catch {}
+            }
+          }
+        } catch {}
+      }
+    }
+
+    // 2. Custom Folders & Non-Steam Launchers
+    const launcherFolders: { dir: string; launcher: string }[] = [
+      { dir: 'E:\\rockstar game', launcher: 'Rockstar' },
+      { dir: 'C:\\Program Files\\Rockstar Games', launcher: 'Rockstar' },
+      { dir: 'D:\\Rockstar Games', launcher: 'Rockstar' },
+      { dir: 'E:\\xboxgames', launcher: 'Xbox' },
+      { dir: 'C:\\XboxGames', launcher: 'Xbox' },
+      { dir: 'D:\\XboxGames', launcher: 'Xbox' },
+      { dir: 'D:\\jeux crack 2', launcher: 'PC Games' },
+      { dir: 'E:\\jeux crack', launcher: 'PC Games' },
+      { dir: 'F:\\jeux', launcher: 'PC Games' },
+      { dir: 'C:\\Program Files\\Epic Games', launcher: 'Epic Games' },
+      { dir: 'D:\\Epic Games', launcher: 'Epic Games' },
+      { dir: 'E:\\Epic Games', launcher: 'Epic Games' },
+      { dir: 'C:\\Program Files\\EA Games', launcher: 'EA' },
+      { dir: 'C:\\Program Files (x86)\\Ubisoft\\Ubisoft Game Launcher\\games', launcher: 'Ubisoft' },
+      { dir: 'C:\\Program Files (x86)\\GOG Galaxy\\Games', launcher: 'GOG' },
+      { dir: 'C:\\GOG Games', launcher: 'GOG' },
+      { dir: 'D:\\GOG Games', launcher: 'GOG' },
+      { dir: 'C:\\Riot Games', launcher: 'Riot Games' },
+      { dir: 'D:\\Riot Games', launcher: 'Riot Games' },
+    ];
+
+    for (const item of launcherFolders) {
+      if (fs.existsSync(item.dir)) {
+        try {
+          const subs = fs.readdirSync(item.dir, { withFileTypes: true });
+          for (const s of subs) {
+            if (s.isDirectory()) {
+              const rawName = s.name;
+              const norm = rawName.toLowerCase().trim();
+              if (IGNORED_NAMES.has(norm)) continue;
+
+              const cleanName = cleanGameTitle(rawName);
+              if (IGNORED_NAMES.has(cleanName.toLowerCase())) continue;
+              if (seenNames.has(cleanName.toLowerCase())) continue;
+
+              const fullPath = path.join(item.dir, rawName);
+              if (!seenPaths.has(fullPath)) {
+                seenPaths.add(fullPath);
+                seenNames.add(cleanName.toLowerCase());
+                games.push({
+                  name: cleanName,
+                  rawName,
+                  launcher: item.launcher,
+                  path: fullPath,
+                });
+              }
+            }
+          }
+        } catch {}
+      }
+    }
+
+    logger.info(`[Gaming] Détection terminée : ${games.length} jeux réels trouvés.`);
+
+    // 3. Enrich non-Steam games with official banners in parallel (with timeout protection)
+    const enriched = await Promise.all(
+      games.map(async (g) => {
+        if (g.bannerUrl) return g;
+        try {
+          const banner = await resolveGameBanner(g.name);
+          return { ...g, bannerUrl: banner || undefined };
+        } catch {
+          return g;
+        }
+      })
+    );
+
+    return { success: true, games: enriched };
   };
 
   ipcMain.handle('gaming:scan-libraries', scanLibraries);
@@ -425,29 +373,50 @@ export function setupGamingIPC(
 // In-memory cache for game banners
 const bannerCache = new Map<string, string>();
 
+function cleanGameTitle(rawName: string): string {
+  let title = rawName
+    .replace(/[._]/g, ' ')
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/\s*\[[^\]]*\]/g, '')
+    .replace(/\b(v\d+(\.\d+)*[a-z]?|Build\s*\d+|Deluxe(\s*Edition)?|Complete(\s*Edition)?|Incl(\.\s*ALL)?\s*DLC|ALL\s*DLC|P2P|Legacy|Relaunched)\b/gi, '')
+    .replace(/\b\d+(\s+\d+)+[a-z0-9\-]*$/i, '')
+    .replace(/[-–—]\s*$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return title || rawName;
+}
+
 async function resolveGameBanner(gameName: string): Promise<string | null> {
-  const clean = (gameName || '').trim();
+  const clean = cleanGameTitle(gameName || '').trim();
   if (!clean || clean.length < 2) return null;
   if (bannerCache.has(clean)) return bannerCache.get(clean)!;
 
   try {
-    const searchUrl = `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(clean)}&l=french&cc=FR`;
+    // Steam Community SearchApps endpoint (fast, public, returns exact appid and logo)
+    const searchUrl = `https://steamcommunity.com/actions/SearchApps/${encodeURIComponent(clean)}`;
     const data = await new Promise<string>((resolve) => {
-      const req = https.get(searchUrl, { timeout: 2500 }, (res) => {
-        let body = '';
-        res.on('data', chunk => body += chunk);
-        res.on('end', () => resolve(body));
-      });
+      const req = https.get(
+        searchUrl,
+        {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AstralVanguard/2.5' },
+          timeout: 3000,
+        },
+        (res) => {
+          let body = '';
+          res.on('data', chunk => body += chunk);
+          res.on('end', () => resolve(body));
+        }
+      );
       req.on('error', () => resolve(''));
       req.on('timeout', () => { req.destroy(); resolve(''); });
     });
 
     if (data) {
       const parsed = JSON.parse(data);
-      if (parsed?.items && parsed.items.length > 0) {
-        const appId = parsed.items[0].id;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const appId = parsed[0].appid;
         if (appId) {
-          const bannerUrl = `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/header.jpg`;
+          const bannerUrl = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appId}/header.jpg`;
           bannerCache.set(clean, bannerUrl);
           return bannerUrl;
         }

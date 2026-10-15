@@ -138,12 +138,13 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
       }
     }).catch(() => {});
 
-    // Load Disks & S.M.A.R.T.
+    // Load Disks & S.M.A.R.T. (Ordered strictly by Windows Disk Number 0..N)
     setLoadingDisks(true);
     api.getDiskHealth?.().then((res: any) => {
       setLoadingDisks(false);
       if (res?.success && Array.isArray(res.disks)) {
-        setPhysicalDisks(res.disks);
+        const sorted = [...res.disks].sort((a: any, b: any) => (a.diskNumber ?? 0) - (b.diskNumber ?? 0));
+        setPhysicalDisks(sorted);
       }
     }).catch(() => setLoadingDisks(false));
 
@@ -156,9 +157,6 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
           model: d.model || 'Disque Principal (C:)',
           health: d.health || 'Sain (SMART OK)',
         });
-        if (Array.isArray(d.disks) && d.disks.length > 0) {
-          setPhysicalDisks(d.disks);
-        }
       }
     }).catch(() => {});
   };

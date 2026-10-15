@@ -498,6 +498,8 @@ export function setupPerformanceIPC(win: BrowserWindow) {
         };
       });
 
+      disks.sort((a: any, b: any) => (a.diskNumber ?? 0) - (b.diskNumber ?? 0));
+
       return { success: true, disks };
     } catch {
       return { success: true, disks: [] };
