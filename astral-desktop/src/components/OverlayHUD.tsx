@@ -236,38 +236,6 @@ export default function OverlayHUD() {
             {ping > 0 ? `${ping}ms` : '15ms'}
           </span>
         </div>
-
-        {/* Close Button */}
-        <button
-          onClick={handleClose}
-          style={{
-            ...NODRAG,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 18,
-            height: 18,
-            borderRadius: '50%',
-            background: 'rgba(255, 255, 255, 0.05)',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
-            color: '#94a3b8',
-            cursor: 'pointer',
-            marginLeft: 4,
-            padding: 0,
-            transition: 'all 0.15s ease',
-          }}
-          onMouseEnter={e => {
-            (e.currentTarget as HTMLElement).style.background = 'rgba(248, 113, 113, 0.25)';
-            (e.currentTarget as HTMLElement).style.color = '#ffffff';
-          }}
-          onMouseLeave={e => {
-            (e.currentTarget as HTMLElement).style.background = 'rgba(255, 255, 255, 0.05)';
-            (e.currentTarget as HTMLElement).style.color = '#94a3b8';
-          }}
-          title="Masquer l'overlay"
-        >
-          <X size={10} />
-        </button>
       </div>
     </div>
   );

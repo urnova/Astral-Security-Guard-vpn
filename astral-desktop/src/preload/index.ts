@@ -201,6 +201,8 @@ const api = {
   setGamingSetting: (payload: { key: string; value: boolean }) => ipcRenderer.invoke('gaming:set-setting', payload),
   applyGameProfile: (payload: { game: string; profile: string }) => ipcRenderer.invoke('gaming:apply-game-profile', payload),
   suspendBrowsers: (suspend: boolean) => ipcRenderer.invoke('gaming:suspend-browsers', suspend),
+  getHardwareInfo: () => ipcRenderer.invoke('gaming:get-hardware-info'),
+  openExternal: (url: string) => ipcRenderer.invoke('app:open-external', url),
 
   // Rollback & System Restore
   createRestorePoint: (desc: string, options?: any) => ipcRenderer.invoke('rollback:create-restore-point', desc, options),

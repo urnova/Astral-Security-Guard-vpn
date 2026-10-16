@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Gamepad2, Power, Monitor, Wifi, Cpu, Eye, RefreshCw, Zap, SlidersHorizontal, Clock } from 'lucide-react';
+import { Gamepad2, Power, Monitor, Wifi, Cpu, Eye, RefreshCw, Zap, SlidersHorizontal, Clock, ExternalLink, Info, X, ShieldCheck, Activity } from 'lucide-react';
 
 const api = (window as any).vanguard;
 
@@ -158,6 +158,17 @@ export default function GamingTab({
   const [notice, setNotice]               = useState('');
   const [noticeType, setNoticeType]       = useState<'info' | 'success' | 'error'>('info');
   const [launcherFilter, setLauncherFilter] = useState<string>('Tous');
+  const [hardware, setHardware]           = useState<{
+    gpuName: string;
+    gpuDriver: string;
+    gpuDriverRaw: string;
+    gpuDriverDate: string;
+    driverUrl: string;
+    cpuName: string;
+    ramGB: number;
+    motherboard: string;
+  } | null>(null);
+  const [showProfileDetails, setShowProfileDetails] = useState(false);
   const [gameProfiles, setGameProfiles]   = useState<Record<string, Profile>>({});
   const [gameOptEnabled, setGameOptEnabled] = useState<Record<string, boolean>>(() => {
     try {
@@ -241,7 +252,18 @@ export default function GamingTab({
       setFpsHistory(prev => [...prev.slice(-29), fps]);
       setPingHistory(prev => [...prev.slice(-29), ping]);
     });
-    return () => { c1?.(); c2?.(); c3?.(); };
+
+    api?.getHardwareInfo?.().then((res: any) => {
+      if (res?.success && res.hardware) {
+        setHardware(res.hardware);
+      }
+    }).catch(() => {});
+
+    const autoRescanInterval = setInterval(() => {
+      loadGames();
+    }, 10 * 60 * 1000);
+
+    return () => { c1?.(); c2?.(); c3?.(); clearInterval(autoRescanInterval); };
   }, []);
 
   /* ── Load games ── */
@@ -361,8 +383,19 @@ export default function GamingTab({
         {/* ── Hero Session Card ── */}
         <div className="card card-p-lg card-hero" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
           <div>
-            <h2 style={{ fontSize: 20 }}>Préparer une session</h2>
-            <p className="mut sm" style={{ marginTop: 6, maxWidth: 400 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <h2 style={{ fontSize: 20, margin: 0 }}>Préparer une session</h2>
+              <button
+                className="btn-ghost"
+                onClick={() => setShowProfileDetails(true)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, padding: '4px 8px', borderRadius: 6 }}
+                title="Consulter le détail technique des optimisations"
+              >
+                <Info size={13} style={{ color: 'var(--a1)' }} />
+                <span>Détails & Réversibilité</span>
+              </button>
+            </div>
+            <p className="mut sm" style={{ marginTop: 6, maxWidth: 460 }}>
               {PROFILE_META[profile].desc}
             </p>
             {gamingActive && (
@@ -406,6 +439,68 @@ export default function GamingTab({
             >
               <Power size={15} /> {gamingActive ? 'Désactiver' : 'Activer'}
             </button>
+          </div>
+        </div>
+
+        {/* ── Hardware Report & Driver Status ── */}
+        <div className="card card-p-lg mt" style={{ marginTop: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <div className="lbl" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+              <Monitor size={15} style={{ color: 'var(--a1)' }} />
+              Matériel Détecté & Pilotes Graphiques
+            </div>
+            {hardware?.driverUrl && (
+              <button
+                className="btn-ghost"
+                onClick={() => api?.openExternal?.(hardware.driverUrl)}
+                style={{ fontSize: 11, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <span>Pilotes officiels</span>
+                <ExternalLink size={12} />
+              </button>
+            )}
+          </div>
+
+          <div className="grid g4" style={{ gap: 12 }}>
+            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px' }}>
+              <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>CARTE GRAPHIQUE (GPU)</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={hardware?.gpuName}>
+                {hardware?.gpuName || 'Détection…'}
+              </div>
+              <div style={{ fontSize: 11, color: '#38bdf8', marginTop: 2 }}>
+                Pilote : {hardware?.gpuDriver ? `v${hardware.gpuDriver}` : 'Actif'}
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px' }}>
+              <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>PROCESSEUR (CPU)</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={hardware?.cpuName}>
+                {hardware?.cpuName || 'Processeur Principal'}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                Priorité AboveNormal
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px' }}>
+              <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>MÉMOIRE VIVE (RAM)</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginTop: 4 }}>
+                {hardware?.ramGB ? `${hardware.ramGB} Go Détectés` : 'Mémoire Système'}
+              </div>
+              <div style={{ fontSize: 11, color: '#68b894', marginTop: 2 }}>
+                Allocation optimisée
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px' }}>
+              <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>CARTE MÈRE</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={hardware?.motherboard}>
+                {hardware?.motherboard || 'Carte mère hôte'}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                Architecture PC
+              </div>
+            </div>
           </div>
         </div>
 
@@ -562,6 +657,8 @@ export default function GamingTab({
                     style={{
                       position: 'relative',
                       overflow: 'hidden',
+                      contain: 'paint',
+                      contentVisibility: 'auto',
                       borderColor: isOpt ? 'rgba(var(--a1r),.35)' : 'rgba(255,255,255,0.08)',
                       transition: 'transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
                       cursor: 'default',
@@ -731,6 +828,102 @@ export default function GamingTab({
                 {profile === 'Équilibré' && 'Optimisations douces, thermique préservé, streaming OBS compatible.'}
                 {profile === 'Qualité' && 'Priorité rendu haute fidélité, synchronisation fluide et stabilité de trame.'}
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Detailed Profile Configuration Modal ── */}
+        {showProfileDetails && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.75)',
+              backdropFilter: 'blur(8px)',
+              zIndex: 9999,
+              display: 'grid',
+              placeItems: 'center',
+              padding: 24,
+            }}
+            onClick={() => setShowProfileDetails(false)}
+          >
+            <div
+              className="card card-p-lg"
+              style={{
+                width: '100%',
+                maxWidth: 680,
+                background: '#0d1117',
+                border: '1px solid rgba(255,255,255,0.14)',
+                borderRadius: 14,
+                boxShadow: '0 20px 50px rgba(0,0,0,0.8)',
+                padding: 26,
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <ShieldCheck size={20} style={{ color: 'var(--a1)' }} />
+                  <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Profils de Session & Vérité Terrain</h3>
+                </div>
+                <button
+                  className="btn-ghost"
+                  onClick={() => setShowProfileDetails(false)}
+                  style={{ padding: '6px 8px', borderRadius: 8 }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5, marginBottom: 20 }}>
+                Chaque profil applique des ajustements système réversibles mesurables. À la fermeture du jeu ou à la désactivation, <b>tous les paramètres d’origine (priorités, plan d’énergie, réseau) sont automatiquement restaurés</b> sans altérer Windows.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ padding: 14, borderRadius: 10, background: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.2)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <b style={{ color: '#38bdf8', fontSize: 14 }}>⚡ Profil Compétitif (Esports & Latence Minimale)</b>
+                    <span className="chip" style={{ fontSize: 10, color: '#38bdf8', borderColor: 'rgba(56,189,248,0.3)' }}>Latence min</span>
+                  </div>
+                  <ul style={{ margin: '8px 0 0 16px', padding: 0, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
+                    <li><b>Priorité processeur :</b> <code>AboveNormal</code> pour le processus de jeu au premier plan.</li>
+                    <li><b>Plan d'alimentation :</b> Bascule temporaire sur <code>Performances Élevées</code> (suppression du core parking).</li>
+                    <li><b>Réseau :</b> Priorité de trafic UDP, bufferbloat Wi-Fi réduit et latence de rendu ultra-faible.</li>
+                  </ul>
+                </div>
+
+                <div style={{ padding: 14, borderRadius: 10, background: 'rgba(34,197,94,0.04)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <b style={{ color: '#22c55e', fontSize: 14 }}>⚖ Profil Équilibré (Standard & Polyvalent)</b>
+                    <span className="chip" style={{ fontSize: 10, color: '#22c55e', borderColor: 'rgba(34,197,94,0.3)' }}>Recommandé</span>
+                  </div>
+                  <ul style={{ margin: '8px 0 0 16px', padding: 0, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
+                    <li><b>Priorité processeur :</b> Dynamique et respectueuse des températures CPU/GPU.</li>
+                    <li><b>Streaming & multitâche :</b> Compatibilité totale avec OBS Studio, Discord et enregistreurs.</li>
+                    <li><b>Protection réseau :</b> Purgation des files de saturation réseau sans monopolisation.</li>
+                  </ul>
+                </div>
+
+                <div style={{ padding: 14, borderRadius: 10, background: 'rgba(167,139,250,0.04)', border: '1px solid rgba(167,139,250,0.2)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <b style={{ color: '#a78bfa', fontSize: 14 }}>🎨 Profil Qualité (Titres AAA & Immersion Visuelle)</b>
+                    <span className="chip" style={{ fontSize: 10, color: '#a78bfa', borderColor: 'rgba(167,139,250,0.3)' }}>Fidélité max</span>
+                  </div>
+                  <ul style={{ margin: '8px 0 0 16px', padding: 0, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
+                    <li><b>Allocation GPU :</b> Priorité aux threads de compilation de shaders DirectX 12 / Vulkan.</li>
+                    <li><b>Stabilité de trame :</b> Évite les chutes de framerate lors du streaming de textures lourdes.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 20, textAlign: 'right' }}>
+                <button
+                  className="btn"
+                  onClick={() => setShowProfileDetails(false)}
+                  style={{ padding: '8px 20px' }}
+                >
+                  Compris
+                </button>
+              </div>
             </div>
           </div>
         )}

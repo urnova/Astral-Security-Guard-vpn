@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut, Notification, session } from 'electron';
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut, Notification, session, shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { logger } from './logger';
@@ -203,8 +203,8 @@ export function createOverlay() {
   if (overlayWin) return;
   logger.info('[App] Creating gaming HUD overlay window...');
   overlayWin = new BrowserWindow({
-    width: 360,
-    height: 42,
+    width: 310,
+    height: 40,
     x: 32,
     y: 32,
     frame: false,
@@ -616,6 +616,13 @@ ipcMain.handle('app:close', () => {
   }
 });
 ipcMain.handle('app:hide-to-tray', () => mainWin?.hide());
+ipcMain.handle('app:open-external', async (_, url: string) => {
+  if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
+    await shell.openExternal(url);
+    return { success: true };
+  }
+  return { success: false };
+});
 
 // Settings IPC
 ipcMain.handle('settings:get', () => {

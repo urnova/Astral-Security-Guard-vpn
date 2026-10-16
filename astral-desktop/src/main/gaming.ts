@@ -135,6 +135,76 @@ export function setupGamingIPC(
 
   ipcMain.handle('gaming:get-auto-detect', () => ({ autoDetectEnabled }));
 
+  // ── Hardware Information (CPU, GPU, RAM, Motherboard, Drivers) ─────────────
+  ipcMain.handle('gaming:get-hardware-info', async () => {
+    const script = `
+      $gpu = Get-CimInstance Win32_VideoController | Where-Object { $_.Name -notmatch 'Virtual|Remote|Basic' } | Select-Object -First 1
+      $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+      $ram = (Get-CimInstance Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum).Sum
+      $mb = Get-CimInstance Win32_BaseBoard | Select-Object -First 1
+
+      [PSCustomObject]@{
+        gpuName = $gpu.Name
+        gpuDriver = $gpu.DriverVersion
+        gpuDriverDate = if ($gpu.DriverDate) { [string]$gpu.DriverDate } else { '' }
+        cpuName = $cpu.Name.Trim()
+        ramGB = if ($ram) { [Math]::Round($ram / 1GB) } else { 0 }
+        motherboard = "$($mb.Manufacturer) $($mb.Product)".Trim()
+      } | ConvertTo-Json -Compress
+    `;
+
+    try {
+      const res = await runPowerShell<any>(script, { asJson: true, timeout: 6000 });
+      if (res.success && res.data) {
+        const d = res.data;
+        const gpuName = String(d.gpuName || 'Inconnu');
+        const driverRaw = String(d.gpuDriver || '');
+        let cleanDriver = driverRaw;
+        let driverUrl = 'https://www.nvidia.com/Download/index.aspx';
+
+        if (gpuName.toLowerCase().includes('nvidia')) {
+          const match = driverRaw.match(/\d+\.\d+\.(\d)(\d{2})(\d{2})$/);
+          if (match) {
+            cleanDriver = `${match[1]}${match[2]}.${match[3]}`;
+          }
+          driverUrl = 'https://www.nvidia.com/Download/index.aspx';
+        } else if (gpuName.toLowerCase().includes('amd') || gpuName.toLowerCase().includes('radeon')) {
+          driverUrl = 'https://www.amd.com/en/support';
+        } else if (gpuName.toLowerCase().includes('intel')) {
+          driverUrl = 'https://www.intel.com/content/www/us/en/download-center/home.html';
+        }
+
+        return {
+          success: true,
+          hardware: {
+            gpuName,
+            gpuDriver: cleanDriver,
+            gpuDriverRaw: driverRaw,
+            gpuDriverDate: d.gpuDriverDate || '',
+            driverUrl,
+            cpuName: d.cpuName || 'Processeur multi-cœur',
+            ramGB: d.ramGB || 16,
+            motherboard: d.motherboard || 'Carte mère standard',
+          },
+        };
+      }
+    } catch {}
+
+    return {
+      success: false,
+      hardware: {
+        gpuName: 'Carte Graphique Dédiée',
+        gpuDriver: 'À jour',
+        gpuDriverRaw: '',
+        gpuDriverDate: '',
+        driverUrl: 'https://www.nvidia.com/Download/index.aspx',
+        cpuName: 'Processeur Principal',
+        ramGB: 16,
+        motherboard: 'Système',
+      },
+    };
+  });
+
   // ── Scan Installed Game Libraries (Multi-drive Steam, Epic, GOG, Riot, Xbox, PC Games) ──
   const scanLibraries = async () => {
     logger.info('[Gaming] Scan haute performance des jeux installés multi-disques...');
@@ -193,6 +263,15 @@ export function setupGamingIPC(
                     continue;
                   }
                   const gamePath = installDirMatch ? path.join(sf, 'common', installDirMatch[1]) : sf;
+                  if (!fs.existsSync(gamePath)) {
+                    continue;
+                  }
+                  try {
+                    const contents = fs.readdirSync(gamePath);
+                    if (contents.length === 0) continue;
+                  } catch {
+                    continue;
+                  }
                   if (!seenPaths.has(gamePath)) {
                     seenPaths.add(gamePath);
                     seenNames.add(rawName.toLowerCase());
@@ -250,6 +329,13 @@ export function setupGamingIPC(
               if (seenNames.has(cleanName.toLowerCase())) continue;
 
               const fullPath = path.join(item.dir, rawName);
+              if (!fs.existsSync(fullPath)) continue;
+              try {
+                const contents = fs.readdirSync(fullPath);
+                if (contents.length === 0) continue;
+              } catch {
+                continue;
+              }
               if (!seenPaths.has(fullPath)) {
                 seenPaths.add(fullPath);
                 seenNames.add(cleanName.toLowerCase());
@@ -423,6 +509,28 @@ async function resolveGameBanner(gameName: string): Promise<string | null> {
       }
     }
   } catch {}
+
+  const lower = clean.toLowerCase();
+  const FALLBACKS: Record<string, string> = {
+    'roblox': 'https://images.rbxcdn.com/f04c6a457ee458fef56f2f9f170f3f22.jpg',
+    'minecraft': 'https://launchercontent.mojang.com/header.png',
+    'minecraft launcher': 'https://launchercontent.mojang.com/header.png',
+    'forza horizon 5': 'https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/1551360/header.jpg',
+    'forza horizon 4': 'https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/1293830/header.jpg',
+    'gta v': 'https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/271590/header.jpg',
+    'grand theft auto v': 'https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/271590/header.jpg',
+    'red dead redemption 2': 'https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/1174180/header.jpg',
+    'cyberpunk 2077': 'https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/1091500/header.jpg',
+    'valorant': 'https://images.contentstack.io/v3/assets/blt370612131b6e0ebc/blta70a7b7a2d4806a6/5e73ef5e6563e46c8e312f27/VALORANT_Jett_Red.jpg',
+  };
+
+  for (const [k, url] of Object.entries(FALLBACKS)) {
+    if (lower.includes(k)) {
+      bannerCache.set(clean, url);
+      return url;
+    }
+  }
+
   return null;
 }
 

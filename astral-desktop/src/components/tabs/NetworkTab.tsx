@@ -254,7 +254,7 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
         {/* Hero Optimization Callout */}
         <div style={{
           marginBottom: 16,
-          padding: '16px 20px',
+          padding: '14px 20px',
           background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.08) 0%, rgba(14, 165, 233, 0.03) 100%)',
           border: '1px solid rgba(56, 189, 248, 0.25)',
           borderRadius: 'var(--r-md)',
@@ -265,24 +265,18 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
           flexWrap: 'wrap',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(56,189,248,0.15)', display: 'grid', placeItems: 'center', color: '#38bdf8', flexShrink: 0 }}>
-              <Zap size={22} />
+            <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'rgba(56,189,248,0.15)', display: 'grid', placeItems: 'center', color: '#38bdf8', flexShrink: 0 }}>
+              <Zap size={20} />
             </div>
             <div>
-              <b style={{ color: '#fff', fontSize: 13.5 }}>Accélération réseau & anti-latence temps réel</b>
+              <b style={{ color: '#fff', fontSize: 13 }}>Diagnostic Réseau & Accélération Anti-Latence</b>
               <p style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
-                Calibre la fenêtre TCP Autotuning, active le RSS multi-cœur et purge le cache DNS pour stabiliser le ping en jeu.
+                {netInfo?.isp
+                  ? `Opérateur actif : ${netInfo.isp} · Liaison ${netInfo.type} · Fenêtre TCP Autotuning calibrée.`
+                  : 'Calibre la fenêtre TCP Autotuning, active le RSS multi-cœur et purge le cache DNS pour stabiliser le ping en jeu.'}
               </p>
             </div>
           </div>
-          <button
-            className="btn btn-sm"
-            style={{ padding: '9px 18px', fontWeight: 600, fontSize: 11.5 }}
-            onClick={optimizeNetwork}
-            disabled={optimizing || testing}
-          >
-            {optimizing ? 'Calibration…' : 'Lancer l\'optimisation'}
-          </button>
         </div>
 
         {/* Alerts & Notifications */}
@@ -315,23 +309,7 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 12px' }}>
                 <div className="lbl" style={{ margin: 0 }}>Test de débit multi-flux (Fibre / Câble)</div>
-                {livePing !== null && (
-                  <span style={{
-                    fontSize: 10.5,
-                    fontWeight: 600,
-                    padding: '2px 8px',
-                    borderRadius: 12,
-                    background: pingStatus === 'spike' ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)',
-                    border: `1px solid ${pingStatus === 'spike' ? 'rgba(239,68,68,0.35)' : 'rgba(34,197,94,0.35)'}`,
-                    color: pingStatus === 'spike' ? '#ef4444' : '#22c55e',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 5,
-                  }}>
-                    <Activity size={10} />
-                    {pingStatus === 'spike' ? `Pic latence (${livePing} ms)` : `Ping direct : ${livePing} ms`}
-                  </span>
-                )}
+                <span style={{ fontSize: 11, color: 'var(--dim)' }}>Mesure réelle sans extrapolation</span>
               </div>
 
               {/* Gauge */}
@@ -378,6 +356,34 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
                   </span>
                 </div>
               )}
+
+              {/* Internet Quality Score Badge */}
+              <div style={{
+                margin: '10px auto 14px',
+                padding: '7px 16px',
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 20,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                fontSize: 11.5,
+              }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: speedResult ? '#22c55e' : 'var(--a1)', boxShadow: '0 0 8px rgba(56,189,248,0.5)' }} />
+                <span style={{ color: 'var(--text)', fontWeight: 600 }}>
+                  {speedResult
+                    ? speedResult.down >= 300
+                      ? 'Score Ligne : Fibre FTTH Gigabit (Excellente)'
+                      : speedResult.down >= 100
+                      ? 'Score Ligne : Très Haut Débit Fibre (Très Bonne)'
+                      : speedResult.down >= 30
+                      ? 'Score Ligne : Câble / VDSL2 (Bonne)'
+                      : 'Score Ligne : Haut Débit ADSL (Standard)'
+                    : netInfo?.isp
+                    ? `Opérateur : ${netInfo.isp} · Prêt pour test`
+                    : 'Prêt pour le test multi-flux'}
+                </span>
+              </div>
             </div>
 
             {/* Launch / Cancel buttons */}

@@ -598,14 +598,21 @@ export function setupNetworkIPC(win: BrowserWindow) {
       let externalIp = '';
       try {
         await new Promise<void>((resolve) => {
-          const req = https.get('https://ipinfo.io/json', { timeout: 2000 }, (r) => {
+          const req = http.get('http://ip-api.com/json', { timeout: 2500 }, (r) => {
             let body = '';
             r.on('data', chunk => body += chunk);
             r.on('end', () => {
               try {
                 const info = JSON.parse(body);
-                isp = info.org || info.company?.name || '';
-                externalIp = info.ip || '';
+                if (info && info.status === 'success') {
+                  const org = String(info.org || info.isp || '');
+                  if (/Free|ProXad/i.test(org)) isp = 'Freebox (Free SAS)';
+                  else if (/Orange|Wanadoo/i.test(org)) isp = 'Orange FTTH';
+                  else if (/SFR|Altice/i.test(org)) isp = 'SFR Fibre';
+                  else if (/Bouygues/i.test(org)) isp = 'Bouygues Telecom';
+                  else isp = org;
+                  externalIp = info.query || '';
+                }
               } catch {}
               resolve();
             });
@@ -614,6 +621,32 @@ export function setupNetworkIPC(win: BrowserWindow) {
           req.on('timeout', () => { req.destroy(); resolve(); });
         });
       } catch {}
+
+      if (!isp) {
+        try {
+          await new Promise<void>((resolve) => {
+            const req = https.get('https://ipinfo.io/json', { timeout: 2000 }, (r) => {
+              let body = '';
+              r.on('data', chunk => body += chunk);
+              r.on('end', () => {
+                try {
+                  const info = JSON.parse(body);
+                  const org = String(info.org || info.company?.name || '');
+                  if (/Free|ProXad/i.test(org)) isp = 'Freebox (Free SAS)';
+                  else if (/Orange|Wanadoo/i.test(org)) isp = 'Orange FTTH';
+                  else if (/SFR|Altice/i.test(org)) isp = 'SFR Fibre';
+                  else if (/Bouygues/i.test(org)) isp = 'Bouygues Telecom';
+                  else isp = org;
+                  externalIp = info.ip || '';
+                } catch {}
+                resolve();
+              });
+            });
+            req.on('error', () => resolve());
+            req.on('timeout', () => { req.destroy(); resolve(); });
+          });
+        } catch {}
+      }
 
       return {
         success: true,
@@ -624,7 +657,7 @@ export function setupNetworkIPC(win: BrowserWindow) {
         gateway: d.gateway || '—',
         dns: d.friendlyDns || d.dnsServers || 'Google Public DNS (8.8.8.8)',
         dnsServer: d.dnsServers || '8.8.8.8',
-        isp: isp || 'Fournisseur Fibre Haute Vitesse',
+        isp: isp || 'Connexion Internet Locale',
         provider: isp || 'Fournisseur d\'accès',
         macAddress: d.macAddress || '—',
         connectionType: d.type || 'Ethernet',

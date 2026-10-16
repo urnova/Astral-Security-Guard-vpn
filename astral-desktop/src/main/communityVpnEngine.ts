@@ -483,6 +483,14 @@ class CommunityVpnEngine {
     this.killSwitchActive = enabled;
     if (!enabled) {
       await this.cleanupFirewall();
+    } else {
+      try {
+        const script = `
+          netsh advfirewall firewall add rule name="AstralKillSwitchAllowDNS" dir=out action=allow protocol=UDP remoteport=53 2>$null | Out-Null
+          netsh advfirewall firewall add rule name="AstralKillSwitchAllowDNS" dir=out action=allow protocol=TCP remoteport=53 2>$null | Out-Null
+        `;
+        await runPowerShell(script, { timeout: 4000 });
+      } catch {}
     }
     return this.killSwitchActive;
   }

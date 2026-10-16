@@ -37,12 +37,17 @@ interface CleanItem {
 }
 
 interface PhysicalDisk {
+  diskNumber?: number;
   model: string;
   FriendlyName?: string;
   mediaType: string;
   MediaType?: string;
+  busType?: string;
+  driveLetters?: string;
+  isSystemDisk?: boolean;
   health: string;
   HealthStatus?: string;
+  healthStatusText?: string;
   status: string;
   sizeGB: number;
 }
@@ -253,9 +258,6 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
             <p className="sub">Nettoyage approfondi du disque, santé matérielle S.M.A.R.T. et gestion des programmes au démarrage.</p>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn-ghost" onClick={loadData} title="Rafraîchir les données" style={{ padding: '8px 14px' }}>
-              <RefreshCw size={14} />
-            </button>
             <button className="btn" onClick={runMaintenance} disabled={maintaining}>
               {maintaining ? (
                 <>
@@ -359,15 +361,17 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
             <div className="grid g3" style={{ gap: 14 }}>
               {physicalDisks.map((d, idx) => {
                 const isHdd = d.mediaType.includes('HDD') || (d.MediaType && d.MediaType.toLowerCase().includes('hdd'));
+                const isUsb = d.mediaType.includes('USB') || d.busType === 'USB';
                 const sizeLabel = d.sizeGB >= 900 ? `${(d.sizeGB / 1000).toFixed(0)} To` : `${d.sizeGB} Go`;
-                const isHealthy = d.health.includes('Sain') || d.status === 'OK';
+                const isHealthy = d.health?.includes('Sain') || d.status === 'OK' || d.HealthStatus?.includes('Sain') || d.healthStatusText?.includes('Sain');
+                const statusText = d.healthStatusText || d.HealthStatus || (isHealthy ? 'Sain (SMART Conforme)' : 'Attention requise');
 
                 return (
                   <div
-                    key={idx}
+                    key={d.diskNumber ?? idx}
                     style={{
                       background: 'rgba(255, 255, 255, 0.025)',
-                      border: '1px solid var(--border)',
+                      border: d.isSystemDisk ? '1px solid rgba(56, 189, 248, 0.35)' : '1px solid var(--border)',
                       borderRadius: 10,
                       padding: '14px 16px',
                       display: 'flex',
@@ -383,32 +387,72 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                           width: 36,
                           height: 36,
                           borderRadius: 8,
-                          background: isHdd ? 'rgba(167, 139, 250, 0.12)' : 'rgba(56, 189, 248, 0.12)',
-                          border: `1px solid ${isHdd ? 'rgba(167, 139, 250, 0.3)' : 'rgba(56, 189, 248, 0.3)'}`,
+                          background: d.isSystemDisk
+                            ? 'rgba(56, 189, 248, 0.16)'
+                            : isHdd
+                            ? 'rgba(167, 139, 250, 0.12)'
+                            : 'rgba(56, 189, 248, 0.12)',
+                          border: `1px solid ${
+                            d.isSystemDisk
+                              ? 'rgba(56, 189, 248, 0.45)'
+                              : isHdd
+                              ? 'rgba(167, 139, 250, 0.3)'
+                              : 'rgba(56, 189, 248, 0.3)'
+                          }`,
                           display: 'grid',
                           placeItems: 'center',
-                          color: isHdd ? '#a78bfa' : '#38bdf8',
+                          color: d.isSystemDisk ? '#38bdf8' : isHdd ? '#a78bfa' : '#38bdf8',
                           flexShrink: 0,
                         }}
                       >
                         <HardDrive size={18} />
                       </div>
                       <div style={{ minWidth: 0, flex: 1 }}>
-                        <b
-                          style={{
-                            fontSize: 12.5,
-                            fontWeight: 600,
-                            display: 'block',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            color: 'var(--text)',
-                          }}
-                          title={d.model || d.FriendlyName}
-                        >
-                          {d.model || d.FriendlyName || 'Disque physique'}
-                        </b>
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <b
+                            style={{
+                              fontSize: 12.5,
+                              fontWeight: 600,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              color: 'var(--text)',
+                            }}
+                            title={d.model || d.FriendlyName}
+                          >
+                            {d.model || d.FriendlyName || 'Disque physique'}
+                          </b>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
+                          {d.isSystemDisk ? (
+                            <span
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 700,
+                                padding: '1px 7px',
+                                borderRadius: 4,
+                                background: 'rgba(56, 189, 248, 0.2)',
+                                color: '#38bdf8',
+                                border: '1px solid rgba(56, 189, 248, 0.4)',
+                              }}
+                            >
+                              SYSTÈME (C:)
+                            </span>
+                          ) : d.driveLetters ? (
+                            <span
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 600,
+                                padding: '1px 6px',
+                                borderRadius: 4,
+                                background: 'rgba(255, 255, 255, 0.06)',
+                                color: 'var(--text)',
+                                border: '1px solid rgba(255, 255, 255, 0.1)',
+                              }}
+                            >
+                              Lecteur {d.driveLetters}
+                            </span>
+                          ) : null}
                           <span
                             style={{
                               fontSize: 10,
@@ -419,7 +463,7 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                               color: isHdd ? '#c4b5fd' : '#7dd3fc',
                             }}
                           >
-                            {isHdd ? 'HDD S-ATA' : 'SSD NVMe / SATA'}
+                            {d.mediaType || (isHdd ? 'HDD S-ATA' : 'SSD NVMe / SATA')}
                           </span>
                           <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)' }}>
                             {sizeLabel}
@@ -449,10 +493,12 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                           }}
                         />
                         <span style={{ color: isHealthy ? '#68b894' : '#f59e0b', fontWeight: 600 }}>
-                          {isHealthy ? 'Sain (100%)' : 'Attention requise'}
+                          {statusText}
                         </span>
                       </div>
-                      <span style={{ color: 'var(--muted)', fontSize: 10 }}>SMART OK</span>
+                      <span style={{ color: 'var(--muted)', fontSize: 10 }}>
+                        {isUsb ? 'Externe' : 'SMART Conforme'}
+                      </span>
                     </div>
                   </div>
                 );

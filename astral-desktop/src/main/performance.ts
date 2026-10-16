@@ -443,8 +443,13 @@ export function setupPerformanceIPC(win: BrowserWindow) {
     const script = `
       $disks = Get-Disk -ErrorAction SilentlyContinue | Sort-Object Number
       $phys = Get-PhysicalDisk -ErrorAction SilentlyContinue
+
       $out = foreach ($d in $disks) {
         $p = $phys | Where-Object { $_.DeviceId -eq [string]$d.Number -or $_.FriendlyName -eq $d.FriendlyName } | Select-Object -First 1
+        $parts = if ($d) { Get-Partition -DiskNumber $d.Number -ErrorAction SilentlyContinue } else { @() }
+        $letters = ($parts | Where-Object { $_.DriveLetter } | ForEach-Object { "$($_.DriveLetter):" }) -join ', '
+        $isBoot = [bool]($parts | Where-Object { $_.IsBoot -or $_.IsSystem -or $_.DriveLetter -eq 'C' })
+
         $media = if ($p -and $p.MediaType -and $p.MediaType -ne 'Unspecified') {
           $p.MediaType
         } elseif ($d.BusType -eq 'NVMe') {
@@ -454,29 +459,37 @@ export function setupPerformanceIPC(win: BrowserWindow) {
         } else {
           'SSD'
         }
+
+        $op = if ($p) { [string]$p.OperationalStatus } else { [string]$d.OperationalStatus }
+        $hs = if ($p) { [string]$p.HealthStatus } else { [string]$d.HealthStatus }
+
         [PSCustomObject]@{
           number = $d.Number
-          FriendlyName = $d.FriendlyName
+          friendlyName = if ($p) { $p.FriendlyName } else { $d.FriendlyName }
           busType = [string]$d.BusType
-          MediaType = [string]$media
-          HealthStatus = [string]$d.HealthStatus
-          OperationalStatus = [string]$d.OperationalStatus
-          Size = $d.Size
+          mediaType = [string]$media
+          driveLetters = $letters
+          isSystemDisk = $isBoot
+          healthStatus = $hs
+          operationalStatus = $op
+          size = $d.Size
         }
       }
       $out | ConvertTo-Json -Compress
     `;
     try {
-      const res = await runPowerShell(script, { asJson: true, timeout: 6000 });
+      const res = await runPowerShell(script, { asJson: true, timeout: 8000 });
       let rawDisks = res.data || [];
       if (!Array.isArray(rawDisks)) rawDisks = rawDisks ? [rawDisks] : [];
 
       const disks = rawDisks.map((d: any) => {
-        const media = String(d.MediaType || 'SSD');
+        const media = String(d.mediaType || 'SSD');
         const bus = String(d.busType || '');
-        const sizeGB = d.Size ? Math.round(Number(d.Size) / (1024 * 1024 * 1024)) : 0;
-        const isHealthy = d.HealthStatus === 'Healthy' || d.OperationalStatus === 'OK' || d.OperationalStatus === 'Online';
+        const sizeGB = d.size ? Math.round(Number(d.size) / (1024 * 1024 * 1024)) : 0;
+        const isHealthy = d.healthStatus === 'Healthy' || d.operationalStatus === 'OK' || d.operationalStatus === 'Online';
         const diskNum = typeof d.number === 'number' ? d.number : 0;
+        const isSystem = Boolean(d.isSystemDisk);
+        const driveLetters = d.driveLetters ? String(d.driveLetters).trim() : '';
 
         let typeLabel = 'SSD SATA';
         if (bus === 'NVMe' || media.includes('NVMe')) typeLabel = 'SSD NVMe M.2';
@@ -484,16 +497,24 @@ export function setupPerformanceIPC(win: BrowserWindow) {
         else if (bus === 'USB') typeLabel = 'Disque Externe USB';
         else if (media === 'SSD') typeLabel = 'SSD Flash SATA';
 
+        let healthStatusText = isHealthy ? 'Sain (SMART Conforme)' : 'Attention requise';
+        if (bus === 'USB') {
+          healthStatusText = driveLetters ? `Externe (${driveLetters})` : 'Externe non alloué';
+        }
+
         return {
           diskNumber: diskNum,
-          model: `Disque ${diskNum} · ${d.FriendlyName}`,
-          FriendlyName: d.FriendlyName,
+          model: `Disque ${diskNum} · ${d.friendlyName || 'Stockage'}`,
+          FriendlyName: d.friendlyName,
           mediaType: typeLabel,
           MediaType: media,
           busType: bus,
+          driveLetters,
+          isSystemDisk: isSystem,
           health: isHealthy ? 'Sain (SMART OK)' : 'Attention',
-          HealthStatus: isHealthy ? 'Sain (100%)' : 'Attention requise',
-          status: d.OperationalStatus || 'OK',
+          HealthStatus: healthStatusText,
+          healthStatusText,
+          status: d.operationalStatus || 'OK',
           sizeGB,
         };
       });

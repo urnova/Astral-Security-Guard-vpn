@@ -330,9 +330,6 @@ export default function SecurityTab() {
                 {notice}
               </span>
             )}
-            <button className="btn btn-ghost" onClick={updateSigs}>
-              <RefreshCw size={14} /> Synchroniser les signatures
-            </button>
           </div>
         </div>
 
@@ -405,9 +402,9 @@ export default function SecurityTab() {
                           {threats}
                         </span>
                       ) : scanDone ? (
-                        <CheckCircle2 size={40} style={{ color: 'var(--ok)', display: 'block' }} />
+                        <CheckCircle2 size={44} style={{ color: 'var(--ok)', display: 'block' }} />
                       ) : (
-                        <ShieldCheck size={40} style={{ color: 'var(--a1)', display: 'block' }} />
+                        <Shield size={44} style={{ color: 'var(--a1)', display: 'block' }} />
                       )}
                     </div>
                     <div className="mut sm" style={{ fontSize: 11, marginTop: 4, fontWeight: 500 }}>
@@ -490,7 +487,7 @@ export default function SecurityTab() {
 
               {/* Status Display: Live log when scanning, Post-scan report when scanDone, Ready dashboard when idle */}
               {scanning ? (
-                <div className="log" ref={terminalRef} style={{ minHeight: 190, maxHeight: 220, overflowY: 'auto' }}>
+                <div className="log custom-scroll" ref={terminalRef} style={{ minHeight: 190, maxHeight: 220, overflowY: 'auto' }}>
                   {logs.map((l, i) => (
                     <div key={i} className={l.type || ''}>{l.text}</div>
                   ))}
@@ -588,11 +585,6 @@ export default function SecurityTab() {
                   }}
                 >
                   <span>{t}</span>
-                  {t === 'Boucliers' && (
-                    <span style={{ fontSize: 10, background: 'rgba(74,222,128,0.15)', color: '#4ade80', padding: '1px 6px', borderRadius: 8, fontWeight: 700 }}>
-                      {activeShields}/{totalShields}
-                    </span>
-                  )}
                   {t === 'Exclusions' && exclusions.length > 0 && (
                     <span style={{ fontSize: 10, background: 'rgba(255,255,255,0.06)', color: 'var(--text)', padding: '1px 6px', borderRadius: 8 }}>
                       {exclusions.length}
@@ -606,40 +598,41 @@ export default function SecurityTab() {
           {/* TAB 1: Boucliers */}
           {scanTab === 'Boucliers' && (
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, padding: '10px 14px', background: activeShields === totalShields ? 'rgba(74,222,128,0.06)' : 'rgba(251,191,36,0.06)', border: `1px solid ${activeShields === totalShields ? 'rgba(74,222,128,0.2)' : 'rgba(251,191,36,0.22)'}`, borderRadius: 'var(--r-sm)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: activeShields === totalShields ? '#4ade80' : '#facc15', display: 'inline-block' }} />
-                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
-                    {activeShields === totalShields ? 'Protection résidente maximale active' : `${activeShields}/${totalShields} modules de défense actifs`}
-                  </span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <div className="lbl" style={{ margin: 0, fontSize: 12.5 }}>
+                  Boucliers de défense résidente · Microsoft Defender & Heuristique locale
                 </div>
-                <span style={{ fontSize: 11, color: 'var(--dim)' }}>Pilotage temps réel Microsoft Defender & Heuristique</span>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                  {activeShields} sur {totalShields} modules actifs
+                </span>
               </div>
 
               <div className="grid g3" style={{ gap: 14 }}>
                 {SHIELDS.map(({ key, label, desc, icon }) => (
-                  <div key={key} style={{
+                  <div key={key} className="card card-p-sm" style={{
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: 12,
+                    justifyContent: 'space-between',
+                    minHeight: 135,
                     padding: 16,
-                    border: `1px solid ${shields[key] ? 'rgba(74,222,128,0.2)' : 'var(--line)'}`,
+                    background: 'rgba(255, 255, 255, 0.02)',
+                    border: '1px solid var(--line)',
                     borderRadius: 'var(--r-sm)',
-                    background: shields[key] ? 'rgba(74,222,128,0.03)' : 'transparent',
-                    transition: 'all 0.2s ease',
+                    transition: 'border-color 0.2s ease',
                   }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <span style={{ color: shields[key] ? 'var(--ok)' : 'var(--dim)' }} className="ico">{icon}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: shields[key] ? 'var(--a1)' : 'var(--muted)' }} className="ico">{icon}</span>
                       <Toggle checked={shields[key] ?? false} onChange={v => toggleShield(key, v)} />
                     </div>
-                    <div>
-                      <b style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{label}</b>
-                      <div className="mut sm" style={{ marginTop: 3 }}>{desc}</div>
+                    <div style={{ marginTop: 10 }}>
+                      <b style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{label}</b>
+                      <div className="mut sm" style={{ marginTop: 4, lineHeight: 1.45 }}>{desc}</div>
                     </div>
-                    <div>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: shields[key] ? '#4ade80' : '#64748b', letterSpacing: '0.04em' }}>
-                        {shields[key] ? '● ACTIF' : '○ SUSPENDU'}
+                    <div style={{ marginTop: 12, paddingTop: 8, borderTop: '1px solid rgba(255, 255, 255, 0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 600, color: shields[key] ? 'var(--ok)' : 'var(--muted)' }}>
+                        {shields[key] ? 'Actif' : 'Désactivé'}
                       </span>
+                      <span style={{ fontSize: 10, color: 'var(--dim)' }}>Protection résidente</span>
                     </div>
                   </div>
                 ))}

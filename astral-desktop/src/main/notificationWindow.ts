@@ -156,17 +156,16 @@ export function showAvastStyleToast({
             align-items: stretch;
             justify-content: stretch;
             height: 100vh;
-            padding: 0;
+            padding: 6px;
+            box-sizing: border-box;
             user-select: none;
           }
           .card {
             width: 100%;
             height: 100%;
-            background: rgba(15, 18, 25, 0.90);
-            backdrop-filter: blur(28px) saturate(190%);
-            -webkit-backdrop-filter: blur(28px) saturate(190%);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65), 0 0 24px ${accentColor}25, 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+            background: #0d1117;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.8), 0 0 18px ${accentColor}25;
             border-radius: 12px;
             padding: 13px 16px 11px;
             display: flex;
@@ -362,14 +361,24 @@ export function showAvastStyleDownloadScan({
             padding: 0;
             user-select: none;
           }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: transparent;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            padding: 6px;
+            box-sizing: border-box;
+            user-select: none;
+          }
           .card {
             width: 100%;
             height: 100%;
-            background: rgba(15, 18, 25, 0.90);
-            backdrop-filter: blur(28px) saturate(190%);
-            -webkit-backdrop-filter: blur(28px) saturate(190%);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65), 0 0 24px ${accentColor}25, 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+            background: #0d1117;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.8), 0 0 18px ${accentColor}25;
             border-radius: 12px;
             padding: 13px 16px 11px;
             position: relative;
