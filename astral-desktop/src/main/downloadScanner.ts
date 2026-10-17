@@ -13,7 +13,7 @@ import crypto from 'crypto';
 import cp from 'child_process';
 import { logger } from './logger';
 import { runPowerShell } from './psHelper';
-import { showAvastStyleDownloadScan } from './notificationWindow';
+import { showAvastStyleDownloadScan, showAvastStyleToast } from './notificationWindow';
 import {
   createScanSession,
   quarantineSessionFile,
@@ -28,6 +28,7 @@ export interface DownloadScannerConfig {
   showModalEvenIfSafe: boolean; // Default false (recommended)
   soundEnabled: boolean;
   usbScanEnabled: boolean;
+  discreteMode?: 'window' | 'mini' | 'notification';
 }
 
 export interface ScanResult {
@@ -142,6 +143,7 @@ function loadConfig(): DownloadScannerConfig {
     showModalEvenIfSafe: false, // Default recommended: non-intrusive
     soundEnabled: true,
     usbScanEnabled: true,
+    discreteMode: 'window',
   };
 
   try {
@@ -454,6 +456,9 @@ export async function scanSingleFile(filePath: string): Promise<ScanResult> {
   });
 }
 
+let recentScanCount = 0;
+let lastScanReset = Date.now();
+
 /**
  * Handles a newly created or renamed file event in a watched folder
  */
@@ -463,10 +468,33 @@ async function handleFileEvent(folderPath: string, filename: string) {
 
   const filePath = path.join(folderPath, filename);
   const ext = path.extname(filename).toLowerCase();
+  const lowerName = filename.toLowerCase();
 
-  // 1. Ignore temporary download chunks
-  if (TEMP_DOWNLOAD_EXTS.has(ext)) return;
-  if (filename.startsWith('.') || filename.startsWith('~') || filename.startsWith('Unconfirmed ')) return;
+  // 1. Ignore temporary download chunks and installer temp files
+  if (
+    TEMP_DOWNLOAD_EXTS.has(ext) ||
+    lowerName.startsWith('.') ||
+    lowerName.startsWith('~') ||
+    lowerName.startsWith('is-') || // Inno Setup
+    lowerName.startsWith('unconfirmed ') ||
+    lowerName.includes('.msi.tmp') ||
+    lowerName.includes('.nsis') ||
+    lowerName.endsWith('.tmp')
+  ) {
+    return;
+  }
+
+  // Rate limiter ceiling to avoid notification avalanches during installer extractions
+  const now = Date.now();
+  if (now - lastScanReset > 10000) {
+    recentScanCount = 0;
+    lastScanReset = now;
+  }
+  if (recentScanCount >= 6) {
+    logger.info(`[DownloadScanner] Plafond anti-avalanche atteint (${recentScanCount} scans/10s), fichier ignoré: ${filename}`);
+    return;
+  }
+  recentScanCount++;
 
   // 2. Ignore configured ignored extensions (.txt, .jpg, etc.)
   const ignored = currentConfig.ignoredExtensions.map((e) => e.toLowerCase().trim());
@@ -501,14 +529,18 @@ async function handleFileEvent(folderPath: string, filename: string) {
       return;
     }
 
-    // 5. Notify renderer of scan starting only if user wants real-time feedback for safe files
-    if (activeMainWindow && !activeMainWindow.isDestroyed() && currentConfig.showModalEvenIfSafe) {
-      activeMainWindow.webContents.send('download-scanner:scan-start', {
-        filePath,
-        fileName: filename,
-        sizeBytes: stat.size,
-        ext,
-      });
+    // 5. Open Avast-style scan window showing "Analyse en cours..." before execution
+    if (currentConfig.discreteMode !== 'notification') {
+      try {
+        showAvastStyleDownloadScan({
+          fileName: filename,
+          filePath,
+          status: 'scanning',
+          discreteMode: currentConfig.discreteMode || 'window',
+        });
+      } catch (err: any) {
+        logger.warn('[DownloadScanner] Error showing scanning popup:', err.message);
+      }
     }
 
     // 6. Execute targeted scan
@@ -517,24 +549,32 @@ async function handleFileEvent(folderPath: string, filename: string) {
     // Save in cache
     scannedCache.set(cacheKey, { result, timestamp: Date.now() });
 
-    // Show Avast-style desktop popup window immediately
-    try {
-      showAvastStyleDownloadScan({
-        fileName: filename,
-        filePath,
-        status: result.status === 'threat' ? 'threat' : result.status === 'suspect' ? 'suspect' : 'safe',
-        threatName: result.threatName,
-        isUnsigned: result.isUnsigned,
-      });
-    } catch (err: any) {
-      logger.warn('[DownloadScanner] Error showing Avast-style download popup:', err.message);
+    // Show Avast-style desktop popup window with final status (Fichier sain / Menace)
+    if (currentConfig.discreteMode === 'notification') {
+      if (result.status === 'threat' || result.status === 'suspect') {
+        showAvastStyleToast({
+          title: 'Menace téléchargement bloquée',
+          message: `Fichier malveillant neutralisé : ${result.threatName || filename}`,
+          type: 'threat',
+        });
+      }
+    } else {
+      try {
+        showAvastStyleDownloadScan({
+          fileName: filename,
+          filePath,
+          status: result.status === 'threat' ? 'threat' : result.status === 'suspect' ? 'suspect' : 'safe',
+          threatName: result.threatName,
+          isUnsigned: result.isUnsigned,
+          discreteMode: currentConfig.discreteMode || 'window',
+        });
+      } catch (err: any) {
+        logger.warn('[DownloadScanner] Error showing Avast-style download popup:', err.message);
+      }
     }
 
     // 7. Send scan result to renderer
     if (activeMainWindow && !activeMainWindow.isDestroyed()) {
-      // Determine if modal should be shown:
-      // - ALWAYS if threat or suspect
-      // - IF safe: only if showModalEvenIfSafe is enabled
       const shouldDisplayModal =
         result.status === 'threat' ||
         result.status === 'suspect' ||

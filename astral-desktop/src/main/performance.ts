@@ -277,9 +277,9 @@ export function setupPerformanceIPC(win: BrowserWindow) {
     }
   });
 
-  // ── Execute Real Disk Cleanup ─────────────────────────────────────────────
+  // ── Execute Real Disk Cleanup & Maintenance ────────────────────────────────
   ipcMain.handle('perf:disk-cleanup', async (_, payload?: any) => {
-    logger.info('Exécution du nettoyage réel des catégories sélectionnées...', payload);
+    logger.info('Exécution du nettoyage réel et optimisation SSD/RAM...', payload);
 
     const script = `
       Clear-RecycleBin -Force -ErrorAction SilentlyContinue
@@ -298,20 +298,34 @@ export function setupPerformanceIPC(win: BrowserWindow) {
         Remove-Item -Path "$env:LOCALAPPDATA\\D3DSCache\\*" -Recurse -Force -ErrorAction SilentlyContinue
       }
 
+      # SSD Trim / Volume optimization on drive C:
+      try {
+        Optimize-Volume -DriveLetter C -ReTrim -ErrorAction SilentlyContinue
+      } catch {}
+
+      # RAM working set optimization on background processes
+      try {
+        Add-Type -TypeDefinition @"
+          using System;
+          using System.Runtime.InteropServices;
+          public class VanguardMemTrim {
+            [DllImport("psapi.dll")]
+            public static extern int EmptyWorkingSet(IntPtr hwProc);
+          }
+"@ -ErrorAction SilentlyContinue
+        Get-Process | Where-Object { $_.MainWindowHandle -eq 0 -and $_.ProcessName -notmatch 'astral|vanguard|electron' } | ForEach-Object {
+          try { [VanguardMemTrim]::EmptyWorkingSet($_.Handle) } catch {}
+        }
+      } catch {}
+
       [PSCustomObject]@{ cleaned = $true } | ConvertTo-Json -Compress
     `;
 
-    const res = await runPowerShell(script, { asJson: true, timeout: 25000 });
-
-    win.webContents.send('notification:trigger', {
-      type: 'report',
-      title: 'Nettoyage Système Terminé',
-      message: 'Les fichiers temporaires, caches de mise à jour et la corbeille ont été vidés avec succès.',
-    });
+    const res = await runPowerShell(script, { asJson: true, timeout: 35000 });
 
     return {
       success: res.success,
-      freedDisplay: 'Espace disque nettoyé avec succès',
+      freedDisplay: 'Espace disque libéré & SSD optimisé',
     };
   });
 

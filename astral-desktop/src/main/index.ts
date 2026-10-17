@@ -44,13 +44,41 @@ const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 import { showAvastStyleToast } from './notificationWindow';
 
 // ── Avast-Style & Native Windows Notification Dispatcher ─────────────────────
-export function notifyUser(title: string, body: string, isCritical = false) {
+export function notifyUser(
+  title: string,
+  body: string,
+  options?: {
+    isCritical?: boolean;
+    type?: 'info' | 'threat' | 'gaming' | 'success' | 'network' | 'ping' | 'stability' | 'vpn' | 'performance' | 'security';
+    soundEnabled?: boolean;
+    volume?: number;
+  } | boolean
+) {
+  let isCritical = false;
+  let notifType: 'info' | 'threat' | 'gaming' | 'success' | 'network' | 'ping' | 'stability' | 'vpn' | 'performance' | 'security' = 'info';
+
+  if (typeof options === 'boolean') {
+    isCritical = options;
+    notifType = isCritical ? 'threat' : 'info';
+  } else if (options && typeof options === 'object') {
+    isCritical = Boolean(options.isCritical);
+    notifType = options.type || (isCritical ? 'threat' : 'info');
+  }
+
+  const prefs = loadPreferences();
+  if (prefs.notificationsEnabled === false) return;
+
+  const soundEnabled = prefs.soundEnabled ?? true;
+  const volume = typeof (prefs as any).soundVolume === 'number' ? (prefs as any).soundVolume / 100 : 0.8;
+
   let desktopToastShown = false;
   try {
     showAvastStyleToast({
       title,
       message: body,
-      type: isCritical ? 'threat' : 'info',
+      type: notifType,
+      soundEnabled,
+      volume,
       onClickFocus: () => {
         if (mainWin && !mainWin.isDestroyed()) {
           if (mainWin.isMinimized()) mainWin.restore();
@@ -64,10 +92,9 @@ export function notifyUser(title: string, body: string, isCritical = false) {
     logger.warn('[Notification] Error showing Avast-style popup, falling back:', err.message);
   }
 
-  // Fallback to in-app bottom toaster ONLY if desktop toast could not be shown
-  if (!desktopToastShown && mainWin && !mainWin.isDestroyed()) {
+  if (mainWin && !mainWin.isDestroyed()) {
     mainWin.webContents.send('notification:trigger', {
-      type: isCritical ? 'threat' : 'info',
+      type: notifType,
       title,
       message: body,
       critical: isCritical,
@@ -208,12 +235,24 @@ function setOverlayWin(w: BrowserWindow | null) {
   overlayWin = w;
 }
 
+let hudEnabled = false;
+
+function broadcastHudState() {
+  const payload = { active: hudEnabled, enabled: hudEnabled };
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send('hud:state-changed', payload);
+      win.webContents.send('overlay:state-changed', payload);
+    }
+  }
+}
+
 export function createOverlay() {
-  if (overlayWin) return;
+  if (overlayWin && !overlayWin.isDestroyed()) return;
   logger.info('[App] Creating gaming HUD overlay window...');
   overlayWin = new BrowserWindow({
-    width: 310,
-    height: 40,
+    width: 360,
+    height: 38,
     x: 32,
     y: 32,
     frame: false,
@@ -221,6 +260,7 @@ export function createOverlay() {
     backgroundColor: '#00000000',
     hasShadow: false,
     roundedCorners: false,
+    thickFrame: false,
     alwaysOnTop: true,
     skipTaskbar: true,
     focusable: false,
@@ -234,7 +274,7 @@ export function createOverlay() {
       allowRunningInsecureContent: false,
     },
   });
-  overlayWin.setIgnoreMouseEvents(false);
+  overlayWin.setIgnoreMouseEvents(true, { forward: true });
   overlayWin.setAlwaysOnTop(true, 'screen-saver');
 
   overlayWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -247,22 +287,27 @@ export function createOverlay() {
     overlayWin.loadFile(path.join(__dirname, '../../dist/index.html'), { hash: '/overlay' });
   }
 
-  mainWin?.webContents.send('hud:state-changed', { active: true });
+  hudEnabled = true;
+  broadcastHudState();
 
   overlayWin.on('closed', () => {
     overlayWin = null;
-    mainWin?.webContents.send('hud:state-changed', { active: false });
+    hudEnabled = false;
+    broadcastHudState();
   });
 }
 
 export function destroyOverlay() {
-  overlayWin?.close();
-  overlayWin = null;
-  mainWin?.webContents.send('hud:state-changed', { active: false });
+  if (overlayWin && !overlayWin.isDestroyed()) {
+    overlayWin.close();
+    overlayWin = null;
+  }
+  hudEnabled = false;
+  broadcastHudState();
 }
 
 export function toggleOverlay() {
-  if (overlayWin) {
+  if (overlayWin && !overlayWin.isDestroyed()) {
     destroyOverlay();
   } else {
     createOverlay();
@@ -602,10 +647,20 @@ ipcMain.handle('overlay:show', () => createOverlay());
 ipcMain.handle('overlay:hide', () => destroyOverlay());
 ipcMain.handle('overlay:toggle', () => toggleOverlay());
 ipcMain.handle('overlay:status', () => Boolean(overlayWin));
-ipcMain.handle('hud:get-state', () => Boolean(overlayWin));
+ipcMain.handle('hud:get-state', () => ({ active: hudEnabled, enabled: hudEnabled }));
 ipcMain.handle('hud:toggle', () => {
   toggleOverlay();
-  return Boolean(overlayWin);
+  return { active: hudEnabled, enabled: hudEnabled };
+});
+ipcMain.handle('hud:set-state', (_event, enabled: boolean) => {
+  if (enabled) createOverlay();
+  else destroyOverlay();
+  return { active: hudEnabled, enabled: hudEnabled };
+});
+ipcMain.on('overlay:set-ignore-mouse-events', (_event, ignore: boolean, options?: any) => {
+  try {
+    overlayWin?.setIgnoreMouseEvents(ignore, options);
+  } catch {}
 });
 ipcMain.handle('app:quit', () => {
   minimizeToTray = false;
@@ -672,13 +727,20 @@ ipcMain.handle('settings:set-minimize-tray', (_, enabled: boolean) => {
 
 
 // Native Notification IPC
-ipcMain.handle('notification:test', (_, { title, body }: { title: string; body: string }) => {
-  notifyUser(title || 'Vanguard Protection', body || 'Test de notification native Windows réussi.');
+ipcMain.handle('notification:test', (_, payload: any) => {
+  const title = payload?.title || 'Vanguard Protection';
+  const body = payload?.body || 'Test de notification réussi.';
+  const type = payload?.type || 'info';
+  notifyUser(title, body, { type });
   return { success: true };
 });
 
-ipcMain.handle('notification:send', (_, { title, body, critical }: { title: string; body: string; critical?: boolean }) => {
-  notifyUser(title, body, Boolean(critical));
+ipcMain.handle('notification:send', (_, payload: any) => {
+  const title = payload?.title || 'Vanguard Protection';
+  const body = payload?.body || '';
+  const critical = Boolean(payload?.critical);
+  const type = payload?.type || (critical ? 'threat' : 'info');
+  notifyUser(title, body, { isCritical: critical, type });
   return { success: true };
 });
 

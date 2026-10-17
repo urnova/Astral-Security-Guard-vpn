@@ -133,7 +133,7 @@ export default function SettingsTab({
   const [betaChannel, setBetaChannel]       = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateStatus, setUpdateStatus]     = useState('');
-  const [currentVersion, setCurrentVersion] = useState('2.5.11');
+  const [currentVersion, setCurrentVersion] = useState('2.5.12');
   const [updateInfo, setUpdateInfo]         = useState<{ version?: string; hasUpdate?: boolean } | null>(null);
 
   const playTestNotificationSound = () => {
@@ -214,6 +214,21 @@ export default function SettingsTab({
     api.getAdminStatus?.().then((res: any) => {
       if (typeof res?.isAdmin === 'boolean') setIsAdmin(res.isAdmin);
     }).catch(() => {});
+
+    // Sync HUD state from main process
+    api.hudGetState?.().then((res: any) => {
+      if (typeof res?.active === 'boolean') setHudEnabled(res.active);
+      else if (typeof res === 'boolean') setHudEnabled(res);
+    }).catch(() => {});
+
+    const unHud = api.on?.('hud:state-changed', (d: any) => {
+      if (typeof d?.active === 'boolean') setHudEnabled(d.active);
+      else if (typeof d?.enabled === 'boolean') setHudEnabled(d.enabled);
+    });
+
+    return () => {
+      unHud?.();
+    };
   }, []);
 
   const handleSaveProfile = async () => {
@@ -255,14 +270,14 @@ export default function SettingsTab({
     showToast(val ? 'Animations réduites' : 'Animations standard rétablies');
   };
 
-  const handleToggleOverlay = async (val: boolean) => {
-    setHudEnabled(val);
-    if (val) {
-      api?.overlayShow?.();
-      showToast('Overlay HUD affiché en jeu (Ctrl+Shift+O)');
-    } else {
-      api?.overlayHide?.();
-      showToast('Overlay HUD masqué');
+  const handleToggleOverlay = async () => {
+    try {
+      const res = await api?.hudToggle?.();
+      const active = Boolean(res?.active ?? res?.enabled);
+      setHudEnabled(active);
+      showToast(active ? 'Overlay HUD affiché en jeu (Ctrl+Shift+O)' : 'Overlay HUD masqué');
+    } catch {
+      showToast('Action HUD exécutée');
     }
   };
 
@@ -702,7 +717,7 @@ export default function SettingsTab({
                   </div>
                   <div
                     className={`sw ${hudEnabled ? 'on' : ''}`}
-                    onClick={() => handleToggleOverlay(!hudEnabled)}
+                    onClick={handleToggleOverlay}
                     role="switch"
                     aria-checked={hudEnabled}
                     tabIndex={0}
@@ -1036,11 +1051,28 @@ export default function SettingsTab({
                     <Zap size={16} style={{ color: updateInfo?.hasUpdate ? 'var(--a1)' : 'var(--muted)' }} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-                      Astral Vanguard v{currentVersion}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                        Astral Vanguard v{currentVersion}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 9.5,
+                          fontWeight: 700,
+                          letterSpacing: '0.06em',
+                          color: '#38bdf8',
+                          background: 'rgba(56, 189, 248, 0.12)',
+                          border: '1px solid rgba(56, 189, 248, 0.35)',
+                          padding: '1px 6px',
+                          borderRadius: '4px',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        Bêta pré-release
+                      </span>
                     </div>
                     <div style={{ fontSize: 11, color: updateInfo?.hasUpdate ? 'var(--a1)' : 'var(--muted)', marginTop: 2 }}>
-                      {updateStatus || (betaChannel ? '🧪 Canal Préversion actif' : 'Canal stable officiel')}
+                      {updateStatus || (betaChannel ? '🧪 Canal Préversion actif' : 'Canal officiel pré-release')}
                     </div>
                   </div>
                 </div>

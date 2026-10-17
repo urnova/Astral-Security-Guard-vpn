@@ -252,6 +252,11 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
 
   const runMaintenance = async () => {
     if (!api || maintaining) return;
+    if (gamingActive) {
+      setNotice('Maintenance différée : un jeu ou une session haute performance est actuellement en cours.');
+      setTimeout(() => setNotice(''), 4000);
+      return;
+    }
     setMaintaining(true);
     setCleanProgress(15);
     setCleanMsg('Initialisation du moteur de maintenance…');

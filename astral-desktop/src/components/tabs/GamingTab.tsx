@@ -259,10 +259,15 @@ export default function GamingTab({
       });
     });
 
+    api.hudGetState?.().then((res: any) => {
+      if (typeof res?.active === 'boolean') setHudEnabled(res.active);
+      else if (typeof res === 'boolean') setHudEnabled(res);
+    }).catch(() => {});
+
     const c4 = api.on?.('hud:state-changed', (d: any) => {
-      if (typeof d?.visible === 'boolean') {
-        setHudEnabled(d.visible);
-      }
+      if (typeof d?.active === 'boolean') setHudEnabled(d.active);
+      else if (typeof d?.enabled === 'boolean') setHudEnabled(d.enabled);
+      else if (typeof d?.visible === 'boolean') setHudEnabled(d.visible);
     });
 
     const autoRescanInterval = setInterval(() => {
@@ -380,8 +385,8 @@ export default function GamingTab({
         {/* ── Header ── */}
         <div className="page-header">
           <div>
-            <h1>Jeux & Optimisation Matérielle</h1>
-            <p className="sub">Moteur de session réversible, bibliothèque unifiée multi-disques et surveillance matérielle en temps réel.</p>
+            <h1>Performance & E-Sport</h1>
+            <p className="sub">Optimisation des ressources système, profils de session réversibles et bibliothèque de jeux.</p>
           </div>
           <span className={`chip${gamingActive ? '' : ' idle'}`}>
             <span className="dot" />
@@ -564,7 +569,7 @@ export default function GamingTab({
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 10 }}>
                 <span style={{ fontSize: 11, color: 'var(--muted)' }}>Raccourci : <b>Ctrl+Shift+O</b></span>
-                <Toggle id="hud-toggle" checked={hudEnabled} onChange={v => { setHudEnabled(v); toggleSetting('hudEnabled', v); api?.overlayToggle?.(v); }} />
+                <Toggle id="hud-toggle" checked={hudEnabled} onChange={() => api?.hudToggle?.()} />
               </div>
             </div>
 
@@ -753,7 +758,7 @@ export default function GamingTab({
                     <div style={{
                       position: 'relative',
                       width: '100%',
-                      height: 115,
+                      height: 135,
                       overflow: 'hidden',
                       background: game.bannerUrl ? '#070a10' : `linear-gradient(135deg, ${game.color1}, ${game.color2})`,
                     }}>
@@ -783,19 +788,19 @@ export default function GamingTab({
                         </div>
                       )}
 
-                      {/* Subtle Dark Gradient at bottom of artwork */}
+                      {/* Soft dark gradient at bottom of artwork */}
                       <div style={{
                         position: 'absolute',
                         inset: 0,
-                        background: 'linear-gradient(to top, #0d111a 0%, rgba(13,17,26,0.2) 60%, rgba(0,0,0,0.4) 100%)',
+                        background: 'linear-gradient(to top, rgba(13,17,26,0.95) 0%, rgba(13,17,26,0.15) 50%, rgba(0,0,0,0.3) 100%)',
                       }} />
 
                       {/* Badges on top of artwork */}
                       <div style={{
                         position: 'absolute',
-                        top: 8,
-                        left: 8,
-                        right: 8,
+                        top: 10,
+                        left: 10,
+                        right: 10,
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
@@ -803,9 +808,9 @@ export default function GamingTab({
                         <span style={{
                           fontSize: 10,
                           fontWeight: 700,
-                          padding: '2px 7px',
+                          padding: '3px 8px',
                           borderRadius: 6,
-                          background: 'rgba(0,0,0,0.85)',
+                          background: 'rgba(0,0,0,0.8)',
                           border: '1px solid rgba(255,255,255,0.15)',
                           color: '#ffffff',
                           display: 'inline-flex',
@@ -819,7 +824,7 @@ export default function GamingTab({
                         <span style={{
                           fontSize: 9.5,
                           fontWeight: 700,
-                          padding: '2px 7px',
+                          padding: '3px 8px',
                           borderRadius: 6,
                           background: `${PROFILE_META[assignedProfile].color}25`,
                           border: `1px solid ${PROFILE_META[assignedProfile].color}50`,
@@ -832,12 +837,12 @@ export default function GamingTab({
 
                     {/* Content below artwork */}
                     <div style={{
-                      padding: '12px 14px 14px',
+                      padding: '14px 16px 16px',
                       display: 'flex',
                       flexDirection: 'column',
                       flex: 1,
                       justifyContent: 'space-between',
-                      gap: 10,
+                      gap: 12,
                     }}>
                       <div>
                         {/* Title */}
@@ -850,6 +855,7 @@ export default function GamingTab({
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             color: '#ffffff',
+                            marginBottom: 2,
                           }}
                           title={game.name}
                         >
@@ -858,7 +864,7 @@ export default function GamingTab({
                       </div>
 
                       {/* Bottom Controls Area */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {/* Action buttons: Lancer & Désinstaller */}
                         <div style={{ display: 'flex', gap: 8 }}>
                           <button
@@ -866,7 +872,7 @@ export default function GamingTab({
                             onClick={() => handleLaunchGame(game)}
                             style={{
                               flex: 2,
-                              padding: '7px 12px',
+                              padding: '8px 14px',
                               fontSize: 12,
                               fontWeight: 700,
                               display: 'flex',
@@ -877,6 +883,7 @@ export default function GamingTab({
                               color: '#0b0f17',
                               borderRadius: 6,
                               cursor: 'pointer',
+                              border: 'none',
                             }}
                           >
                             <Play size={13} fill="#0b0f17" />
@@ -889,7 +896,7 @@ export default function GamingTab({
                             title="Désinstaller ce jeu"
                             style={{
                               flex: 1,
-                              padding: '7px 10px',
+                              padding: '8px 10px',
                               fontSize: 11,
                               display: 'flex',
                               alignItems: 'center',
@@ -897,6 +904,7 @@ export default function GamingTab({
                               gap: 5,
                               borderRadius: 6,
                               color: 'rgba(255,255,255,0.7)',
+                              border: '1px solid rgba(255,255,255,0.12)',
                               cursor: 'pointer',
                             }}
                           >
@@ -911,16 +919,16 @@ export default function GamingTab({
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            padding: '3px 8px',
-                            background: 'rgba(0,0,0,0.5)',
+                            padding: '4px 10px',
+                            background: 'rgba(0,0,0,0.35)',
                             borderRadius: 6,
                             border: '1px solid rgba(255,255,255,0.06)',
                           }}
                         >
-                          <span style={{ fontSize: 10, color: isOpt ? 'var(--a1)' : 'var(--muted)', fontWeight: 600 }}>
+                          <span style={{ fontSize: 10.5, color: isOpt ? 'var(--a1)' : 'var(--muted)', fontWeight: 600 }}>
                             {isOpt ? 'Optimisation active' : 'Par défaut Windows'}
                           </span>
-                          <label className="toggle" style={{ transform: 'scale(0.7)', transformOrigin: 'right center', margin: 0 }}>
+                          <label className="toggle" style={{ transform: 'scale(0.72)', transformOrigin: 'right center', margin: 0 }}>
                             <input
                               type="checkbox"
                               checked={isOpt}
@@ -935,8 +943,8 @@ export default function GamingTab({
                         <div
                           style={{
                             display: 'flex',
-                            gap: 4,
-                            opacity: isOpt ? 1 : 0.4,
+                            gap: 5,
+                            opacity: isOpt ? 1 : 0.35,
                             pointerEvents: isOpt ? 'auto' : 'none',
                           }}
                         >
@@ -949,12 +957,12 @@ export default function GamingTab({
                                 title={PROFILE_META[p].desc}
                                 style={{
                                   flex: 1,
-                                  fontSize: 9.5,
+                                  fontSize: 10,
                                   fontWeight: 700,
-                                  padding: '4px 2px',
+                                  padding: '5px 2px',
                                   borderRadius: 5,
                                   border: `1px solid ${isCurrent ? PROFILE_META[p].color : 'rgba(255,255,255,0.1)'}`,
-                                  background: isCurrent ? `${PROFILE_META[p].color}26` : 'rgba(0,0,0,0.5)',
+                                  background: isCurrent ? `${PROFILE_META[p].color}26` : 'rgba(0,0,0,0.4)',
                                   color: isCurrent ? PROFILE_META[p].color : 'rgba(255,255,255,0.6)',
                                   cursor: 'pointer',
                                   textAlign: 'center',

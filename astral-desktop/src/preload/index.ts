@@ -14,6 +14,7 @@ const ALLOWED_EVENT_CHANNELS = new Set([
   'network:event',
   'network:issue',
   'vpn-event',
+  'vpn:state-changed',
   'vpn:quick-connect',
   'vpn:quick-disconnect',
   'action:trigger-scan',
@@ -29,6 +30,9 @@ const ALLOWED_EVENT_CHANNELS = new Set([
   'doctor:ping-update',
   'doctor:status',
   'overlay:metrics',
+  'overlay:state-changed',
+  'overlay:toggle',
+  'hud:state-changed',
   'profile:updated',
   'theme:changed',
 ]);
@@ -195,6 +199,10 @@ const api = {
   overlayShow: () => ipcRenderer.invoke('overlay:show'),
   overlayHide: () => ipcRenderer.invoke('overlay:hide'),
   getOverlayStatus: () => ipcRenderer.invoke('overlay:status'),
+  hudToggle: () => ipcRenderer.invoke('hud:toggle'),
+  hudGetState: () => ipcRenderer.invoke('hud:get-state'),
+  hudSetState: (enabled: boolean) => ipcRenderer.invoke('hud:set-state', enabled),
+  setIgnoreMouseEvents: (ignore: boolean, options?: any) => ipcRenderer.send('overlay:set-ignore-mouse-events', ignore, options),
   // New gaming settings handlers
   getGamingSettings: () => ipcRenderer.invoke('gaming:get-settings'),
   setGamingMode: (payload: { enabled: boolean; profile?: string }) => ipcRenderer.invoke('gaming:set-mode', payload),
@@ -231,8 +239,10 @@ const api = {
   saveUserProfile: (profile: { firstName: string; lastName: string }) => ipcRenderer.invoke('profile:save', profile),
 
   // Notifications
-  testNotification: (title?: string, body?: string) => ipcRenderer.invoke('notification:test', { title, body }),
-  sendNotification: (options: { title: string; body: string; critical?: boolean }) => ipcRenderer.invoke('notification:send', options),
+  testNotification: (payload?: any) =>
+    ipcRenderer.invoke('notification:test', typeof payload === 'string' ? { title: payload } : payload),
+  sendNotification: (options: { title: string; body: string; critical?: boolean; type?: string }) =>
+    ipcRenderer.invoke('notification:send', options),
 
   // Hardened Event Listeners with Strict Whitelist
   on: (channel: string, fn: (...args: any[]) => void) => {

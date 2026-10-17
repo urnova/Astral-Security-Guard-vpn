@@ -376,7 +376,7 @@ export function setupVpnIPC(win: BrowserWindow, onTrayUpdate?: (opts: { vpnConne
     return { success: true, config: autoFailoverConfig };
   });
 
-  let currentVpnProtocol = 'WireGuard';
+  let currentVpnProtocol = 'OpenVPN';
 
   ipcMain.handle('vpn:get-protocol', () => {
     return { success: true, protocol: currentVpnProtocol };

@@ -169,19 +169,37 @@ class CommunityVpnEngine {
   }
 
   /**
-   * Télécharge les données CSV de l'API publique VPN Gate
+   * Télécharge les données CSV de l'API publique VPN Gate avec miroir de secours GitHub
    */
-  private downloadVpnGateCsv(): Promise<string> {
+  private async downloadVpnGateCsv(): Promise<string> {
+    try {
+      return await this.fetchHttp('http://www.vpngate.net/api/iphone/');
+    } catch (primaryErr: any) {
+      logger.warn('[VPN] Échec source primaire VPN Gate, tentative sur miroir GitHub...', primaryErr?.message);
+      try {
+        return await this.fetchHttp('https://raw.githubusercontent.com/GeorgeXie2333/vpngate-list-mirror/master/vpngate.csv');
+      } catch (mirrorErr: any) {
+        throw new Error(`Toutes les sources de catalogue VPN ont échoué : ${mirrorErr.message}`);
+      }
+    }
+  }
+
+  private fetchHttp(targetUrl: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      const url = 'http://www.vpngate.net/api/iphone/';
-      const req = http.get(url, { timeout: 10000 }, (res) => {
+      const client = targetUrl.startsWith('https') ? https : http;
+      const req = client.get(targetUrl, { timeout: 12000 }, (res) => {
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          // Redirection
-          http.get(res.headers.location, { timeout: 10000 }, (redirectRes) => {
+          const redirectClient = res.headers.location.startsWith('https') ? https : http;
+          redirectClient.get(res.headers.location, { timeout: 12000 }, (redRes) => {
             let data = '';
-            redirectRes.on('data', (c) => (data += c));
-            redirectRes.on('end', () => resolve(data));
+            redRes.on('data', (c) => (data += c));
+            redRes.on('end', () => resolve(data));
           }).on('error', reject);
+          return;
+        }
+
+        if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+          reject(new Error(`Code réponse HTTP ${res.statusCode}`));
           return;
         }
 
@@ -192,7 +210,7 @@ class CommunityVpnEngine {
 
       req.on('timeout', () => {
         req.destroy();
-        reject(new Error('Délai d\'attente dépassé lors de la requête VPN Gate API (10s).'));
+        reject(new Error(`Délai d'attente dépassé (12s) vers ${targetUrl}`));
       });
 
       req.on('error', reject);

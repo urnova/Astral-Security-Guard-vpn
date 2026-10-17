@@ -4,6 +4,7 @@ import {
   Globe, Folder, Plus, CheckCircle2, AlertTriangle, X, Sparkles,
   Zap, ShieldAlert, ShieldCheck, Trash2, Edit2, RotateCw
 } from 'lucide-react';
+import SlideDrawer from '../common/SlideDrawer';
 
 const api = (window as any).vanguard;
 
@@ -784,58 +785,44 @@ export default function SecurityTab() {
           )}
         </div>
 
-        {/* Confirmation Modal: Remediation IA */}
-        {showRemediationModal && (
-          <div style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 10000,
-            background: 'rgba(0,0,0,0.75)',
-            backdropFilter: 'blur(6px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}>
-            <div style={{
-              maxWidth: 480,
-              width: '100%',
-              background: '#181b20',
-              border: '1px solid rgba(239, 68, 68, 0.4)',
-              borderRadius: 'var(--r-md)',
-              padding: 24,
-              boxShadow: '0 20px 40px rgba(0,0,0,0.8)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-                <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(239,68,68,0.15)', display: 'grid', placeItems: 'center', color: '#ef4444' }}>
-                  <ShieldAlert size={20} />
-                </div>
-                <div>
-                  <b style={{ fontSize: 14, color: '#fff' }}>Confirmation de remédiation sécurisée</b>
-                  <small style={{ color: 'var(--muted)', display: 'block' }}>Validation requise avant neutralisation</small>
-                </div>
+        {/* Panneau latéral de confirmation de remédiation */}
+        <SlideDrawer
+          isOpen={showRemediationModal}
+          onClose={() => !remediating && setShowRemediationModal(false)}
+          title="Remédiation sécurisée"
+          subtitle="Validation avant neutralisation des éléments suspects"
+          width={460}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(239,68,68,0.15)', display: 'grid', placeItems: 'center', color: '#ef4444' }}>
+                <ShieldAlert size={20} />
               </div>
-
-              <p style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.6, marginBottom: 14 }}>
-                Le moteur IA va neutraliser et placer en quarantaine chiffrée les {threats} composant(s) suspect(s) identifié(s).
-                Une <strong>analyse de vérification post-remédiation</strong> sera automatiquement lancée ensuite pour certifier la propreté absolue de votre système.
-              </p>
-
-              <div style={{ padding: '10px 14px', background: 'rgba(0,0,0,0.3)', borderRadius: 6, fontSize: 11, color: 'var(--dim)', marginBottom: 18, border: '1px solid var(--line)' }}>
-                ℹ Les fichiers originaux sont sauvegardés dans le coffre-fort isolé d'Astral et peuvent être restaurés en cas de faux positif avéré.
-              </div>
-
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                <button className="btn btn-ghost btn-sm" onClick={() => setShowRemediationModal(false)} disabled={remediating}>
-                  Annuler
-                </button>
-                <button className="btn btn-sm" style={{ background: '#ef4444', borderColor: '#ef4444' }} onClick={executeRemediation} disabled={remediating}>
-                  {remediating ? <><span className="spinner spinner-sm" /> Remédiation en cours…</> : <><Sparkles size={14} /> Neutraliser les menaces</>}
-                </button>
+              <div>
+                <b style={{ fontSize: 14, color: '#fff' }}>Traitement des menaces identifiées</b>
+                <small style={{ color: 'var(--muted)', display: 'block' }}>{threats} composant(s) suspect(s)</small>
               </div>
             </div>
+
+            <p style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.6, margin: 0 }}>
+              Le moteur de sécurité va neutraliser et placer en quarantaine chiffrée les composants suspects identifiés.
+              Une <strong>analyse de vérification post-remédiation</strong> sera automatiquement lancée ensuite pour certifier la propreté de votre système.
+            </p>
+
+            <div style={{ padding: '10px 14px', background: 'rgba(0,0,0,0.3)', borderRadius: 6, fontSize: 11, color: 'var(--dim)', border: '1px solid var(--line)' }}>
+              ℹ Les fichiers originaux sont sauvegardés dans le coffre-fort isolé d'Astral et peuvent être restaurés en cas de faux positif.
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 12 }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowRemediationModal(false)} disabled={remediating}>
+                Annuler
+              </button>
+              <button className="btn btn-sm" style={{ background: '#ef4444', borderColor: '#ef4444' }} onClick={executeRemediation} disabled={remediating}>
+                {remediating ? <><span className="spinner spinner-sm" /> Remédiation en cours…</> : <><Sparkles size={14} /> Neutraliser les menaces</>}
+              </button>
+            </div>
           </div>
-        )}
+        </SlideDrawer>
       </div>
     </div>
   );

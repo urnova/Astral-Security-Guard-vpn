@@ -263,31 +263,11 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
       <div className="page">
 
         {/* ── Page Header ── */}
-        <div className="page-header" style={{ alignItems: 'center' }}>
+        <div className="page-header" style={{ marginBottom: 18 }}>
           <div>
             <h1>Réseau & Bande Passante</h1>
-            <p className="sub">Diagnostic en temps réel, benchmark de débit multi-flux et calibration de la pile TCP/IP.</p>
+            <p className="sub">Diagnostic en temps réel, test de débit multi-flux et calibration de la pile TCP/IP.</p>
           </div>
-          <button
-            className="btn btn-outline"
-            onClick={() => setShowAccelDrawer(true)}
-            style={{
-              padding: '9px 18px',
-              fontSize: 12.5,
-              fontWeight: 700,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              borderColor: 'rgba(56,189,248,0.4)',
-              color: '#38bdf8',
-              background: 'rgba(56,189,248,0.08)',
-              borderRadius: 8,
-              cursor: 'pointer',
-            }}
-          >
-            <Zap size={15} />
-            <span>Centre d'Accélération</span>
-          </button>
         </div>
 
         {/* ── Notice Messages ── */}
@@ -488,9 +468,18 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
               </div>
             </div>
 
-            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 10, fontSize: 11, color: 'var(--muted)' }}>
-              <span>Serveur actuel : </span>
-              <b style={{ color: '#ffffff' }}>{netInfo?.dns || 'Google Public DNS'}</b>
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12, marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                <span>Actuel : </span>
+                <b style={{ color: '#ffffff' }}>{netInfo?.dns || selectedDns}</b>
+              </div>
+              <button
+                className="btn btn-sm"
+                onClick={() => applyDns('custom', selectedDns)}
+                style={{ fontSize: 11, padding: '5px 14px', background: 'var(--a1)', color: '#090d16', border: 'none', fontWeight: 700, borderRadius: 6, cursor: 'pointer' }}
+              >
+                Appliquer ce DNS
+              </button>
             </div>
           </div>
 
@@ -553,13 +542,13 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
               gap: 10,
             }}>
               <div>
-                <b style={{ fontSize: 12, color: '#f1f5f9' }}>Calibrage global TCP/IP</b>
-                <p style={{ fontSize: 11, color: 'var(--muted)', margin: '2px 0 0' }}>Flush DNS, autotuning et répartition RSS.</p>
+                <b style={{ fontSize: 12, color: '#f1f5f9' }}>Centre d'Accélération Réseau & Anti-Latence</b>
+                <p style={{ fontSize: 11, color: 'var(--muted)', margin: '2px 0 0' }}>Flush DNS, autotuning TCP et calibration ping.</p>
               </div>
               <button
                 className="btn btn-sm"
                 onClick={() => setShowAccelDrawer(true)}
-                style={{ fontSize: 11, padding: '5px 12px', background: '#38bdf8', color: '#090d16', border: 'none', fontWeight: 700, cursor: 'pointer' }}
+                style={{ fontSize: 11, padding: '6px 14px', background: '#38bdf8', color: '#090d16', border: 'none', fontWeight: 700, borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}
               >
                 Ouvrir
               </button>

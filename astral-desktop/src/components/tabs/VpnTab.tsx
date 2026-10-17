@@ -23,79 +23,50 @@ interface Country {
   nodes: VpnNode[];
 }
 
-const COUNTRIES: Country[] = [
+const DEFAULT_INITIAL_COUNTRIES: Country[] = [
   {
     cc: 'FR',
     name: 'France',
-    latency: 11,
-    badge: 'Recommandé France & Streaming',
+    latency: 14,
+    badge: 'Recommandé · France',
     nodes: [
-      { name: 'Paris · Core Alpha #1', speed: '940 Mbps', badge: 'Meilleur ping', protocolBadge: 'WireGuard', ip: '185.125.190.42', virtualIp: '10.8.0.2' },
-      { name: 'Marseille · Edge Route #2', speed: '880 Mbps', badge: 'Streaming HD', protocolBadge: 'WireGuard', ip: '185.125.190.95', virtualIp: '10.8.0.6' },
+      { name: 'France · Relais OpenVPN #1', speed: '940 Mbps', badge: 'Meilleur ping', protocolBadge: 'OpenVPN', ip: '185.125.190.42', virtualIp: '10.8.0.2' },
     ],
   },
   {
     cc: 'DE',
     name: 'Allemagne',
-    latency: 15,
-    badge: 'Meilleur ping Gaming Europe',
+    latency: 18,
+    badge: 'Ultra-rapide Europe',
     nodes: [
-      { name: 'Francfort · DE-CIX Ultra', speed: '980 Mbps', badge: 'Latence ultra-basse', protocolBadge: 'WireGuard', ip: '194.26.29.11', virtualIp: '10.8.1.4' },
-      { name: 'Berlin · Safe Relay', speed: '860 Mbps', badge: 'Anonymat', protocolBadge: 'OpenVPN', ip: '194.26.29.80', virtualIp: '10.8.1.18' },
+      { name: 'Allemagne · Relais OpenVPN #1', speed: '910 Mbps', badge: 'Latence basse', protocolBadge: 'OpenVPN', ip: '194.26.29.11', virtualIp: '10.8.1.4' },
     ],
   },
   {
     cc: 'NL',
     name: 'Pays-Bas',
-    latency: 17,
-    badge: 'Géo-restrictions & P2P',
+    latency: 21,
+    badge: 'P2P autorisé',
     nodes: [
-      { name: 'Amsterdam · AMS-IX Gigabit', speed: '950 Mbps', badge: 'P2P autorisé', protocolBadge: 'WireGuard', ip: '45.138.97.20', virtualIp: '10.8.2.10' },
+      { name: 'Pays-Bas · Relais OpenVPN #1', speed: '880 Mbps', badge: 'Haut débit', protocolBadge: 'OpenVPN', ip: '45.138.97.20', virtualIp: '10.8.2.10' },
     ],
   },
   {
     cc: 'CH',
     name: 'Suisse',
-    latency: 22,
-    badge: 'Confidentialité maximale',
-    nodes: [
-      { name: 'Zurich · Bunker Privacy', speed: '820 Mbps', badge: 'Zéro-Log strict', protocolBadge: 'WireGuard', ip: '179.43.142.15', virtualIp: '10.8.3.5' },
-    ],
-  },
-  {
-    cc: 'GB',
-    name: 'Royaume-Uni',
     latency: 24,
-    badge: 'Streaming BBC',
+    badge: 'Confidentialité',
     nodes: [
-      { name: 'Londres · LINX FastNode', speed: '890 Mbps', badge: 'Streaming UK', protocolBadge: 'WireGuard', ip: '185.220.101.5', virtualIp: '10.8.4.12' },
-    ],
-  },
-  {
-    cc: 'SE',
-    name: 'Suède',
-    latency: 31,
-    nodes: [
-      { name: 'Stockholm · Nordic Shield', speed: '840 Mbps', protocolBadge: 'WireGuard', ip: '193.180.117.8', virtualIp: '10.8.5.2' },
-    ],
-  },
-  {
-    cc: 'US',
-    name: 'États-Unis',
-    latency: 86,
-    badge: 'Contenu exclusif US & Netflix',
-    nodes: [
-      { name: 'New York · NYIIX Core', speed: '780 Mbps', badge: 'Catalogue US', protocolBadge: 'WireGuard', ip: '198.54.130.4', virtualIp: '10.8.6.20' },
-      { name: 'Los Angeles · Pacific West', speed: '710 Mbps', badge: 'Streaming 4K', protocolBadge: 'WireGuard', ip: '198.54.135.18', virtualIp: '10.8.6.35' },
+      { name: 'Suisse · Relais OpenVPN #1', speed: '820 Mbps', badge: 'Sécurisé', protocolBadge: 'OpenVPN', ip: '179.43.142.15', virtualIp: '10.8.3.5' },
     ],
   },
   {
     cc: 'JP',
-    name: 'Japon',
-    latency: 142,
-    badge: 'Gaming Asie & Anime',
+    name: 'Japon (VPN Gate)',
+    latency: 135,
+    badge: 'VPN Gate Asie',
     nodes: [
-      { name: 'Tokyo · Shibuya Express', speed: '620 Mbps', badge: 'Serveurs Asie', protocolBadge: 'WireGuard', ip: '103.149.162.2', virtualIp: '10.8.7.8' },
+      { name: 'Japon · Tsukuba University', speed: '620 Mbps', badge: 'VPN Gate', protocolBadge: 'OpenVPN', ip: '103.149.162.2', virtualIp: '10.8.7.8' },
     ],
   },
 ];
@@ -227,66 +198,100 @@ function CountryRow({
 export default function VpnTab() {
   const [connected, setConnected]         = useState(false);
   const [connecting, setConnecting]       = useState(false);
-  const [selectedNode, setSelectedNode]   = useState('Paris · Core Alpha #1');
-  const [selectedNodeData, setSelectedNodeData] = useState<VpnNode>(COUNTRIES[0].nodes[0]);
-  const [proto, setProto]                 = useState<'WireGuard' | 'OpenVPN'>('WireGuard');
+  const [countries, setCountries]         = useState<Country[]>(DEFAULT_INITIAL_COUNTRIES);
+  const [selectedNode, setSelectedNode]   = useState('France · Relais OpenVPN #1');
+  const [selectedNodeData, setSelectedNodeData] = useState<VpnNode>(DEFAULT_INITIAL_COUNTRIES[0].nodes[0]);
+  const [realPublicIp, setRealPublicIp]   = useState('');
   const [killSwitch, setKillSwitch]       = useState(true);
   const [autoFailover, setAutoFailover]   = useState(true);
   const [failoverThreshold, setFailoverThreshold] = useState(85);
   const [connectedSince, setConnectedSince] = useState<Date | null>(null);
   const [elapsed, setElapsed]             = useState('00:00');
-  const [downBytes, setDownBytes]         = useState<number>(48200000);
-  const [upBytes, setUpBytes]             = useState<number>(14200000);
+  const [downBytes, setDownBytes]         = useState<number>(0);
+  const [upBytes, setUpBytes]             = useState<number>(0);
   const [query, setQuery]                 = useState('');
   const [error, setError]                 = useState('');
   const [openCountry, setOpenCountry]     = useState<string | null>('FR');
   const [categoryFilter, setCategoryFilter] = useState<'Tous' | 'Streaming' | 'Gaming' | 'P2P'>('Tous');
 
-  // Dynamic country badge computation based on lowest ping
-  const dynamicCountries: Country[] = COUNTRIES.map((c, idx, arr) => {
-    const minPing = Math.min(...arr.map(x => x.latency));
-    let badge = c.badge;
-    if (c.latency === minPing) {
-      badge = 'Meilleur ping Gaming Europe';
-    } else if (c.latency < 20) {
-      badge = 'Ultra-rapide · Streaming';
-    } else if (c.cc === 'CH') {
-      badge = 'Confidentialité maximale';
-    } else if (c.cc === 'NL') {
-      badge = 'P2P & Géo-restrictions';
-    } else if (c.cc === 'US') {
-      badge = 'Catalogue US & Netflix';
-    }
-    return {
-      ...c,
-      badge,
-      nodes: c.nodes.map((n, nIdx) => ({
-        ...n,
-        badge: nIdx === 0 ? 'Meilleur ping' : n.badge || 'Débit Gigabit',
-      })),
-    };
-  });
-
-  const timerRef = useRef<any>(null);
-
-  // Connection timer and byte stream counter
+  // Real connection statistics polling
   useEffect(() => {
-    if (connected && connectedSince) {
-      timerRef.current = setInterval(() => {
-        const s = Math.floor((Date.now() - connectedSince.getTime()) / 1000);
-        const m = Math.floor(s / 60);
-        const sec = s % 60;
-        setElapsed(`${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`);
-        // Increment transfer counter organically
-        setDownBytes(prev => prev + Math.floor(Math.random() * 80000 + 40000));
-        setUpBytes(prev => prev + Math.floor(Math.random() * 20000 + 10000));
-      }, 1000);
+    let statusInterval: any = null;
+    if (connected) {
+      statusInterval = setInterval(async () => {
+        try {
+          const st = await api?.vpnGetStatus?.();
+          if (st?.status) {
+            if (typeof st.status.bytesReceived === 'number') {
+              setDownBytes(st.status.bytesReceived);
+            }
+            if (typeof st.status.bytesSent === 'number') {
+              setUpBytes(st.status.bytesSent);
+            }
+            if (typeof st.status.durationSeconds === 'number') {
+              const m = Math.floor(st.status.durationSeconds / 60);
+              const s = st.status.durationSeconds % 60;
+              setElapsed(`${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
+            }
+            if (st.status.publicIp) {
+              setRealPublicIp(st.status.publicIp);
+            }
+          }
+        } catch {}
+      }, 2000);
     } else {
-      clearInterval(timerRef.current);
       setElapsed('00:00');
+      setDownBytes(0);
+      setUpBytes(0);
+      setRealPublicIp('');
     }
-    return () => clearInterval(timerRef.current);
-  }, [connected, connectedSince]);
+    return () => {
+      if (statusInterval) clearInterval(statusInterval);
+    };
+  }, [connected]);
+
+  // Load dynamic catalog from VPN Gate
+  useEffect(() => {
+    if (!api) return;
+
+    api.vpnFetchServers?.().then((res: any) => {
+      if (res?.servers && Array.isArray(res.servers) && res.servers.length > 0) {
+        const map = new Map<string, Country>();
+        for (const s of res.servers) {
+          const cc = (s.countryCode || 'UN').toUpperCase();
+          const name = s.country || cc;
+          if (!map.has(cc)) {
+            map.set(cc, {
+              cc,
+              name,
+              latency: s.ping || 50,
+              badge: s.badges?.[0] || (s.ping && s.ping < 30 ? 'Meilleur ping' : undefined),
+              nodes: [],
+            });
+          }
+          const c = map.get(cc)!;
+          if (s.ping && s.ping < c.latency) {
+            c.latency = s.ping;
+          }
+          c.nodes.push({
+            name: `${name} · ${s.ip}`,
+            speed: `${s.speedMbps || 450} Mbps`,
+            badge: s.badges?.[0] || (s.ping && s.ping < 30 ? 'Meilleur ping' : 'Relais vérifié'),
+            protocolBadge: 'OpenVPN',
+            ip: s.ip,
+            virtualIp: s.ip,
+          });
+        }
+        const sorted = Array.from(map.values()).sort((a, b) => a.latency - b.latency);
+        setCountries(sorted);
+        if (sorted.length > 0 && sorted[0].nodes.length > 0 && !connected) {
+          setSelectedNode(sorted[0].nodes[0].name);
+          setSelectedNodeData(sorted[0].nodes[0]);
+          setOpenCountry(sorted[0].cc);
+        }
+      }
+    }).catch(() => {});
+  }, [connected]);
 
   useEffect(() => {
     if (!api) return;
@@ -295,11 +300,8 @@ export default function VpnTab() {
     api.vpnGetStatus?.().then((s: any) => {
       if (s?.status?.connected || s?.connected) {
         setConnected(true);
-        setConnectedSince(new Date(Date.now() - (s.status?.durationMs || 60000)));
         if (s.serverName) setSelectedNode(s.serverName);
-      }
-      if (s?.protocol) {
-        setProto(s.protocol === 'OpenVPN' ? 'OpenVPN' : 'WireGuard');
+        if (s.status?.publicIp) setRealPublicIp(s.status.publicIp);
       }
     }).catch(() => {});
 
@@ -330,6 +332,7 @@ export default function VpnTab() {
       setConnected(false);
       setConnecting(false);
       setConnectedSince(null);
+      setRealPublicIp('');
     });
 
     const c3 = api.on?.('vpn:state-changed', (d: any) => {
@@ -343,6 +346,7 @@ export default function VpnTab() {
           setConnected(false);
           setConnecting(false);
           setConnectedSince(null);
+          setRealPublicIp('');
         }
       }
     });
@@ -351,7 +355,7 @@ export default function VpnTab() {
   }, []);
 
   const flash = (_msg: string) => {
-    // Discreet status: notification banner eliminated per user request
+    // Discreet status
   };
 
   const handleToggleConnect = async () => {
@@ -364,7 +368,7 @@ export default function VpnTab() {
         await api?.vpnDisconnect?.();
         setConnected(false);
         setConnectedSince(null);
-        flash('Tunnel VPN désactivé.');
+        setRealPublicIp('');
       } catch (err: any) {
         setError(err.message);
       }
@@ -379,18 +383,17 @@ export default function VpnTab() {
           return;
         }
 
-        await api?.vpnSetProtocol?.(proto);
-        await new Promise(r => setTimeout(r, 600));
+        await api?.vpnSetProtocol?.('OpenVPN');
         const res = await api?.vpnConnect?.(selectedNode);
         if (res && res.success === false) {
-          setError(res.message || 'Impossible d\'établir le tunnel sécurisé.');
+          setError(res.message || 'Impossible d\'établir le tunnel sécurisé OpenVPN.');
         } else {
           setConnected(true);
           setConnectedSince(new Date());
-          flash(`Connecté à ${selectedNode} via ${proto}.`);
+          if (res?.publicIp) setRealPublicIp(res.publicIp);
         }
       } catch (err: any) {
-        setError(err.message || 'Impossible d\'établir le tunnel sécurisé.');
+        setError(err.message || 'Impossible d\'établir le tunnel sécurisé OpenVPN.');
       }
       setConnecting(false);
     }
@@ -400,7 +403,6 @@ export default function VpnTab() {
   const handleSelectNode = async (node: VpnNode) => {
     setSelectedNode(node.name);
     setSelectedNodeData(node);
-    setProto(node.protocolBadge === 'OpenVPN' ? 'OpenVPN' : 'WireGuard');
 
     // If already connected, smoothly switch to the new server without breaking into error
     if (connected) {
@@ -412,7 +414,6 @@ export default function VpnTab() {
         await api?.vpnConnect?.(node.name);
         setConnected(true);
         setConnectedSince(new Date());
-        flash(`Basculé avec succès sur ${node.name} (${node.protocolBadge}).`);
       } catch (err: any) {
         setError(err.message || `Erreur lors de la bascule vers ${node.name}.`);
       } finally {
@@ -441,7 +442,7 @@ export default function VpnTab() {
     return `${(b / (1024 * 1024)).toFixed(1)} Mo`;
   };
 
-  const filteredCountries = dynamicCountries.filter(c => {
+  const filteredCountries = countries.filter(c => {
     const matchesQuery = c.name.toLowerCase().includes(query.toLowerCase()) ||
       c.nodes.some(n => n.name.toLowerCase().includes(query.toLowerCase()));
     if (!matchesQuery) return false;
@@ -678,7 +679,7 @@ export default function VpnTab() {
                 <b style={{ fontSize: 14, color: '#ffffff', display: 'block' }}>{selectedNode}</b>
                 <span style={{ fontSize: 12, color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
                   <span>Protocole actif :</span>
-                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>{proto}</span>
+                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>OpenVPN (Chiffré AES-256 / Wintun)</span>
                 </span>
               </div>
             </div>
@@ -695,21 +696,21 @@ export default function VpnTab() {
             }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 14px', fontSize: 11.5 }}>
                 <div>
-                  <span style={{ color: 'var(--muted)', display: 'block', fontSize: 10, fontWeight: 600 }}>IP MASQUÉE</span>
+                  <span style={{ color: 'var(--muted)', display: 'block', fontSize: 10, fontWeight: 600 }}>IP PUBLIQUE</span>
                   <span style={{ color: '#22c55e', fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>
-                    {connected ? selectedNodeData.ip : '— (Non masquée)'}
+                    {connected ? (realPublicIp || selectedNodeData.ip) : '— (Non masquée)'}
                   </span>
                 </div>
                 <div>
-                  <span style={{ color: 'var(--muted)', display: 'block', fontSize: 10, fontWeight: 600 }}>IP VIRTUELLE</span>
+                  <span style={{ color: 'var(--muted)', display: 'block', fontSize: 10, fontWeight: 600 }}>RELAIS ACTIF</span>
                   <span style={{ color: 'var(--text)', fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>
-                    {connected ? selectedNodeData.virtualIp : '—'}
+                    {connected ? selectedNodeData.ip : '—'}
                   </span>
                 </div>
                 <div>
                   <span style={{ color: 'var(--muted)', display: 'block', fontSize: 10, fontWeight: 600 }}>CHIFFREMENT</span>
                   <span style={{ color: '#38bdf8', fontWeight: 600 }}>
-                    {proto === 'WireGuard' ? 'ChaCha20-Poly1305' : 'AES-256-GCM'}
+                    AES-256-GCM / SHA-256
                   </span>
                 </div>
                 <div>
