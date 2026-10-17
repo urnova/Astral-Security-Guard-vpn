@@ -10,6 +10,50 @@ Ce journal consigne de manière chronologique et détaillée toutes les modifica
 * **`framer-motion-ui` & `opera-gx-aesthetic`** : Conception de l'interface en mode sombre profond, accents néon adaptatifs, micro-interactions, skeleton loaders et compteurs animés fluides.
 * **`native-audio-synth`** : Moteur sonore Web Audio API synthétisant des carillons discrets pour chaque type d'alerte sans dépendance de fichiers audio externes.
 
+## [2.5.9] - Refonte Vérité Terrain, Stabilité Matérielle & Expérience Zero-Défaut (2026-10-17)
+
+### 🛡️ Sécurité & Privilèges Système
+- **Alignement Visuel Blason** : Correction du bug de rotation CSS (`.ring svg`) redressant le blason de sécurité parfaitement au centre de la jauge circulaire.
+- **Élévation UAC Native & Fin du Mode Restreint** : Éradication totale de la bannière et du badge "Mode restreint". Configuration NSIS `requireAdministrator` avec clé de registre `~ RUNASADMIN` et statut unifié "Système protégé".
+
+### 💾 Disques Physiques & Vérité Terrain
+- **Télémétrie Authentique Volumes & Partitions** : Suppression définitive des barres de santé simulées à 100%. Rendu direct des volumes réels (`C:`, `D:`, `E:`, `F:`, `G:`, `H:`) avec étiquettes utilisateur authentiques (`App - Jeux`, `Jeux 2`, `Stockage`).
+- **Badge Système Kingston NVMe** : Identification claire du NVMe Kingston principal comme disque système maître Windows.
+
+### 🧹 Centre de Maintenance & Nettoyage
+- **Carte Héros Maintenance** : Suppression du bouton isolé dans le header et création d'une carte d'optimisation intégrée avec progression animée par étapes (Caches GPU/DirectX, Corbeille, Temporaires Windows) et journal live d'exécution.
+
+### 🧠 Vue d'Ensemble & Now Brief
+- **Brief Conversationnel Épuré** : Transformation du bloc d'analyse en "Now Brief" dynamique et élégant.
+- **Suppression Redondances** : Retrait de la puce "Télémétrie en direct" et intégration d'un badge d'état VPN en temps réel.
+
+### 🎮 Bibliothèque Gaming & Diagnostics Matériels
+- **Défilement Fluide Sans Écran Noir** : Élimination du bogue de composition Chromium (`contain: paint`, `contentVisibility`) provoquant des freezes noirs dans la liste des jeux.
+- **Contrôles Directs Jeux** : Boutons "▶ Lancer" et "Désinstaller" natifs sur chaque carte de jeu.
+- **Hero Panel Profils de Session** : Grand panneau explicatif décrivant précisément les optimisations appliquées par profil (Compétitif, Graphismes Max, Équilibré).
+- **Spécifications Matérielles Réelles & Guide BIOS** : Détection authentique RTX 3060 Ti, Core i7-8700, 32 Go RAM avec guide complet étape par étape pour flasher le BIOS ASUS via EZ Flash 3 et lien direct vers les pilotes Nvidia GeForce.
+
+### 🔔 Notifications & Overlay HUD
+- **Fin du Rectangle Flou Windows DWM** : Retrait de tous les `backdrop-filter: blur(...)` sur les fenêtres transparentes Electron, éliminant la boîte floue rectangulaire découpée par Windows.
+- **Design Obsidian Sobre** : Cartes de notifications nettes avec fond sombre solide `#0b0f19`, typographie soignée et icônes SVG adaptées à chaque sévérité.
+
+### 🌐 Réseau & Accélération Débit
+- **Speedtest Multi-Serveurs Résilient** : Fallback automatique Cloudflare, OVH et Bouygues Télécom empêchant les chutes brutales à 0 Mbps.
+- **Carte Dédiée Accélération Réseau** : Optimisation pas-à-pas (Flush DNS, autotuning TCP, RSS multi-cœur) avec barre de progression.
+- **Ergonomie Jauge** : Suppression des espaces perdus sous le compteur de vitesse.
+
+### 🔒 Tunnel VPN Sans Rupture
+- **Bascule Transparente Serveurs** : Changement instantané de serveur VPN sans erreur de déconnexion intermédiaire.
+- **Design Épuré** : Retrait du sélecteur superflu 3 boutons sous "Protocole actif" et centrage optique du radar de connexion.
+- **Télémétrie Chiffrement Complète** : IP virtuelle, IP masquée, chiffrement ChaCha20-Poly1305, bande passante transférée et chrono de session en direct.
+
+### ⚡ Tray & Mises à Jour Automatiques
+- **Tray Tooltip & Menu** : Titre unifié "Astral Vanguard", numéro de version dynamique et raccourcis d'actions directs.
+- **Élévation UAC lors de l'Installation** : Passage en mode non-silencieux interactif `quitAndInstall(false, true)` pour permettre l'élévation UAC Windows sans fermeture brutale.
+- **Notes de Version Nettoyées** : Suppression des balises HTML et délimiteurs Markdown bruts dans le modal de mise à jour.
+
+---
+
 ## [2.5.3] - Correctifs Critiques, Artwork Haute Résolution & Préservation Données (2026-10-15)
 
 ### 🎨 Finitions Graphiques & Ergonomie Titlebar

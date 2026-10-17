@@ -712,10 +712,14 @@ button.win-btn.close:hover,
   outline: none !important;
   box-shadow: none !important;
 }
-.ring svg {
+.ring > svg, .ring svg.ring-gauge-svg {
   transform: rotate(-90deg); width: 100%; height: 100%;
   outline: none !important;
   box-shadow: none !important;
+}
+.ring-icon-box svg, .ring .center svg {
+  transform: none !important;
+  display: block;
 }
 .ring circle { fill: none; stroke-linecap: round; outline: none !important; }
 .ring .bg-c { stroke: var(--line); }

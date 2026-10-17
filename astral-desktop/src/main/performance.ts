@@ -439,6 +439,7 @@ export function setupPerformanceIPC(win: BrowserWindow) {
   });
 
   // ── Multi-Disk Physical Health (SMART) Ordered by Windows Disk Number ───────
+  // ── Multi-Disk Physical Health (SMART) Ordered by Windows Disk Number ───────
   ipcMain.handle('perf:get-disk-health', async () => {
     const script = `
       $disks = Get-Disk -ErrorAction SilentlyContinue | Sort-Object Number
@@ -447,6 +448,25 @@ export function setupPerformanceIPC(win: BrowserWindow) {
       $out = foreach ($d in $disks) {
         $p = $phys | Where-Object { $_.DeviceId -eq [string]$d.Number -or $_.FriendlyName -eq $d.FriendlyName } | Select-Object -First 1
         $parts = if ($d) { Get-Partition -DiskNumber $d.Number -ErrorAction SilentlyContinue } else { @() }
+        
+        $volList = foreach ($part in $parts) {
+          if ($part.DriveLetter) {
+            $vol = $part | Get-Volume -ErrorAction SilentlyContinue
+            if ($vol) {
+              [PSCustomObject]@{
+                drive = "$($part.DriveLetter):"
+                label = [string]$vol.FileSystemLabel
+                fileSystem = [string]$vol.FileSystem
+                sizeGB = [math]::Round($vol.Size / 1GB, 1)
+                freeGB = [math]::Round($vol.SizeRemaining / 1GB, 1)
+                usedGB = [math]::Round(($vol.Size - $vol.SizeRemaining) / 1GB, 1)
+                usedPct = if ($vol.Size -gt 0) { [math]::Round((($vol.Size - $vol.SizeRemaining) / $vol.Size) * 100, 1) } else { 0 }
+                health = [string]$vol.HealthStatus
+              }
+            }
+          }
+        }
+
         $letters = ($parts | Where-Object { $_.DriveLetter } | ForEach-Object { "$($_.DriveLetter):" }) -join ', '
         $isBoot = [bool]($parts | Where-Object { $_.IsBoot -or $_.IsSystem -or $_.DriveLetter -eq 'C' })
 
@@ -468,28 +488,47 @@ export function setupPerformanceIPC(win: BrowserWindow) {
           friendlyName = if ($p) { $p.FriendlyName } else { $d.FriendlyName }
           busType = [string]$d.BusType
           mediaType = [string]$media
+          partitionStyle = [string]$d.PartitionStyle
           driveLetters = $letters
           isSystemDisk = $isBoot
           healthStatus = $hs
           operationalStatus = $op
-          size = $d.Size
+          totalSizeGB = [math]::Round($d.Size / 1GB, 1)
+          volumes = $volList
         }
       }
-      $out | ConvertTo-Json -Compress
+      $out | ConvertTo-Json -Depth 4 -Compress
     `;
     try {
-      const res = await runPowerShell(script, { asJson: true, timeout: 8000 });
+      const res = await runPowerShell(script, { asJson: true, timeout: 9000 });
       let rawDisks = res.data || [];
       if (!Array.isArray(rawDisks)) rawDisks = rawDisks ? [rawDisks] : [];
 
       const disks = rawDisks.map((d: any) => {
         const media = String(d.mediaType || 'SSD');
         const bus = String(d.busType || '');
-        const sizeGB = d.size ? Math.round(Number(d.size) / (1024 * 1024 * 1024)) : 0;
+        const totalGB = typeof d.totalSizeGB === 'number' ? d.totalSizeGB : 0;
         const isHealthy = d.healthStatus === 'Healthy' || d.operationalStatus === 'OK' || d.operationalStatus === 'Online';
         const diskNum = typeof d.number === 'number' ? d.number : 0;
         const isSystem = Boolean(d.isSystemDisk);
         const driveLetters = d.driveLetters ? String(d.driveLetters).trim() : '';
+
+        let rawVols = d.volumes || [];
+        if (!Array.isArray(rawVols)) rawVols = rawVols ? [rawVols] : [];
+
+        let totalUsedGB = 0;
+        let totalFreeGB = 0;
+        let primaryLabel = '';
+
+        for (const v of rawVols) {
+          totalUsedGB += Number(v.usedGB || 0);
+          totalFreeGB += Number(v.freeGB || 0);
+          if (v.label && !primaryLabel) primaryLabel = v.label;
+        }
+
+        totalUsedGB = Math.round(totalUsedGB * 10) / 10;
+        totalFreeGB = Math.round(totalFreeGB * 10) / 10;
+        const usedPercent = totalGB > 0 ? Math.min(100, Math.round((totalUsedGB / totalGB) * 100)) : 0;
 
         let typeLabel = 'SSD SATA';
         if (bus === 'NVMe' || media.includes('NVMe')) typeLabel = 'SSD NVMe M.2';
@@ -497,9 +536,11 @@ export function setupPerformanceIPC(win: BrowserWindow) {
         else if (bus === 'USB') typeLabel = 'Disque Externe USB';
         else if (media === 'SSD') typeLabel = 'SSD Flash SATA';
 
-        let healthStatusText = isHealthy ? 'Sain (SMART Conforme)' : 'Attention requise';
+        let healthStatusText = isHealthy ? 'Sain (SMART Nominal)' : 'Attention requise';
         if (bus === 'USB') {
-          healthStatusText = driveLetters ? `Externe (${driveLetters})` : 'Externe non alloué';
+          healthStatusText = driveLetters ? `Externe actif (${driveLetters})` : 'Externe non alloué';
+        } else if (rawVols.length > 0 && rawVols[0].fileSystem) {
+          healthStatusText = `Sain · Intègre (${rawVols[0].fileSystem})`;
         }
 
         return {
@@ -509,13 +550,19 @@ export function setupPerformanceIPC(win: BrowserWindow) {
           mediaType: typeLabel,
           MediaType: media,
           busType: bus,
+          partitionStyle: d.partitionStyle || 'GPT',
           driveLetters,
+          volumeLabel: primaryLabel,
           isSystemDisk: isSystem,
-          health: isHealthy ? 'Sain (SMART OK)' : 'Attention',
+          health: isHealthy ? 'Sain' : 'Attention',
           HealthStatus: healthStatusText,
           healthStatusText,
           status: d.operationalStatus || 'OK',
-          sizeGB,
+          sizeGB: totalGB,
+          usedGB: totalUsedGB,
+          freeGB: totalFreeGB,
+          usedPercent,
+          volumes: rawVols,
         };
       });
 

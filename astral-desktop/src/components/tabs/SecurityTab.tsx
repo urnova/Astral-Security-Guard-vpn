@@ -375,7 +375,7 @@ export default function SecurityTab() {
             <div>
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
                 <div className={scanning ? 'ring scanning' : 'ring'} style={{ width: 190, height: 190 }}>
-                  <svg viewBox="0 0 200 200">
+                  <svg className="ring-gauge-svg" viewBox="0 0 200 200">
                     <defs>
                       <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
                         <stop offset="0%" stopColor="var(--a1)" />
@@ -402,9 +402,9 @@ export default function SecurityTab() {
                           {threats}
                         </span>
                       ) : scanDone ? (
-                        <CheckCircle2 size={44} style={{ color: 'var(--ok)', display: 'block' }} />
+                        <CheckCircle2 size={44} style={{ color: 'var(--ok)', display: 'block', transform: 'none' }} />
                       ) : (
-                        <Shield size={44} style={{ color: 'var(--a1)', display: 'block' }} />
+                        <Shield size={44} style={{ color: 'var(--a1)', display: 'block', transform: 'none' }} />
                       )}
                     </div>
                     <div className="mut sm" style={{ fontSize: 11, marginTop: 4, fontWeight: 500 }}>

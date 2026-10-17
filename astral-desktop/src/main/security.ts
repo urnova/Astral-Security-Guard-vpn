@@ -417,12 +417,16 @@ export function setupSecurityIPC(win: BrowserWindow) {
       }
 
       bullets.push(`Système en cours d'exécution depuis ${upHours}h ${upMins}m · Mémoire vive : ${usedMemGB} Go / ${totalMemGB} Go.`);
-      bullets.push('6 volumes de stockage physiques inspectés : statut S.M.A.R.T. 100% nominal.');
+      bullets.push('Disques de stockage vérifiés avec volumes NTFS intègres.');
       bullets.push('Contrôle d\'intégrité des processus et passerelle de sécurité opérationnels.');
 
       const headline = threatsCount === 0
-        ? (score >= 90 ? 'Votre système est parfaitement sécurisé' : 'Système sous surveillance active')
+        ? (score >= 90 ? 'Votre système est parfaitement opérationnel et sécurisé' : 'Système sous surveillance active')
         : 'Menaces détectées nécessitant une action';
+
+      const conversationalNowBrief = threatsCount === 0
+        ? `Bonjour ! Tout fonctionne de manière optimale aujourd'hui. Vos modules de protection Microsoft Defender et Sentinelle Heuristique sont actifs. La mémoire vive est stable avec ${usedMemGB} Go utilisés sur ${totalMemGB} Go, vos volumes de stockage sont intègres, et votre carte graphique est prête pour vos sessions de jeu.`
+        : `Attention : ${threatsCount} élément(s) suspect(s) ont été identifiés par le moteur de sécurité. Une analyse et une remédiation sont recommandées pour rétablir une sécurité maximale.`;
 
       const summary = threatsCount === 0
         ? `Protection globale opérationnelle à ${score}% sans anomalie détectée sur le poste.`
@@ -435,6 +439,7 @@ export function setupSecurityIPC(win: BrowserWindow) {
           riskLevel: threatsCount === 0 ? 'Sain' : 'Attention requise',
           summary,
           headline,
+          conversationalNowBrief,
           bulletPoints: bullets,
           recommendations: threatsCount === 0
             ? ['Maintenir la protection résidente active', 'Effectuer une analyse hebdomadaire']

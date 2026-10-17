@@ -306,9 +306,11 @@ export function updateTrayState(opts: {
     }
   };
 
+  const currentAppVersion = app.getVersion();
+
   const menu = Menu.buildFromTemplate([
     {
-      label: '⚡ Astral Vanguard v2.5.1',
+      label: `⚡ Astral Vanguard v${currentAppVersion} (Bêta Pré-release)`,
       enabled: false,
     },
     {
@@ -317,59 +319,81 @@ export function updateTrayState(opts: {
     },
     { type: 'separator' },
     {
-      label: trayRealTimeShield
-        ? '🛡️ Bouclier Temps Réel : ACTIF (Suspendre)'
-        : '⚠️ Bouclier Temps Réel : SUSPENDU (Réactiver)',
-      click: () => {
-        trayRealTimeShield = !trayRealTimeShield;
-        mainWin?.webContents.send('security:status-changed', {
-          realTimeProtection: trayRealTimeShield,
-          antivirusEnabled: trayRealTimeShield,
-        });
-        updateTrayState({ realTimeShield: trayRealTimeShield });
-      },
-    },
-    {
-      label: '🌐 VPN Astral Security',
+      label: '🛡️ Sécurité & Antivirus',
       submenu: [
         {
-          label: `Statut : ${trayVpnConnected ? `Connecté (${trayVpnNodeName || 'Tunnel Actif'})` : 'Déconnecté'}`,
+          label: trayRealTimeShield
+            ? '✓ Bouclier Temps Réel : ACTIF (Suspendre)'
+            : '⚠ Bouclier Temps Réel : SUSPENDU (Réactiver)',
+          click: () => {
+            trayRealTimeShield = !trayRealTimeShield;
+            mainWin?.webContents.send('security:status-changed', {
+              realTimeProtection: trayRealTimeShield,
+              antivirusEnabled: trayRealTimeShield,
+            });
+            updateTrayState({ realTimeShield: trayRealTimeShield });
+          },
+        },
+        { type: 'separator' },
+        {
+          label: '⚡ Lancer une Analyse Rapide',
+          click: () => {
+            showAndFocus();
+            mainWin?.webContents.send('navigation:go-to', 'security');
+            mainWin?.webContents.send('action:trigger-scan', 'quick');
+          },
+        },
+        {
+          label: '🔍 Lancer une Analyse Approfondie Multi-Disques',
+          click: () => {
+            showAndFocus();
+            mainWin?.webContents.send('navigation:go-to', 'security');
+            mainWin?.webContents.send('action:trigger-scan', 'full');
+          },
+        },
+      ],
+    },
+    {
+      label: '🌐 VPN & Anonymat',
+      submenu: [
+        {
+          label: `Statut : ${trayVpnConnected ? `Connecté (${trayVpnNodeName || 'Tunnel Chiffré'})` : 'Déconnecté'}`,
           enabled: false,
         },
         { type: 'separator' },
         {
-          label: '⚡ Connexion Rapide (Paris, FR - 12ms)',
+          label: '⚡ Connexion Rapide (Paris · Core Alpha #1)',
           click: () => {
             showAndFocus();
-            mainWin?.webContents.send('vpn:quick-connect', 'fr-par-01');
+            mainWin?.webContents.send('vpn:quick-connect', 'Paris · Core Alpha #1');
           },
         },
         {
-          label: '🇩🇪 Francfort, Allemagne (18ms)',
+          label: '🇩🇪 Francfort · DE-CIX Ultra (15ms)',
           click: () => {
             showAndFocus();
-            mainWin?.webContents.send('vpn:quick-connect', 'de-fra-01');
+            mainWin?.webContents.send('vpn:quick-connect', 'Francfort · DE-CIX Ultra');
           },
         },
         {
-          label: '🇨🇭 Zurich, Suisse (19ms)',
+          label: '🇳🇱 Amsterdam · AMS-IX Gigabit (17ms)',
           click: () => {
             showAndFocus();
-            mainWin?.webContents.send('vpn:quick-connect', 'ch-zur-01');
+            mainWin?.webContents.send('vpn:quick-connect', 'Amsterdam · AMS-IX Gigabit');
           },
         },
         {
-          label: '🇺🇸 New York, USA (78ms)',
+          label: '🇨🇭 Zurich · Bunker Privacy (22ms)',
           click: () => {
             showAndFocus();
-            mainWin?.webContents.send('vpn:quick-connect', 'us-nyc-01');
+            mainWin?.webContents.send('vpn:quick-connect', 'Zurich · Bunker Privacy');
           },
         },
         {
-          label: '🇯🇵 Tokyo, Japon (185ms)',
+          label: '🇺🇸 New York · NYIIX Core (86ms)',
           click: () => {
             showAndFocus();
-            mainWin?.webContents.send('vpn:quick-connect', 'jp-tyo-01');
+            mainWin?.webContents.send('vpn:quick-connect', 'New York · NYIIX Core');
           },
         },
         { type: 'separator' },
@@ -383,38 +407,24 @@ export function updateTrayState(opts: {
       ],
     },
     {
-      label: '🔍 Sécurité & Antivirus',
-      submenu: [
-        {
-          label: '⚡ Lancer une Analyse Rapide (Heuristique)',
-          click: () => {
-            showAndFocus();
-            mainWin?.webContents.send('navigation:go-to', 'security');
-            mainWin?.webContents.send('action:trigger-scan', 'quick');
-          },
-        },
-        {
-          label: '🖥️ Lancer une Analyse Approfondie Multi-Disques',
-          click: () => {
-            showAndFocus();
-            mainWin?.webContents.send('navigation:go-to', 'security');
-            mainWin?.webContents.send('action:trigger-scan', 'full');
-          },
-        },
-      ],
-    },
-    {
-      label: trayGamingActive ? '🎮 Désactiver le Mode E-Sport' : '🎮 Activer le Mode E-Sport Gaming',
+      label: trayGamingActive ? '🎮 Désactiver le Mode Gaming' : '🎮 Activer le Mode Gaming',
       click: () => {
         mainWin?.webContents.send('gaming:toggle-manual');
       },
     },
     {
-      label: '🖥️ Afficher / Masquer HUD (Ctrl+Shift+O)',
+      label: '👁️ Afficher / Masquer HUD (Ctrl+Shift+O)',
       click: () => toggleOverlay(),
     },
     {
-      label: '🧹 Purger la Mémoire RAM Express',
+      label: '🚀 Lancer la Maintenance & Nettoyage Système',
+      click: () => {
+        showAndFocus();
+        mainWin?.webContents.send('navigation:go-to', 'performance');
+      },
+    },
+    {
+      label: '💾 Purger la Mémoire RAM & le Cache',
       click: () => {
         mainWin?.webContents.send('perf:trigger-clean-ram');
       },
@@ -428,7 +438,7 @@ export function updateTrayState(opts: {
       },
     },
     {
-      label: 'Quitter Définitivement',
+      label: 'Quitter Définitivement Astral Vanguard',
       click: () => {
         minimizeToTray = false;
         app.exit(0);
@@ -437,9 +447,7 @@ export function updateTrayState(opts: {
   ]);
 
   tray.setContextMenu(menu);
-  tray.setToolTip(
-    `Astral Vanguard — ${trayGamingActive ? 'Mode Gaming Actif' : trayRealTimeShield ? 'Bouclier Actif' : 'Protection Suspendue'} | VPN ${trayVpnConnected ? 'Sécurisé' : 'Inactif'}`
-  );
+  tray.setToolTip('Astral Vanguard');
 }
 
 function createTray() {

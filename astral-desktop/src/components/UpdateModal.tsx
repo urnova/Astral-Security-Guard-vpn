@@ -173,30 +173,38 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
 
           {/* Release Notes */}
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
               Notes de publication
             </div>
             <div
               style={{
-                background: 'var(--bg)',
-                border: '1px solid var(--line)',
+                background: '#070a10',
+                border: '1px solid rgba(255,255,255,0.08)',
                 borderRadius: 'var(--r-sm)',
-                padding: 12,
+                padding: 14,
                 fontSize: 12,
-                color: 'var(--muted)',
-                maxHeight: 140,
+                color: 'var(--text)',
+                maxHeight: 160,
                 overflowY: 'auto',
                 lineHeight: 1.6,
               }}
             >
               {info?.releaseNotes ? (
-                <div style={{ whiteSpace: 'pre-wrap' }}>{info.releaseNotes}</div>
+                <div style={{ whiteSpace: 'pre-line' }}>
+                  {info.releaseNotes
+                    .replace(/<[^>]*>/g, '')
+                    .replace(/```[a-z]*\n?/gi, '')
+                    .replace(/```/g, '')
+                    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+                    .replace(/^#+\s+/gm, '')
+                    .trim()}
+                </div>
               ) : (
-                <div>
-                  • Nouvelle interface utilisateur moderne et sobre (Design Pro v3)<br />
-                  • Moteur d'optimisation gaming à latence ultra-faible<br />
-                  • Améliorations de détection automatique des VPN tiers<br />
-                  • Corrections de stabilité et optimisations du pare-feu
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div>• Refonte intégrale de la télémétrie multi-disques et suppression du mode restreint.</div>
+                  <div>• Optimisation du centre gaming avec boutons Lancer et Désinstaller directs.</div>
+                  <div>• Nouveau moteur de speedtest multi-flux haute fidélité (Fibre 1 Gbps).</div>
+                  <div>• Tunnel VPN avec bascule instantanée sans interruption et Kill Switch renforcé.</div>
                 </div>
               )}
             </div>

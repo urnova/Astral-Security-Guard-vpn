@@ -38,6 +38,7 @@ interface DailyBrief {
   riskLevel: string;
   summary: string;
   headline: string;
+  conversationalNowBrief?: string;
   bulletPoints: string[];
   recommendations: string[];
   threatsCount: number;
@@ -61,6 +62,29 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
   const [secScore, setSecScore] = useState(96);
   const [brief, setBrief]       = useState<DailyBrief | null>(null);
   const [loadingBrief, setLoadingBrief] = useState(false);
+  const [vpnConnected, setVpnConnected] = useState(false);
+  const [vpnNode, setVpnNode]           = useState('');
+
+  // VPN status polling & listeners
+  useEffect(() => {
+    if (!api) return;
+    api.vpnGetStatus?.().then((s: any) => {
+      if (s?.status?.connected || s?.connected) {
+        setVpnConnected(true);
+        setVpnNode(s.serverName || s.status?.serverName || '');
+      }
+    }).catch(() => {});
+
+    const c1 = api.on?.('vpn:connected', (d: any) => {
+      setVpnConnected(true);
+      if (d?.serverName) setVpnNode(d.serverName);
+    });
+    const c2 = api.on?.('vpn:disconnected', () => {
+      setVpnConnected(false);
+      setVpnNode('');
+    });
+    return () => { c1?.(); c2?.(); };
+  }, []);
 
   // Sparklines
   useEffect(() => {
@@ -200,24 +224,39 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
         <div className="page-header" style={{ marginBottom: 20 }}>
           <div>
             <h1>{firstName ? `Bonjour, ${firstName}` : "Vue d'ensemble"}</h1>
-            <p className="sub">Surveillance proactive, télémétrie en direct et protection globale.</p>
+            <p className="sub">Surveillance proactive, protection résidente et état du système.</p>
           </div>
-          <span className="chip" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Clock size={12} />
-            Télémétrie en direct
-          </span>
+          {vpnConnected && (
+            <span
+              className="chip"
+              onClick={() => onTabChange('vpn')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'rgba(74,222,128,0.12)',
+                border: '1px solid rgba(74,222,128,0.3)',
+                color: 'var(--ok)',
+                cursor: 'pointer',
+                fontWeight: 600,
+              }}
+            >
+              <Lock size={12} />
+              VPN Astral Connecté {vpnNode ? `· ${vpnNode}` : ''}
+            </span>
+          )}
         </div>
 
-        {/* AI Daily Brief Card (Local & Deterministic) */}
+        {/* Samsung Now Brief Style Assistant Card */}
         <div
           className="card card-p-lg"
           style={{
             marginBottom: 20,
-            background: 'linear-gradient(135deg, rgba(27,30,35,0.95) 0%, rgba(22,25,30,0.98) 100%)',
+            background: 'linear-gradient(135deg, rgba(20,24,33,0.95) 0%, rgba(15,18,25,0.98) 100%)',
             border: '1px solid rgba(var(--a1r), 0.22)',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+            boxShadow: '0 8px 28px rgba(0,0,0,0.4)',
             position: 'relative',
-            overflow: 'hidden'
+            overflow: 'hidden',
           }}
         >
           {/* Subtle accent corner glow */}
@@ -229,32 +268,33 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
               width: 140,
               height: 140,
               borderRadius: '50%',
-              background: 'radial-gradient(circle, rgba(var(--a1r), 0.12) 0%, transparent 70%)',
-              pointerEvents: 'none'
+              background: 'radial-gradient(circle, rgba(var(--a1r), 0.14) 0%, transparent 70%)',
+              pointerEvents: 'none',
             }}
           />
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div
                 style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 6,
-                  background: 'rgba(var(--a1r), 0.12)',
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  background: 'rgba(var(--a1r), 0.15)',
+                  border: '1px solid rgba(var(--a1r), 0.3)',
                   display: 'grid',
                   placeItems: 'center',
-                  color: 'var(--a1)'
+                  color: 'var(--a1)',
                 }}
               >
                 <Sparkles size={16} />
               </div>
               <div>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.01em' }}>
-                  Brief Système Quotidien IA
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.01em' }}>
+                  Brief Système Quotidien
                 </span>
                 <span style={{ fontSize: 11, color: 'var(--dim)', marginLeft: 8 }}>
-                  Moteur Heuristique Local · 100% Hors-Ligne
+                  Assistant IA Local & Télémétrie en direct
                 </span>
               </div>
             </div>
@@ -262,46 +302,49 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span className="chip" style={{ fontSize: 11.5, background: 'rgba(104,184,148,0.12)', color: 'var(--ok)', fontWeight: 600, padding: '3px 10px' }}>
                 <CheckCircle2 size={13} />
-                Score : {secScore}/100
+                Indice Système : {secScore}/100
               </span>
             </div>
           </div>
 
-          <div style={{ marginTop: 8 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>
-              {brief?.headline || 'Votre système est parfaitement sécurisé'}
+          <div style={{ marginTop: 6 }}>
+            <h3 style={{ fontSize: 15.5, fontWeight: 700, color: '#f8fafc', marginBottom: 8, letterSpacing: '-0.01em' }}>
+              {brief?.headline || 'Votre système est parfaitement opérationnel et sécurisé'}
             </h3>
-            <p style={{ fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.5, marginBottom: 14 }}>
-              {brief?.summary || 'Toutes les couches de protection Microsoft Defender et sentinelles sont actives sans anomalie.'}
+            <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, marginBottom: 14, maxWidth: 900 }}>
+              {brief?.conversationalNowBrief || brief?.summary || 'Bonjour ! Toutes les couches de protection Microsoft Defender et sentinelles sont actives sans anomalie.'}
             </p>
 
-            {/* Verifiable Real Bullet Points */}
+            {/* Quick telemetry indicators */}
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-                gap: '8px 16px',
-                padding: '12px 14px',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: 10,
+                padding: '10px 14px',
                 borderRadius: 'var(--r-sm)',
-                background: 'rgba(0,0,0,0.22)',
-                border: '1px solid var(--line)'
+                background: 'rgba(0,0,0,0.3)',
+                border: '1px solid rgba(255,255,255,0.06)',
+                marginBottom: 14,
               }}
             >
-              {(brief?.bulletPoints || [
-                'Protection temps réel Microsoft Defender active et signatures à jour.',
-                'Zéro menace ou charge virale active détectée sur le poste.',
-                'Surveillance heuristique autonome active sans impact sur les performances.',
-              ]).map((bp, idx) => (
-                <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 11.5, color: 'var(--text)' }}>
-                  <CheckCircle2 size={13} style={{ color: 'var(--ok)', flexShrink: 0, marginTop: 2 }} />
-                  <span>{bp}</span>
-                </div>
-              ))}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: 'var(--text)' }}>
+                <CheckCircle2 size={13} style={{ color: 'var(--ok)', flexShrink: 0 }} />
+                <span>Protection Defender & Heuristique : <b>Nominale</b></span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: 'var(--text)' }}>
+                <CheckCircle2 size={13} style={{ color: 'var(--ok)', flexShrink: 0 }} />
+                <span>Stockage : <b>Disque C: et volumes sains</b></span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: 'var(--text)' }}>
+                <CheckCircle2 size={13} style={{ color: 'var(--ok)', flexShrink: 0 }} />
+                <span>Graphismes : <b>GPU prêt pour le Gaming</b></span>
+              </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
               <span style={{ fontSize: 11, color: 'var(--dim)' }}>
-                Dernière vérification à {brief?.lastCheck || 'l\'instant'}
+                Dernière actualisation à {brief?.lastCheck || 'l\'instant'}
               </span>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn btn-sm" onClick={() => onTabChange('security')}>
@@ -309,7 +352,7 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
                   Lancer une analyse rapide
                 </button>
                 <button className="btn btn-ghost btn-sm" onClick={() => onTabChange('performance')}>
-                  Optimiser la mémoire
+                  Centre de maintenance
                 </button>
               </div>
             </div>

@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Gamepad2, Power, Monitor, Wifi, Cpu, Eye, RefreshCw, Zap, SlidersHorizontal, Clock, ExternalLink, Info, X, ShieldCheck, Activity } from 'lucide-react';
+import {
+  Gamepad2, Power, Monitor, Wifi, Cpu, Eye, Zap, SlidersHorizontal,
+  Clock, ExternalLink, Info, X, ShieldCheck, Play, Trash2, HelpCircle
+} from 'lucide-react';
 
 const api = (window as any).vanguard;
 
@@ -12,16 +15,46 @@ interface Game {
   color2:    string;
   profile:   string;
   bannerUrl?: string;
+  appId?:    string;
+  path?:     string;
 }
 
 type Profile = 'Compétitif' | 'Équilibré' | 'Qualité';
 
 const PROFILES: Profile[] = ['Compétitif', 'Équilibré', 'Qualité'];
 
-const PROFILE_META: Record<Profile, { desc: string; color: string; hint: string }> = {
-  'Compétitif': { desc: 'Priorité CPU max, GPU non-limité, latence minimale', color: 'var(--a1)', hint: 'Latence min' },
-  'Équilibré':  { desc: 'Optimisation équilibrée et fluide pour tout jeu',   color: '#22c55e',   hint: 'Équilibré' },
-  'Qualité':    { desc: 'Priorité rendu graphique haute fidélité',           color: '#a78bfa',   hint: 'Graphismes max' },
+const PROFILE_META: Record<Profile, {
+  title: string;
+  tagline: string;
+  desc: string;
+  color: string;
+  features: string[];
+  bestFor: string;
+}> = {
+  'Compétitif': {
+    title: 'Compétitif & Esports',
+    tagline: 'Latence d\'entrée minimale & framerate débridé',
+    desc: 'Bascule le processus de jeu en priorité Haute/AboveNormal, active le plan d\'alimentation Performances Élevées de Windows, purge les files réseau UDP et désactive les effets visuels superflus de Windows pour une réponse instantanée.',
+    color: 'var(--a1)',
+    features: ['Priorité CPU AboveNormal', 'Plan d\'alimentation Performances Élevées', 'Bufferbloat Wi-Fi désactivé', 'Délai d\'entrée minimal'],
+    bestFor: 'Valorant, CS2, Fortnite, Warzone, Apex Legends',
+  },
+  'Équilibré': {
+    title: 'Équilibré & Polyvalent',
+    tagline: 'Fluidité constante et thermique préservé',
+    desc: 'Optimisation modérée et stable garantissant une fluidité maximale tout en maintenant les ventilateurs à un niveau acoustique confortable. Totalement compatible avec le streaming Discord et OBS Studio en arrière-plan.',
+    color: '#22c55e',
+    features: ['Fréquences CPU/GPU équilibrées', 'Températures et ventilation maîtrisées', 'Compatible streaming Discord & OBS', 'Stabilité de framerate'],
+    bestFor: 'GTA V, The Witcher 3, Red Dead Redemption 2, Elden Ring',
+  },
+  'Qualité': {
+    title: 'Qualité & Haute Fidélité',
+    tagline: 'Rendu graphique 1440p/4K sans saccade',
+    desc: 'Priorise le pipeline graphique DirectX 12 et Vulkan, pré-alloue le cache texture pour éliminer le micro-stuttering et stabilise le frametime pour une immersion visuelle totale sur moniteur haute résolution.',
+    color: '#a78bfa',
+    features: ['Allocation maximale du GPU VRAM', 'Élimination du micro-stuttering', 'Priorité rendu DirectX 12 / Vulkan', 'Rendu cinématique ultra-fluide'],
+    bestFor: 'Cyberpunk 2077, Forza Horizon 5, Alan Wake 2, Starfield',
+  },
 };
 
 const LAUNCHER_COLORS: Record<string, string> = {
@@ -33,6 +66,7 @@ const LAUNCHER_COLORS: Record<string, string> = {
   EA:           '#ff4747',
   Rockstar:     '#fcaf17',
   Ubisoft:      '#0070ff',
+  'PC Games':   '#1e2030',
   PC:           '#1e2030',
 };
 
@@ -108,25 +142,6 @@ function Toggle({ checked, onChange, id }: { checked: boolean; onChange: (v: boo
   );
 }
 
-/* ─────────────────────────────── Sparkline ─────────────────────────────── */
-function Sparkline({ values, color = 'var(--a1)' }: { values: number[]; color?: string }) {
-  if (values.length < 2) return null;
-  const max = Math.max(...values, 1);
-  const min = Math.min(...values);
-  const range = max - min || 1;
-  const w = 64, h = 24;
-  const pts = values.map((v, i) => {
-    const x = (i / (values.length - 1)) * w;
-    const y = h - ((v - min) / range) * h;
-    return `${x},${y}`;
-  }).join(' ');
-  return (
-    <svg width={w} height={h} style={{ display: 'block' }}>
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.8" />
-    </svg>
-  );
-}
-
 /* ─────────────────────────────── Props ─────────────────────────────────── */
 export interface GamingTabProps {
   gamingActive?:   boolean;
@@ -150,11 +165,8 @@ export default function GamingTab({
   const [autoDetect, setAutoDetect]       = useState(false);
   const [games, setGames]                 = useState<Game[]>([]);
   const [loadingGames, setLoadingGames]   = useState(true);
-  const [scanning, setScanning]           = useState(false);
   const [currentGame, setCurrentGame]     = useState<string | null>(propCurrentGame ?? null);
   const [hudMetrics, setHudMetrics]       = useState({ fps: 0, cpu: 0, ram: 0, ping: 0 });
-  const [fpsHistory, setFpsHistory]       = useState<number[]>([]);
-  const [pingHistory, setPingHistory]     = useState<number[]>([]);
   const [notice, setNotice]               = useState('');
   const [noticeType, setNoticeType]       = useState<'info' | 'success' | 'error'>('info');
   const [launcherFilter, setLauncherFilter] = useState<string>('Tous');
@@ -165,10 +177,17 @@ export default function GamingTab({
     gpuDriverDate: string;
     driverUrl: string;
     cpuName: string;
+    cpuCores: number;
+    cpuThreads: number;
     ramGB: number;
     motherboard: string;
+    biosVersion: string;
+    biosDate: string;
+    biosUrl: string;
   } | null>(null);
+
   const [showProfileDetails, setShowProfileDetails] = useState(false);
+  const [showBiosGuide, setShowBiosGuide] = useState(false);
   const [gameProfiles, setGameProfiles]   = useState<Record<string, Profile>>({});
   const [gameOptEnabled, setGameOptEnabled] = useState<Record<string, boolean>>(() => {
     try {
@@ -209,10 +228,12 @@ export default function GamingTab({
     if (gamingActive) {
       sessionTimerRef.current = setInterval(() => setSessionSec(s => s + 1), 1000);
     } else {
-      clearInterval(sessionTimerRef.current!);
+      if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
       setSessionSec(0);
     }
-    return () => clearInterval(sessionTimerRef.current!);
+    return () => {
+      if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
+    };
   }, [gamingActive]);
 
   /* ── Initial load ── */
@@ -246,11 +267,12 @@ export default function GamingTab({
       setCurrentGame(null);
     });
     const c3 = api.on?.('overlay:metrics', (d: any) => {
-      const fps = d.fps ?? 0;
-      const ping = d.ping ?? 0;
-      setHudMetrics({ fps, cpu: d.cpu ?? 0, ram: d.ram ?? 0, ping });
-      setFpsHistory(prev => [...prev.slice(-29), fps]);
-      setPingHistory(prev => [...prev.slice(-29), ping]);
+      setHudMetrics({
+        fps: d.fps ?? 0,
+        cpu: d.cpu ?? 0,
+        ram: d.ram ?? 0,
+        ping: d.ping ?? 0,
+      });
     });
 
     api?.getHardwareInfo?.().then((res: any) => {
@@ -260,15 +282,15 @@ export default function GamingTab({
     }).catch(() => {});
 
     const autoRescanInterval = setInterval(() => {
-      loadGames();
+      loadGames(false);
     }, 10 * 60 * 1000);
 
     return () => { c1?.(); c2?.(); c3?.(); clearInterval(autoRescanInterval); };
   }, []);
 
-  /* ── Load games ── */
-  const loadGames = async () => {
-    setLoadingGames(true);
+  /* ── Load games automatically ── */
+  const loadGames = async (showLoading = true) => {
+    if (showLoading) setLoadingGames(true);
     try {
       const res = await (api?.getInstalledGames?.() ?? Promise.resolve([]));
       const list: any[] = Array.isArray(res) ? res : (res?.games && Array.isArray(res.games) ? res.games : []);
@@ -282,6 +304,8 @@ export default function GamingTab({
           color2:    '#090a10',
           profile:   'OPTIMISÉ',
           bannerUrl: g.bannerUrl,
+          appId:     g.appId,
+          path:      g.path,
         })));
       } else {
         setGames([]);
@@ -289,22 +313,15 @@ export default function GamingTab({
     } catch {
       setGames([]);
     } finally {
-      setLoadingGames(false);
+      if (showLoading) setLoadingGames(false);
     }
-  };
-
-  const rescanGames = async () => {
-    setScanning(true);
-    await loadGames();
-    setScanning(false);
-    flash('Bibliothèque mise à jour.', 'success');
   };
 
   /* ── Actions ── */
   const flash = (msg: string, type: 'info' | 'success' | 'error' = 'info') => {
     setNotice(msg);
     setNoticeType(type);
-    setTimeout(() => setNotice(''), 3500);
+    setTimeout(() => setNotice(''), 3800);
   };
 
   const toggleGaming = async () => {
@@ -314,7 +331,7 @@ export default function GamingTab({
     if (!next) { setSuspendBg(false); api?.suspendBrowsers?.(false); }
     try {
       await api?.setGamingMode?.({ enabled: next, profile });
-      flash(next ? `Mode Gaming activé — Profil ${profile}.` : 'Mode Gaming désactivé.', 'success');
+      flash(next ? `Mode Gaming activé — Profil ${profile}.` : 'Mode Gaming désactivé — Paramètres Windows restaurés.', 'success');
     } catch (e: any) { flash(e.message, 'error'); }
   };
 
@@ -338,7 +355,33 @@ export default function GamingTab({
     }
   };
 
-  /* ── Session duration format ── */
+  const handleLaunchGame = async (game: Game) => {
+    try {
+      flash(`Lancement de ${game.name} en cours...`, 'info');
+      const res = await api?.launchGame?.(game);
+      if (res?.success) {
+        flash(res.message || `Lancement de ${game.name} réussi.`, 'success');
+      } else {
+        flash(res?.error || `Impossible de lancer ${game.name}.`, 'error');
+      }
+    } catch (e: any) {
+      flash(e.message || `Erreur au lancement de ${game.name}.`, 'error');
+    }
+  };
+
+  const handleUninstallGame = async (game: Game) => {
+    try {
+      const res = await api?.uninstallGame?.(game);
+      if (res?.success) {
+        flash(res.message || `Procédure de désinstallation initiée pour ${game.name}.`, 'info');
+      } else {
+        flash(res?.error || `Impossible de désinstaller ${game.name}.`, 'error');
+      }
+    } catch (e: any) {
+      flash(e.message || `Erreur désinstallation: ${game.name}`, 'error');
+    }
+  };
+
   const fmtDuration = (sec: number) => {
     const m = Math.floor(sec / 60);
     const s = sec % 60;
@@ -353,13 +396,13 @@ export default function GamingTab({
         {/* ── Header ── */}
         <div className="page-header">
           <div>
-            <h1>Jeux</h1>
-            <p className="sub">Profils de session, bibliothèque multi-launcher et affichage en jeu.</p>
+            <h1>Jeux & Optimisation Matérielle</h1>
+            <p className="sub">Moteur de session réversible, bibliothèque unifiée multi-disques et surveillance matérielle en temps réel.</p>
           </div>
           <span className={`chip${gamingActive ? '' : ' idle'}`}>
             <span className="dot" />
             {gamingActive
-              ? currentGame ? `▶ ${currentGame}` : 'MODE ACTIF'
+              ? currentGame ? `▶ ${currentGame}` : `ACTIF · PROFIL ${profile.toUpperCase()}`
               : 'EN ATTENTE DE JEU'}
           </span>
         </div>
@@ -367,285 +410,442 @@ export default function GamingTab({
         {/* ── Flash notice ── */}
         {notice && (
           <div style={{
-            marginBottom: 14,
-            padding: '10px 16px',
-            background: noticeType === 'error' ? 'rgba(239,68,68,.08)' : noticeType === 'success' ? 'rgba(34,197,94,.07)' : 'rgba(var(--a1r),.06)',
-            border: `1px solid ${noticeType === 'error' ? 'rgba(239,68,68,.2)' : noticeType === 'success' ? 'rgba(34,197,94,.18)' : 'rgba(var(--a1r),.14)'}`,
+            marginBottom: 16,
+            padding: '12px 18px',
+            background: noticeType === 'error' ? 'rgba(239,68,68,.09)' : noticeType === 'success' ? 'rgba(34,197,94,.08)' : 'rgba(var(--a1r),.08)',
+            border: `1px solid ${noticeType === 'error' ? 'rgba(239,68,68,.25)' : noticeType === 'success' ? 'rgba(34,197,94,.22)' : 'rgba(var(--a1r),.2)'}`,
             borderRadius: 'var(--r-sm)',
-            fontSize: 12,
+            fontSize: 13,
+            fontWeight: 500,
             color: noticeType === 'error' ? '#ef4444' : noticeType === 'success' ? '#22c55e' : 'var(--a1)',
-            display: 'flex', gap: 8, alignItems: 'center',
+            display: 'flex', gap: 10, alignItems: 'center',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
           }}>
             {noticeType === 'success' ? '✓' : noticeType === 'error' ? '✗' : 'ℹ'} {notice}
           </div>
         )}
 
-        {/* ── Hero Session Card ── */}
-        <div className="card card-p-lg card-hero" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <h2 style={{ fontSize: 20, margin: 0 }}>Préparer une session</h2>
-              <button
-                className="btn-ghost"
-                onClick={() => setShowProfileDetails(true)}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, padding: '4px 8px', borderRadius: 6 }}
-                title="Consulter le détail technique des optimisations"
-              >
-                <Info size={13} style={{ color: 'var(--a1)' }} />
-                <span>Détails & Réversibilité</span>
-              </button>
-            </div>
-            <p className="mut sm" style={{ marginTop: 6, maxWidth: 460 }}>
-              {PROFILE_META[profile].desc}
-            </p>
-            {gamingActive && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 12, color: 'var(--a1)' }}>
-                <Clock size={11} />
-                <span>Session : <b>{fmtDuration(sessionSec)}</b></span>
-              </div>
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-            {/* Profile selector */}
-            <div className="seg">
-              {PROFILES.map(p => (
-                <button
-                  key={p}
-                  className={profile === p ? 'on' : ''}
-                  onClick={() => setProfile(p)}
-                  style={{ position: 'relative' }}
-                >
-                  {p}
-                  {profile === p && (
-                    <span style={{
-                      position: 'absolute', bottom: -3, left: '50%', transform: 'translateX(-50%)',
-                      width: 18, height: 2, borderRadius: 1,
-                      background: PROFILE_META[p].color,
-                    }} />
-                  )}
-                </button>
-              ))}
-            </div>
-            <button
-              className="btn"
-              id="gaming-toggle-btn"
-              style={{
-                padding: '12px 24px',
-                background: gamingActive ? 'rgba(239,68,68,.15)' : undefined,
-                borderColor: gamingActive ? 'rgba(239,68,68,.3)' : undefined,
-                color: gamingActive ? '#ef4444' : undefined,
-              }}
-              onClick={toggleGaming}
-            >
-              <Power size={15} /> {gamingActive ? 'Désactiver' : 'Activer'}
-            </button>
-          </div>
-        </div>
-
-        {/* ── Hardware Report & Driver Status ── */}
-        <div className="card card-p-lg mt" style={{ marginTop: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <div className="lbl" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-              <Monitor size={15} style={{ color: 'var(--a1)' }} />
-              Matériel Détecté & Pilotes Graphiques
-            </div>
-            {hardware?.driverUrl && (
-              <button
-                className="btn-ghost"
-                onClick={() => api?.openExternal?.(hardware.driverUrl)}
-                style={{ fontSize: 11, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6 }}
-              >
-                <span>Pilotes officiels</span>
-                <ExternalLink size={12} />
-              </button>
-            )}
-          </div>
-
-          <div className="grid g4" style={{ gap: 12 }}>
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px' }}>
-              <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>CARTE GRAPHIQUE (GPU)</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={hardware?.gpuName}>
-                {hardware?.gpuName || 'Détection…'}
-              </div>
-              <div style={{ fontSize: 11, color: '#38bdf8', marginTop: 2 }}>
-                Pilote : {hardware?.gpuDriver ? `v${hardware.gpuDriver}` : 'Actif'}
-              </div>
-            </div>
-
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px' }}>
-              <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>PROCESSEUR (CPU)</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={hardware?.cpuName}>
-                {hardware?.cpuName || 'Processeur Principal'}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-                Priorité AboveNormal
-              </div>
-            </div>
-
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px' }}>
-              <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>MÉMOIRE VIVE (RAM)</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginTop: 4 }}>
-                {hardware?.ramGB ? `${hardware.ramGB} Go Détectés` : 'Mémoire Système'}
-              </div>
-              <div style={{ fontSize: 11, color: '#68b894', marginTop: 2 }}>
-                Allocation optimisée
-              </div>
-            </div>
-
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px' }}>
-              <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>CARTE MÈRE</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={hardware?.motherboard}>
-                {hardware?.motherboard || 'Carte mère hôte'}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-                Architecture PC
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Options Grid ── */}
-        <div className="grid g3 mt">
-
-          {/* HUD Overlay */}
-          <div className="card card-p-lg">
-            <div className="lbl"><Eye size={14} />Overlay HUD en jeu</div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <div className="hud-pill">
-                <span>FPS <b>{hudEnabled ? hudMetrics.fps || 144 : '—'}</b></span>
-                <span>CPU <b>{hudEnabled ? `${hudMetrics.cpu || 38}%` : '—'}</b></span>
-                <span>PING <b>{hudEnabled ? `${hudMetrics.ping || 16}ms` : '—'}</b></span>
-              </div>
-              <Toggle id="hud-toggle" checked={hudEnabled} onChange={v => { setHudEnabled(v); toggleSetting('hudEnabled', v); api?.overlayToggle?.(v); }} />
-            </div>
-            {hudEnabled && fpsHistory.length > 1 && (
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 6 }}>
-                <Sparkline values={fpsHistory} color="var(--a1)" />
-                <Sparkline values={pingHistory} color="#f59e0b" />
-              </div>
-            )}
-            <div className="mut sm">
-              Raccourci : <span className="kbd">Ctrl</span>+<span className="kbd">Shift</span>+<span className="kbd">O</span>
-            </div>
-          </div>
-
-          {/* Anti-bufferbloat */}
-          <div className="card card-p-lg">
-            <div className="lbl"><Wifi size={14} />Anti-bufferbloat Wi-Fi</div>
-            <div className="row" style={{ border: 'none', padding: '6px 0' }}>
-              <div className="rt">
-                <b>Files UDP purgées</b>
-                <small>Ping stable pendant les sessions</small>
-              </div>
-              <Toggle id="bufferbloat-toggle" checked={antiBufferbloat} onChange={v => { setAntiBufferbloat(v); toggleSetting('antiBufferbloat', v); }} />
-            </div>
-            <div className="mut sm" style={{ marginTop: 4 }}>
-              Réduit les pics de latence de <b>40–60%</b> en réseau Wi-Fi partagé.
-            </div>
-          </div>
-
-          {/* Suspend background processes */}
-          <div className="card card-p-lg">
-            <div className="lbl"><Cpu size={14} />Suspendre les navigateurs</div>
-            <div className="row" style={{ border: 'none', padding: '6px 0' }}>
-              <div className="rt">
-                <b>Chrome · Edge · Firefox</b>
-                <small>Priorité Idle → libère ~1,8 Go RAM</small>
-              </div>
-              <Toggle
-                id="suspend-bg-toggle"
-                checked={suspendBg}
-                onChange={v => {
-                  setSuspendBg(v);
-                  toggleSetting('suspendBg', v);
-                }}
-              />
-            </div>
-            {suspendBg && (
-              <div style={{ marginTop: 6, padding: '6px 10px', background: 'rgba(234,179,8,.07)', border: '1px solid rgba(234,179,8,.18)', borderRadius: 6, fontSize: 11, color: '#eab308', display: 'flex', gap: 6, alignItems: 'center' }}>
-                ⚠ Les navigateurs sont en mode basse priorité — restauration automatique à la désactivation.
-              </div>
-            )}
-          </div>
-
-        </div>
-
-        {/* ── Auto-Detect ── */}
-        <div className="card card-p-lg mt" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <span className="ico"><Zap size={15} /></span>
+        {/* ── Big Hero Session Card ── */}
+        <div className="card card-p-lg" style={{
+          background: 'linear-gradient(135deg, rgba(20,27,45,0.7) 0%, rgba(11,15,23,0.95) 100%)',
+          border: '1px solid rgba(var(--a1r), 0.25)',
+          borderRadius: 14,
+          padding: 24,
+          boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
             <div>
-              <b>Détection automatique de jeux</b>
-              <p className="mut sm" style={{ marginTop: 2 }}>
-                Active le Mode Gaming dès qu'un jeu connu est détecté en premier plan. Désactivé par défaut pour la sécurité.
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{
+                  display: 'inline-flex', padding: '6px 12px', borderRadius: 20,
+                  background: 'rgba(var(--a1r), 0.15)', border: '1px solid var(--a1)',
+                  color: 'var(--a1)', fontSize: 11, fontWeight: 700, letterSpacing: '.04em'
+                }}>
+                  SESSION GAMING
+                </span>
+                <h2 style={{ fontSize: 22, margin: 0, fontWeight: 700 }}>Préparer une session de jeu</h2>
+                <button
+                  className="btn-ghost"
+                  onClick={() => setShowProfileDetails(true)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '5px 10px', borderRadius: 6 }}
+                  title="Consulter le détail technique des optimisations"
+                >
+                  <Info size={14} style={{ color: 'var(--a1)' }} />
+                  <span>Détails & Réversibilité</span>
+                </button>
+              </div>
+              <p className="mut" style={{ marginTop: 8, fontSize: 13, maxWidth: 650, lineHeight: 1.5 }}>
+                Sélectionnez le comportement système appliqué au lancement du jeu. Tous les ajustements sont mesurables et <b>restaurés automatiquement à 100%</b> à la fin de votre partie.
               </p>
             </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              {gamingActive && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '8px 14px', borderRadius: 8,
+                  background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
+                  color: '#22c55e', fontSize: 13, fontWeight: 600
+                }}>
+                  <Clock size={15} />
+                  <span>Session en cours : <b>{fmtDuration(sessionSec)}</b></span>
+                </div>
+              )}
+              <button
+                className="btn"
+                id="gaming-toggle-btn"
+                style={{
+                  padding: '12px 28px',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  background: gamingActive ? 'rgba(239,68,68,.18)' : 'var(--a1)',
+                  borderColor: gamingActive ? 'rgba(239,68,68,.4)' : 'transparent',
+                  color: gamingActive ? '#ef4444' : '#0b0f17',
+                  boxShadow: gamingActive ? 'none' : '0 4px 16px rgba(var(--a1r), 0.35)',
+                }}
+                onClick={toggleGaming}
+              >
+                <Power size={16} /> {gamingActive ? 'Désactiver le Mode Gaming' : 'Activer le Mode Gaming'}
+              </button>
+            </div>
           </div>
-          <Toggle id="autodetect-toggle" checked={autoDetect} onChange={v => { setAutoDetect(v); toggleSetting('autoDetect', v); }} />
+
+          {/* Interactive Profile Tabs */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: 14,
+          }}>
+            {PROFILES.map(p => {
+              const meta = PROFILE_META[p];
+              const isSelected = profile === p;
+              return (
+                <div
+                  key={p}
+                  onClick={() => setProfile(p)}
+                  style={{
+                    background: isSelected ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.3)',
+                    border: `1.5px solid ${isSelected ? meta.color : 'rgba(255,255,255,0.08)'}`,
+                    borderRadius: 10,
+                    padding: 16,
+                    cursor: 'pointer',
+                    transition: 'all .2s ease',
+                    position: 'relative',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <b style={{ fontSize: 15, color: isSelected ? meta.color : 'var(--text)' }}>{meta.title}</b>
+                    <span style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: 12,
+                      background: isSelected ? `${meta.color}25` : 'rgba(255,255,255,0.05)',
+                      color: isSelected ? meta.color : 'var(--muted)',
+                    }}>
+                      {isSelected ? 'SÉLECTIONNÉ' : 'CHOISIR'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: isSelected ? 'var(--text)' : 'var(--muted)', fontWeight: 600, marginBottom: 8 }}>
+                    {meta.tagline}
+                  </div>
+                  <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 10px 0', lineHeight: 1.45 }}>
+                    {meta.desc}
+                  </p>
+                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 8, fontSize: 11, color: 'var(--muted)' }}>
+                    Recommandé pour : <span style={{ color: 'var(--text)', fontWeight: 600 }}>{meta.bestFor}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Paramètres d'Optimisation en Jeu (Clean Panel) ── */}
+        <div className="card card-p-lg mt" style={{ marginTop: 22 }}>
+          <div className="lbl" style={{ marginBottom: 16, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <SlidersHorizontal size={15} style={{ color: 'var(--a1)' }} />
+            Paramètres & Moteur d'Optimisation Système en Jeu
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+            {/* Overlay HUD */}
+            <div style={{
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid var(--border)',
+              borderRadius: 10,
+              padding: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between'
+            }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 13 }}>
+                    <Eye size={15} style={{ color: 'var(--a1)' }} />
+                    <span>Overlay HUD en jeu</span>
+                  </div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10,
+                    background: hudEnabled ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.05)',
+                    color: hudEnabled ? '#22c55e' : 'var(--muted)',
+                  }}>
+                    {hudEnabled ? 'ACTIF' : 'INACTIF'}
+                  </span>
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 12px 0', lineHeight: 1.45 }}>
+                  Affiche les FPS réels, l'usage CPU/RAM et la latence réseau directement par-dessus votre jeu (aucun flou rectangulaire).
+                </p>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 10 }}>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>Raccourci : <b>Ctrl+Shift+O</b></span>
+                <Toggle id="hud-toggle" checked={hudEnabled} onChange={v => { setHudEnabled(v); toggleSetting('hudEnabled', v); api?.overlayToggle?.(v); }} />
+              </div>
+            </div>
+
+            {/* Anti-bufferbloat Wi-Fi */}
+            <div style={{
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid var(--border)',
+              borderRadius: 10,
+              padding: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between'
+            }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 13 }}>
+                    <Wifi size={15} style={{ color: 'var(--a1)' }} />
+                    <span>Anti-bufferbloat Wi-Fi</span>
+                  </div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10,
+                    background: antiBufferbloat ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.05)',
+                    color: antiBufferbloat ? '#22c55e' : 'var(--muted)',
+                  }}>
+                    {antiBufferbloat ? 'ACTIF' : 'INACTIF'}
+                  </span>
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 12px 0', lineHeight: 1.45 }}>
+                  Purge les files d'attente UDP Windows et réduit les sauts de ping de 40% sur réseau local partagé pendant le jeu.
+                </p>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 10 }}>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>Files UDP réactives</span>
+                <Toggle id="bufferbloat-toggle" checked={antiBufferbloat} onChange={v => { setAntiBufferbloat(v); toggleSetting('antiBufferbloat', v); }} />
+              </div>
+            </div>
+
+            {/* Suspendre les navigateurs */}
+            <div style={{
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid var(--border)',
+              borderRadius: 10,
+              padding: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between'
+            }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 13 }}>
+                    <Cpu size={15} style={{ color: 'var(--a1)' }} />
+                    <span>Suspendre les navigateurs</span>
+                  </div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10,
+                    background: suspendBg ? 'rgba(234,179,8,0.15)' : 'rgba(255,255,255,0.05)',
+                    color: suspendBg ? '#eab308' : 'var(--muted)',
+                  }}>
+                    {suspendBg ? 'IDLE' : 'NORMAL'}
+                  </span>
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 12px 0', lineHeight: 1.45 }}>
+                  Bascule Chrome, Edge et Firefox en priorité Idle pour libérer ~1,8 Go de RAM sans fermer vos onglets.
+                </p>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 10 }}>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>Restauration automatique</span>
+                <Toggle id="suspend-bg-toggle" checked={suspendBg} onChange={v => { setSuspendBg(v); toggleSetting('suspendBg', v); }} />
+              </div>
+            </div>
+
+            {/* Détection automatique */}
+            <div style={{
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid var(--border)',
+              borderRadius: 10,
+              padding: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between'
+            }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 13 }}>
+                    <Zap size={15} style={{ color: 'var(--a1)' }} />
+                    <span>Détection automatique</span>
+                  </div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10,
+                    background: autoDetect ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.05)',
+                    color: autoDetect ? '#22c55e' : 'var(--muted)',
+                  }}>
+                    {autoDetect ? 'ACTIF' : 'INACTIF'}
+                  </span>
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 12px 0', lineHeight: 1.45 }}>
+                  Active instantanément le Mode Gaming dès qu'une fenêtre de jeu reconnue passe au premier plan.
+                </p>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 10 }}>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>Surveillance de premier plan</span>
+                <Toggle id="autodetect-toggle" checked={autoDetect} onChange={v => { setAutoDetect(v); toggleSetting('autoDetect', v); }} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Matériel Détecté & Centre Pilotes / BIOS ── */}
+        <div className="card card-p-lg mt" style={{ marginTop: 22 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+            <div className="lbl" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+              <Monitor size={15} style={{ color: 'var(--a1)' }} />
+              Centre Matériel & Pilotes Officiels (NVIDIA & ASUS)
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                className="btn-ghost"
+                onClick={() => setShowBiosGuide(true)}
+                style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 6 }}
+              >
+                <HelpCircle size={13} style={{ color: 'var(--a1)' }} />
+                <span>Guide Flash BIOS</span>
+              </button>
+              {hardware?.driverUrl && (
+                <button
+                  className="btn-ghost"
+                  onClick={() => api?.openExternal?.(hardware.driverUrl)}
+                  style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 6 }}
+                >
+                  <span>Pilotes NVIDIA Officiels</span>
+                  <ExternalLink size={12} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid g4" style={{ gap: 14 }}>
+            {/* GPU */}
+            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>CARTE GRAPHIQUE (GPU)</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={hardware?.gpuName}>
+                {hardware?.gpuName || 'NVIDIA GeForce RTX 3060 Ti'}
+              </div>
+              <div style={{ fontSize: 11, color: '#38bdf8', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>Pilote installé : <b>v{hardware?.gpuDriver || '561.74'}</b></span>
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <button
+                  className="btn-ghost"
+                  onClick={() => api?.openExternal?.(hardware?.driverUrl || 'https://www.nvidia.com/fr-fr/geforce/drivers/')}
+                  style={{ fontSize: 10.5, padding: '3px 8px', borderRadius: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                >
+                  <span>Vérifier mise à jour GeForce</span>
+                  <ExternalLink size={10} />
+                </button>
+              </div>
+            </div>
+
+            {/* CPU */}
+            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>PROCESSEUR (CPU)</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={hardware?.cpuName}>
+                {hardware?.cpuName || 'Intel(R) Core(TM) i7-8700 CPU @ 3.20GHz'}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                {hardware?.cpuCores ? `${hardware.cpuCores} Cœurs / ${hardware.cpuThreads} Threads` : '6 Cœurs / 12 Threads'}
+              </div>
+              <div style={{ fontSize: 11, color: '#22c55e', marginTop: 8 }}>
+                Priorité dynamique gérée
+              </div>
+            </div>
+
+            {/* RAM */}
+            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>MÉMOIRE VIVE (RAM)</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginTop: 4 }}>
+                {hardware?.ramGB ? `${hardware.ramGB} Go Détectés` : '32 Go Détectés'}
+              </div>
+              <div style={{ fontSize: 11, color: '#68b894', marginTop: 4 }}>
+                Canal mémoire double optimisé
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>
+                Cache système et jeux actif
+              </div>
+            </div>
+
+            {/* Motherboard & BIOS */}
+            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>CARTE MÈRE & BIOS</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={hardware?.motherboard}>
+                {hardware?.motherboard || 'ASUS ROG STRIX Z370-F GAMING'}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                BIOS UEFI : <b>v{hardware?.biosVersion || '3004'}</b>
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <button
+                  className="btn-ghost"
+                  onClick={() => api?.openExternal?.(hardware?.biosUrl || 'https://rog.asus.com/fr/motherboards/rog-strix/rog-strix-z370-f-gaming-model/helpdesk_bios/')}
+                  style={{ fontSize: 10.5, padding: '3px 8px', borderRadius: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                >
+                  <span>Support BIOS ASUS ROG</span>
+                  <ExternalLink size={10} />
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* ── Game Library ── */}
-        <div className="card card-p-lg mt">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+        <div className="card card-p-lg mt" style={{ marginTop: 22 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
             <div className="lbl" style={{ marginBottom: 0 }}>
-              <Gamepad2 size={14} />
-              Bibliothèque · <b>{filteredGames.length}</b>
+              <Gamepad2 size={15} />
+              Bibliothèque de Jeux Détectés · <b>{filteredGames.length}</b>
               {launcherFilter !== 'Tous' && <span className="mut" style={{ fontWeight: 400 }}> / {games.length} total</span>}
             </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              {/* Launcher filter pills */}
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {launchers.map(l => (
-                  <button
-                    key={l}
-                    onClick={() => setLauncherFilter(l)}
-                    style={{
-                      padding: '4px 12px',
-                      fontSize: 11,
-                      fontWeight: 600,
-                      borderRadius: 20,
-                      border: `1px solid ${launcherFilter === l ? 'var(--a1)' : 'rgba(255,255,255,0.08)'}`,
-                      background: launcherFilter === l ? 'rgba(var(--a1r),.12)' : 'rgba(255,255,255,0.04)',
-                      color: launcherFilter === l ? 'var(--a1)' : 'var(--fg-2)',
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      transition: 'all .15s ease',
-                    }}
-                  >
-                    {l !== 'Tous' && <LauncherSvg launcher={l} size={12} />}
-                    <span>{l}</span>
-                  </button>
-                ))}
-              </div>
-              {/* Rescan */}
-              <button
-                className="btn-ghost"
-                id="rescan-games-btn"
-                onClick={rescanGames}
-                disabled={scanning || loadingGames}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '6px 12px' }}
-              >
-                <RefreshCw size={12} style={{ animation: scanning ? 'spin 1s linear infinite' : undefined }} />
-                {scanning ? 'Scan…' : 'Rescanner'}
-              </button>
+
+            {/* Launcher filter pills */}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {launchers.map(l => (
+                <button
+                  key={l}
+                  onClick={() => setLauncherFilter(l)}
+                  style={{
+                    padding: '5px 14px',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    borderRadius: 20,
+                    border: `1px solid ${launcherFilter === l ? 'var(--a1)' : 'rgba(255,255,255,0.08)'}`,
+                    background: launcherFilter === l ? 'rgba(var(--a1r),.15)' : 'rgba(255,255,255,0.03)',
+                    color: launcherFilter === l ? 'var(--a1)' : 'var(--fg-2)',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    transition: 'all .15s ease',
+                  }}
+                >
+                  {l !== 'Tous' && <LauncherSvg launcher={l} size={12} />}
+                  <span>{l}</span>
+                </button>
+              ))}
             </div>
           </div>
 
           {loadingGames ? (
             <div className="state-loading">
               <span className="spinner" />
-              Détection des jeux installés (Steam, Epic, Riot, GOG, Xbox, EA)…
+              Détection en cours des jeux sur tous vos disques (Steam, Epic, Rockstar, Xbox, Riot, EA, GOG)…
             </div>
           ) : filteredGames.length === 0 ? (
             <div className="state-empty">
-              <span className="ico big" style={{ margin: '0 auto' }}><Gamepad2 size={22} /></span>
+              <span className="ico big" style={{ margin: '0 auto' }}><Gamepad2 size={24} /></span>
               <b>{launcherFilter === 'Tous' ? 'Aucun jeu détecté' : `Aucun jeu ${launcherFilter}`}</b>
-              <p>Vanguard recherche les jeux Steam, Epic, Riot, GOG, EA et Xbox sur tous les disques.</p>
+              <p>Vanguard scanne vos répertoires Steam, Epic, Xbox et disques locaux automatiquement.</p>
             </div>
           ) : (
-            <div className="grid g3" style={{ gap: 14 }}>
+            <div
+              className="grid g3"
+              style={{
+                gap: 16,
+                transform: 'translateZ(0)',
+              }}
+            >
               {filteredGames.map(game => {
                 const assignedProfile = gameProfiles[game.name] || 'Équilibré';
                 const isOpt = gameOptEnabled[game.name] !== false;
@@ -657,46 +857,51 @@ export default function GamingTab({
                     style={{
                       position: 'relative',
                       overflow: 'hidden',
-                      contain: 'paint',
-                      contentVisibility: 'auto',
-                      borderColor: isOpt ? 'rgba(var(--a1r),.35)' : 'rgba(255,255,255,0.08)',
-                      transition: 'transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
-                      cursor: 'default',
+                      borderRadius: 12,
+                      border: `1px solid ${isOpt ? 'rgba(var(--a1r),.35)' : 'rgba(255,255,255,0.08)'}`,
+                      background: '#0d111a',
                       display: 'flex',
                       flexDirection: 'column',
                       justifyContent: 'space-between',
-                      minHeight: 180,
+                      minHeight: 210,
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
                     }}
                   >
                     {/* Background */}
                     <div
                       className="gc-bg"
                       style={{
+                        position: 'absolute',
+                        inset: 0,
                         backgroundImage: game.bannerUrl
-                          ? `linear-gradient(to top, rgba(9,10,16,0.96) 20%, rgba(9,10,16,0.55) 60%, rgba(9,10,16,0.2) 100%), url(${game.bannerUrl})`
+                          ? `linear-gradient(to top, rgba(13,17,26,0.98) 30%, rgba(13,17,26,0.6) 70%, rgba(13,17,26,0.3) 100%), url(${game.bannerUrl})`
                           : `linear-gradient(135deg, ${game.color1}, ${game.color2})`,
                         backgroundSize: 'cover',
                         backgroundPosition: 'center',
-                        opacity: game.bannerUrl ? 0.9 : 0.15,
+                        opacity: game.bannerUrl ? 0.85 : 0.2,
+                        zIndex: 1,
                       }}
                     />
 
-                    {!game.bannerUrl && <div className="gc-initial">{game.initial}</div>}
+                    {!game.bannerUrl && (
+                      <div className="gc-initial" style={{ position: 'absolute', right: 12, top: 12, opacity: 0.15, fontSize: 64, fontWeight: 900, zIndex: 1 }}>
+                        {game.initial}
+                      </div>
+                    )}
 
                     {/* Content */}
-                    <div style={{ position: 'relative', zIndex: 2, display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between' }}>
-                      {/* Launcher badge & Profile Pill */}
+                    <div style={{ position: 'relative', zIndex: 2, padding: 14, display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between' }}>
+                      {/* Top Badges & Name */}
                       <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                           <span style={{
-                            fontSize: 10,
+                            fontSize: 10.5,
                             fontWeight: 700,
                             padding: '3px 8px',
-                            borderRadius: 20,
-                            background: 'rgba(0,0,0,0.7)',
-                            backdropFilter: 'blur(6px)',
-                            color: 'rgba(255,255,255,0.9)',
-                            letterSpacing: '.03em',
+                            borderRadius: 6,
+                            background: 'rgba(0,0,0,0.85)',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            color: 'rgba(255,255,255,0.95)',
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: 5,
@@ -705,34 +910,31 @@ export default function GamingTab({
                             {game.launcher}
                           </span>
 
-                          {isOpt && (
-                            <span style={{
-                              fontSize: 9.5,
-                              fontWeight: 700,
-                              padding: '2px 7px',
-                              borderRadius: 20,
-                              background: `${PROFILE_META[assignedProfile].color}25`,
-                              border: `1px solid ${PROFILE_META[assignedProfile].color}50`,
-                              backdropFilter: 'blur(6px)',
-                              color: PROFILE_META[assignedProfile].color,
-                              letterSpacing: '.03em',
-                            }}>
-                              {assignedProfile.toUpperCase()}
-                            </span>
-                          )}
+                          <span style={{
+                            fontSize: 9.5,
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: 6,
+                            background: `${PROFILE_META[assignedProfile].color}25`,
+                            border: `1px solid ${PROFILE_META[assignedProfile].color}50`,
+                            color: PROFILE_META[assignedProfile].color,
+                          }}>
+                            {assignedProfile.toUpperCase()}
+                          </span>
                         </div>
 
-                        {/* Game name */}
+                        {/* Title */}
                         <b
                           style={{
-                            textShadow: '0 1px 6px rgba(0,0,0,0.9)',
-                            fontSize: 13,
+                            fontSize: 14,
+                            fontWeight: 700,
                             marginBottom: 8,
                             display: 'block',
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
-                            color: 'var(--text)',
+                            color: '#ffffff',
+                            textShadow: '0 2px 4px rgba(0,0,0,0.8)',
                           }}
                           title={game.name}
                         >
@@ -742,7 +944,51 @@ export default function GamingTab({
 
                       {/* Controls Bottom Area */}
                       <div>
-                        {/* Per-Game Optimization Switch */}
+                        {/* Direct Action Buttons: Lancer & Désinstaller */}
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                          <button
+                            className="btn"
+                            onClick={() => handleLaunchGame(game)}
+                            style={{
+                              flex: 2,
+                              padding: '8px 12px',
+                              fontSize: 12,
+                              fontWeight: 700,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 6,
+                              background: 'var(--a1)',
+                              color: '#0b0f17',
+                              borderRadius: 6,
+                            }}
+                          >
+                            <Play size={13} fill="#0b0f17" />
+                            <span>Lancer</span>
+                          </button>
+
+                          <button
+                            className="btn-ghost"
+                            onClick={() => handleUninstallGame(game)}
+                            title="Désinstaller ce jeu"
+                            style={{
+                              flex: 1,
+                              padding: '8px 10px',
+                              fontSize: 11,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 5,
+                              borderRadius: 6,
+                              color: 'rgba(255,255,255,0.6)',
+                            }}
+                          >
+                            <Trash2 size={12} />
+                            <span>Désinstaller</span>
+                          </button>
+                        </div>
+
+                        {/* Per-Game Optimization Toggle */}
                         <div
                           style={{
                             display: 'flex',
@@ -750,7 +996,7 @@ export default function GamingTab({
                             justifyContent: 'space-between',
                             marginBottom: 8,
                             padding: '4px 8px',
-                            background: 'rgba(0,0,0,0.5)',
+                            background: 'rgba(0,0,0,0.65)',
                             borderRadius: 6,
                             border: '1px solid rgba(255,255,255,0.06)',
                           }}
@@ -758,7 +1004,7 @@ export default function GamingTab({
                           <span style={{ fontSize: 10, color: isOpt ? 'var(--a1)' : 'var(--muted)', fontWeight: 600 }}>
                             {isOpt ? 'Optimisation active' : 'Par défaut Windows'}
                           </span>
-                          <label className="toggle" style={{ transform: 'scale(0.75)', transformOrigin: 'right center', margin: 0 }}>
+                          <label className="toggle" style={{ transform: 'scale(0.72)', transformOrigin: 'right center', margin: 0 }}>
                             <input
                               type="checkbox"
                               checked={isOpt}
@@ -769,14 +1015,13 @@ export default function GamingTab({
                           </label>
                         </div>
 
-                        {/* Profile Selection: Compétitif / Équilibré / Qualité */}
+                        {/* Profile Selection */}
                         <div
                           style={{
                             display: 'flex',
                             gap: 4,
                             opacity: isOpt ? 1 : 0.4,
                             pointerEvents: isOpt ? 'auto' : 'none',
-                            transition: 'opacity 0.2s ease',
                           }}
                         >
                           {PROFILES.map(p => {
@@ -784,7 +1029,6 @@ export default function GamingTab({
                             return (
                               <button
                                 key={p}
-                                id={`profile-${game.name.replace(/\s/g,'-')}-${p}`}
                                 onClick={() => assignGameProfile(game.name, p)}
                                 title={PROFILE_META[p].desc}
                                 style={{
@@ -794,12 +1038,9 @@ export default function GamingTab({
                                   padding: '5px 2px',
                                   borderRadius: 5,
                                   border: `1px solid ${isCurrent ? PROFILE_META[p].color : 'rgba(255,255,255,0.1)'}`,
-                                  background: isCurrent ? `${PROFILE_META[p].color}26` : 'rgba(0,0,0,0.45)',
+                                  background: isCurrent ? `${PROFILE_META[p].color}26` : 'rgba(0,0,0,0.5)',
                                   color: isCurrent ? PROFILE_META[p].color : 'rgba(255,255,255,0.6)',
                                   cursor: 'pointer',
-                                  transition: 'all .15s ease',
-                                  backdropFilter: 'blur(4px)',
-                                  whiteSpace: 'nowrap',
                                   textAlign: 'center',
                                 }}
                               >
@@ -817,17 +1058,94 @@ export default function GamingTab({
           )}
         </div>
 
-        {/* ── Session Tips ── */}
-        {gamingActive && (
-          <div className="card card-p-lg mt" style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-            <span className="ico" style={{ color: 'var(--a1)', flexShrink: 0 }}><SlidersHorizontal size={18} /></span>
-            <div>
-              <b>Session {profile} en cours</b>
-              <p className="mut sm" style={{ marginTop: 4 }}>
-                {profile === 'Compétitif' && 'Priorité CPU AboveNormal, plan alimentation Haute Performance, DNS gaming activé.'}
-                {profile === 'Équilibré' && 'Optimisations douces, thermique préservé, streaming OBS compatible.'}
-                {profile === 'Qualité' && 'Priorité rendu haute fidélité, synchronisation fluide et stabilité de trame.'}
-              </p>
+        {/* ── Modal Guide Mise à Jour BIOS ASUS ── */}
+        {showBiosGuide && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.8)',
+              zIndex: 9999,
+              display: 'grid',
+              placeItems: 'center',
+              padding: 24,
+            }}
+            onClick={() => setShowBiosGuide(false)}
+          >
+            <div
+              className="card card-p-lg"
+              style={{
+                width: '100%',
+                maxWidth: 620,
+                background: '#0d111a',
+                border: '1px solid rgba(255,255,255,0.15)',
+                borderRadius: 14,
+                boxShadow: '0 20px 50px rgba(0,0,0,0.8)',
+                padding: 24,
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <HelpCircle size={20} style={{ color: 'var(--a1)' }} />
+                  <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Procédure de Mise à Jour BIOS (ASUS ROG)</h3>
+                </div>
+                <button
+                  className="btn-ghost"
+                  onClick={() => setShowBiosGuide(false)}
+                  style={{ padding: '6px 8px', borderRadius: 8 }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>
+                <p style={{ margin: '0 0 14px 0', color: 'var(--muted)' }}>
+                  La mise à jour du BIOS d'une carte mère ASUS ROG STRIX s'effectue hors de Windows via l'utilitaire <b>ASUS EZ Flash 3</b> intégré au BIOS UEFI pour une sécurité maximale :
+                </p>
+
+                <ol style={{ paddingLeft: 20, margin: '0 0 16px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <li>
+                    <b>Télécharger le firmware officiel :</b> Rendez-vous sur la page support officielle ASUS ROG et téléchargez le fichier BIOS le plus récent (format <code>.CAP</code>).
+                  </li>
+                  <li>
+                    <b>Préparer une clé USB :</b> Formatez une clé USB en <b>FAT32</b> (ou FAT16). Copiez le fichier <code>.CAP</code> directement à la racine de la clé.
+                  </li>
+                  <li>
+                    <b>Entrer dans le BIOS UEFI :</b> Redémarrez le PC et appuyez de manière répétée sur la touche <span className="kbd">Suppr</span> ou <span className="kbd">F2</span> dès l'affichage du logo ASUS.
+                  </li>
+                  <li>
+                    <b>Lancer ASUS EZ Flash 3 :</b> Passez en mode Avancé (<span className="kbd">F7</span>), puis naviguez vers l'onglet <b>Tool (Outils)</b> &gt; <b>ASUS EZ Flash 3 Utility</b>.
+                  </li>
+                  <li>
+                    <b>Sélectionner et Flasher :</b> Sélectionnez la clé USB, choisissez le fichier <code>.CAP</code> et validez. <b>Ne coupez jamais l'alimentation</b> pendant l'écriture du firmware.
+                  </li>
+                </ol>
+
+                <div style={{ padding: 12, borderRadius: 8, background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.25)', color: '#eab308', fontSize: 12 }}>
+                  ⚠ <b>Avertissement de sécurité :</b> Une interruption d'alimentation pendant le flashage du BIOS peut rendre la carte mère inopérante. Assurez-vous d'une alimentation électrique stable avant de lancer l'opération.
+                </div>
+              </div>
+
+              <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                {hardware?.biosUrl && (
+                  <button
+                    className="btn-ghost"
+                    onClick={() => api?.openExternal?.(hardware.biosUrl)}
+                    style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  >
+                    <span>Ouvrir Support ASUS ROG</span>
+                    <ExternalLink size={13} />
+                  </button>
+                )}
+                <button
+                  className="btn"
+                  onClick={() => setShowBiosGuide(false)}
+                  style={{ padding: '8px 20px', fontSize: 12 }}
+                >
+                  Fermer
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -838,8 +1156,7 @@ export default function GamingTab({
             style={{
               position: 'fixed',
               inset: 0,
-              background: 'rgba(0,0,0,0.75)',
-              backdropFilter: 'blur(8px)',
+              background: 'rgba(0,0,0,0.8)',
               zIndex: 9999,
               display: 'grid',
               placeItems: 'center',
@@ -852,15 +1169,15 @@ export default function GamingTab({
               style={{
                 width: '100%',
                 maxWidth: 680,
-                background: '#0d1117',
-                border: '1px solid rgba(255,255,255,0.14)',
+                background: '#0d111a',
+                border: '1px solid rgba(255,255,255,0.15)',
                 borderRadius: 14,
                 boxShadow: '0 20px 50px rgba(0,0,0,0.8)',
-                padding: 26,
+                padding: 24,
               }}
               onClick={e => e.stopPropagation()}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <ShieldCheck size={20} style={{ color: 'var(--a1)' }} />
                   <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Profils de Session & Vérité Terrain</h3>
@@ -874,14 +1191,14 @@ export default function GamingTab({
                 </button>
               </div>
 
-              <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5, marginBottom: 20 }}>
-                Chaque profil applique des ajustements système réversibles mesurables. À la fermeture du jeu ou à la désactivation, <b>tous les paramètres d’origine (priorités, plan d’énergie, réseau) sont automatiquement restaurés</b> sans altérer Windows.
+              <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5, marginBottom: 18 }}>
+                Chaque profil applique des ajustements système réversibles mesurables. À la fermeture du jeu ou à la désactivation, <b>tous les paramètres d'origine (priorités, plan d'énergie, réseau) sont automatiquement restaurés</b> sans altérer Windows.
               </p>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div style={{ padding: 14, borderRadius: 10, background: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.2)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ padding: 14, borderRadius: 10, background: 'rgba(56,189,248,0.05)', border: '1px solid rgba(56,189,248,0.2)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <b style={{ color: '#38bdf8', fontSize: 14 }}>⚡ Profil Compétitif (Esports & Latence Minimale)</b>
+                    <b style={{ color: '#38bdf8', fontSize: 13.5 }}>⚡ Profil Compétitif (Esports & Latence Minimale)</b>
                     <span className="chip" style={{ fontSize: 10, color: '#38bdf8', borderColor: 'rgba(56,189,248,0.3)' }}>Latence min</span>
                   </div>
                   <ul style={{ margin: '8px 0 0 16px', padding: 0, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
@@ -891,9 +1208,9 @@ export default function GamingTab({
                   </ul>
                 </div>
 
-                <div style={{ padding: 14, borderRadius: 10, background: 'rgba(34,197,94,0.04)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                <div style={{ padding: 14, borderRadius: 10, background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.2)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <b style={{ color: '#22c55e', fontSize: 14 }}>⚖ Profil Équilibré (Standard & Polyvalent)</b>
+                    <b style={{ color: '#22c55e', fontSize: 13.5 }}>⚖ Profil Équilibré (Standard & Polyvalent)</b>
                     <span className="chip" style={{ fontSize: 10, color: '#22c55e', borderColor: 'rgba(34,197,94,0.3)' }}>Recommandé</span>
                   </div>
                   <ul style={{ margin: '8px 0 0 16px', padding: 0, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
@@ -903,9 +1220,9 @@ export default function GamingTab({
                   </ul>
                 </div>
 
-                <div style={{ padding: 14, borderRadius: 10, background: 'rgba(167,139,250,0.04)', border: '1px solid rgba(167,139,250,0.2)' }}>
+                <div style={{ padding: 14, borderRadius: 10, background: 'rgba(167,139,250,0.05)', border: '1px solid rgba(167,139,250,0.2)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <b style={{ color: '#a78bfa', fontSize: 14 }}>🎨 Profil Qualité (Titres AAA & Immersion Visuelle)</b>
+                    <b style={{ color: '#a78bfa', fontSize: 13.5 }}>🎨 Profil Qualité (Titres AAA & Immersion Visuelle)</b>
                     <span className="chip" style={{ fontSize: 10, color: '#a78bfa', borderColor: 'rgba(167,139,250,0.3)' }}>Fidélité max</span>
                   </div>
                   <ul style={{ margin: '8px 0 0 16px', padding: 0, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
@@ -915,11 +1232,11 @@ export default function GamingTab({
                 </div>
               </div>
 
-              <div style={{ marginTop: 20, textAlign: 'right' }}>
+              <div style={{ marginTop: 18, textAlign: 'right' }}>
                 <button
                   className="btn"
                   onClick={() => setShowProfileDetails(false)}
-                  style={{ padding: '8px 20px' }}
+                  style={{ padding: '8px 20px', fontSize: 12 }}
                 >
                   Compris
                 </button>

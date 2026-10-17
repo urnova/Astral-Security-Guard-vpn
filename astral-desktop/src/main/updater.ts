@@ -48,11 +48,10 @@ function broadcastState() {
  *   autoUpdater.quitAndInstall({ isSilent?: boolean, isForceRunAfter?: boolean })
  * We dynamically inspect function arity or invoke with defensive fallback to guarantee silent execution.
  */
-export function quitAndInstallUpdate(isSilent = true, isForceRunAfter = true): void {
+export function quitAndInstallUpdate(isSilent = false, isForceRunAfter = true): void {
   logger.info(`[AutoUpdater] Invoking quitAndInstall (isSilent=${isSilent}, isForceRunAfter=${isForceRunAfter})`);
   try {
     const fn = (autoUpdater as any).quitAndInstall;
-    // Check if the method accepts an options object (length <= 1) or positional parameters (length >= 2)
     if (typeof fn === 'function' && fn.length === 1) {
       logger.info('[AutoUpdater] Using electron-builder v27+ destructured object syntax');
       (autoUpdater as any).quitAndInstall({ isSilent, isForceRunAfter });

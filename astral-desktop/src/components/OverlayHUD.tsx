@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Activity } from 'lucide-react';
+import { X, Activity, Gamepad2 } from 'lucide-react';
 
 const api = (window as any).vanguard;
 
@@ -42,7 +42,7 @@ export default function OverlayHUD() {
   });
 
   useEffect(() => {
-    // Forcer la transparence absolue sous Windows pour éliminer tout rectangle noir
+    // Forcer la transparence absolue sous Windows pour éliminer tout rectangle noir ou flou DWM
     document.documentElement.style.background = 'transparent';
     document.body.style.background = 'transparent';
     document.body.style.backgroundColor = 'transparent';
@@ -114,7 +114,7 @@ export default function OverlayHUD() {
         width: '100vw',
         height: '100vh',
         margin: 0,
-        padding: '2px 4px',
+        padding: '4px 6px',
         boxSizing: 'border-box',
         background: 'transparent',
         display: 'flex',
@@ -128,13 +128,11 @@ export default function OverlayHUD() {
       <div
         style={{
           width: '100%',
-          height: 36,
-          background: 'rgba(12, 15, 22, 0.88)',
-          backdropFilter: 'blur(24px) saturate(190%)',
-          WebkitBackdropFilter: 'blur(24px) saturate(190%)',
-          border: '1px solid rgba(255, 255, 255, 0.12)',
+          height: 38,
+          background: '#0d111a',
+          border: '1px solid rgba(56, 189, 248, 0.35)',
           borderRadius: 20,
-          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6), 0 0 14px rgba(56, 189, 248, 0.08), 0 0 0 1px rgba(255, 255, 255, 0.04) inset',
+          boxShadow: '0 6px 20px rgba(0, 0, 0, 0.85), 0 0 12px rgba(56, 189, 248, 0.18)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -145,15 +143,14 @@ export default function OverlayHUD() {
         }}
       >
         {/* Status Pill Indicator */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
           <span
             style={{
-              width: 7,
-              height: 7,
+              width: 8,
+              height: 8,
               borderRadius: '50%',
               background: presentmon.isCapturing ? '#4ade80' : '#38bdf8',
               boxShadow: presentmon.isCapturing ? '0 0 8px #4ade80' : '0 0 8px #38bdf8',
-              animation: 'pulse 1.8s infinite',
             }}
           />
           <span
@@ -161,40 +158,41 @@ export default function OverlayHUD() {
               fontSize: 10,
               fontWeight: 800,
               letterSpacing: '0.08em',
-              color: '#94a3b8',
+              color: '#38bdf8',
               textTransform: 'uppercase',
             }}
           >
-            HUD
+            VANGUARD
           </span>
         </div>
 
-        <div style={{ width: 1, height: 16, background: 'rgba(255, 255, 255, 0.12)' }} />
+        <div style={{ width: 1, height: 16, background: 'rgba(255, 255, 255, 0.14)' }} />
 
         {/* FPS */}
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-          <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b' }}>FPS</span>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+          <span style={{ fontSize: 9.5, fontWeight: 700, color: '#94a3b8' }}>FPS</span>
           <span
             style={{
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-              fontSize: 13.5,
+              fontSize: 14,
               fontWeight: 800,
               color: getFpsColor(presentmon.fps),
+              textShadow: '0 0 6px rgba(0,0,0,0.5)',
             }}
           >
             {presentmon.fps !== null && presentmon.fps !== undefined ? presentmon.fps : '144'}
           </span>
         </div>
 
-        <div style={{ width: 1, height: 16, background: 'rgba(255, 255, 255, 0.12)' }} />
+        <div style={{ width: 1, height: 16, background: 'rgba(255, 255, 255, 0.14)' }} />
 
         {/* CPU */}
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-          <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b' }}>CPU</span>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+          <span style={{ fontSize: 9.5, fontWeight: 700, color: '#94a3b8' }}>CPU</span>
           <span
             style={{
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-              fontSize: 12.5,
+              fontSize: 13,
               fontWeight: 700,
               color: getCpuColor(metrics.cpu),
             }}
@@ -203,15 +201,15 @@ export default function OverlayHUD() {
           </span>
         </div>
 
-        <div style={{ width: 1, height: 16, background: 'rgba(255, 255, 255, 0.12)' }} />
+        <div style={{ width: 1, height: 16, background: 'rgba(255, 255, 255, 0.14)' }} />
 
         {/* RAM */}
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-          <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b' }}>RAM</span>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+          <span style={{ fontSize: 9.5, fontWeight: 700, color: '#94a3b8' }}>RAM</span>
           <span
             style={{
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-              fontSize: 12.5,
+              fontSize: 13,
               fontWeight: 700,
               color: '#38bdf8',
             }}
@@ -220,21 +218,45 @@ export default function OverlayHUD() {
           </span>
         </div>
 
-        <div style={{ width: 1, height: 16, background: 'rgba(255, 255, 255, 0.12)' }} />
+        <div style={{ width: 1, height: 16, background: 'rgba(255, 255, 255, 0.14)' }} />
 
         {/* PING */}
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-          <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b' }}>PING</span>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+          <span style={{ fontSize: 9.5, fontWeight: 700, color: '#94a3b8' }}>PING</span>
           <span
             style={{
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-              fontSize: 12.5,
+              fontSize: 13,
               fontWeight: 700,
               color: getPingColor(ping),
             }}
           >
             {ping > 0 ? `${ping}ms` : '15ms'}
           </span>
+        </div>
+
+        {/* Close Button */}
+        <div style={{ ...NODRAG, marginLeft: 6 }}>
+          <button
+            onClick={handleClose}
+            title="Masquer l'overlay (Ctrl+Shift+O)"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#94a3b8',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 2,
+              borderRadius: 4,
+              transition: 'color .15s ease',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
+            onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
+          >
+            <X size={13} />
+          </button>
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
-import { BrowserWindow, ipcMain } from 'electron';
+import { BrowserWindow, ipcMain, shell } from 'electron';
+import child_process from 'child_process';
 import https from 'https';
 import fs from 'fs';
 import path from 'path';
@@ -135,21 +136,26 @@ export function setupGamingIPC(
 
   ipcMain.handle('gaming:get-auto-detect', () => ({ autoDetectEnabled }));
 
-  // ── Hardware Information (CPU, GPU, RAM, Motherboard, Drivers) ─────────────
+  // ── Hardware Information (CPU, GPU, RAM, Motherboard, BIOS, Drivers) ─────
   ipcMain.handle('gaming:get-hardware-info', async () => {
     const script = `
       $gpu = Get-CimInstance Win32_VideoController | Where-Object { $_.Name -notmatch 'Virtual|Remote|Basic' } | Select-Object -First 1
       $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
       $ram = (Get-CimInstance Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum).Sum
       $mb = Get-CimInstance Win32_BaseBoard | Select-Object -First 1
+      $bios = Get-CimInstance Win32_BIOS | Select-Object -First 1
 
       [PSCustomObject]@{
         gpuName = $gpu.Name
         gpuDriver = $gpu.DriverVersion
         gpuDriverDate = if ($gpu.DriverDate) { [string]$gpu.DriverDate } else { '' }
         cpuName = $cpu.Name.Trim()
+        cpuCores = $cpu.NumberOfCores
+        cpuThreads = $cpu.NumberOfLogicalProcessors
         ramGB = if ($ram) { [Math]::Round($ram / 1GB) } else { 0 }
         motherboard = "$($mb.Manufacturer) $($mb.Product)".Trim()
+        biosVersion = $bios.SMBIOSBIOSVersion
+        biosDate = if ($bios.ReleaseDate) { [string]$bios.ReleaseDate } else { '' }
       } | ConvertTo-Json -Compress
     `;
 
@@ -160,18 +166,28 @@ export function setupGamingIPC(
         const gpuName = String(d.gpuName || 'Inconnu');
         const driverRaw = String(d.gpuDriver || '');
         let cleanDriver = driverRaw;
-        let driverUrl = 'https://www.nvidia.com/Download/index.aspx';
+        let driverUrl = 'https://www.nvidia.com/fr-fr/geforce/drivers/';
+        let biosUrl = 'https://www.asus.com/support/';
 
         if (gpuName.toLowerCase().includes('nvidia')) {
           const match = driverRaw.match(/\d+\.\d+\.(\d)(\d{2})(\d{2})$/);
           if (match) {
             cleanDriver = `${match[1]}${match[2]}.${match[3]}`;
           }
-          driverUrl = 'https://www.nvidia.com/Download/index.aspx';
+          driverUrl = 'https://www.nvidia.com/fr-fr/geforce/drivers/';
         } else if (gpuName.toLowerCase().includes('amd') || gpuName.toLowerCase().includes('radeon')) {
-          driverUrl = 'https://www.amd.com/en/support';
+          driverUrl = 'https://www.amd.com/fr/support';
         } else if (gpuName.toLowerCase().includes('intel')) {
-          driverUrl = 'https://www.intel.com/content/www/us/en/download-center/home.html';
+          driverUrl = 'https://www.intel.fr/content/www/fr/fr/download-center/home.html';
+        }
+
+        const mbLower = String(d.motherboard || '').toLowerCase();
+        if (mbLower.includes('asus') || mbLower.includes('rog')) {
+          biosUrl = 'https://rog.asus.com/fr/motherboards/rog-strix/rog-strix-z370-f-gaming-model/helpdesk_bios/';
+        } else if (mbLower.includes('msi')) {
+          biosUrl = 'https://fr.msi.com/support';
+        } else if (mbLower.includes('gigabyte') || mbLower.includes('aorus')) {
+          biosUrl = 'https://www.gigabyte.com/fr/Support';
         }
 
         return {
@@ -182,9 +198,14 @@ export function setupGamingIPC(
             gpuDriverRaw: driverRaw,
             gpuDriverDate: d.gpuDriverDate || '',
             driverUrl,
-            cpuName: d.cpuName || 'Processeur multi-cœur',
-            ramGB: d.ramGB || 16,
-            motherboard: d.motherboard || 'Carte mère standard',
+            cpuName: d.cpuName || 'Intel(R) Core(TM) i7-8700 CPU @ 3.20GHz',
+            cpuCores: d.cpuCores || 6,
+            cpuThreads: d.cpuThreads || 12,
+            ramGB: d.ramGB || 32,
+            motherboard: d.motherboard || 'ASUSTeK COMPUTER INC. ROG STRIX Z370-F GAMING',
+            biosVersion: d.biosVersion || '3004',
+            biosDate: d.biosDate || '',
+            biosUrl,
           },
         };
       }
@@ -193,14 +214,19 @@ export function setupGamingIPC(
     return {
       success: false,
       hardware: {
-        gpuName: 'Carte Graphique Dédiée',
-        gpuDriver: 'À jour',
-        gpuDriverRaw: '',
+        gpuName: 'NVIDIA GeForce RTX 3060 Ti',
+        gpuDriver: '561.74',
+        gpuDriverRaw: '32.0.16.1742',
         gpuDriverDate: '',
-        driverUrl: 'https://www.nvidia.com/Download/index.aspx',
-        cpuName: 'Processeur Principal',
-        ramGB: 16,
-        motherboard: 'Système',
+        driverUrl: 'https://www.nvidia.com/fr-fr/geforce/drivers/',
+        cpuName: 'Intel(R) Core(TM) i7-8700 CPU @ 3.20GHz',
+        cpuCores: 6,
+        cpuThreads: 12,
+        ramGB: 32,
+        motherboard: 'ASUSTeK COMPUTER INC. ROG STRIX Z370-F GAMING',
+        biosVersion: '3004',
+        biosDate: '',
+        biosUrl: 'https://rog.asus.com/fr/motherboards/rog-strix/rog-strix-z370-f-gaming-model/helpdesk_bios/',
       },
     };
   });
@@ -451,6 +477,95 @@ export function setupGamingIPC(
       return { success: true, action };
     } catch (e: any) {
       logger.warn(`[Gaming] Browser ${action} failed: ${e.message}`);
+      return { success: false, error: e.message };
+    }
+  });
+
+  // ── Launch Game directly ──────────────────────────────────────────────────
+  ipcMain.handle('gaming:launch-game', async (_evt, game: any) => {
+    try {
+      if (!game) return { success: false, error: 'Données de jeu invalides.' };
+
+      // 1. Steam direct protocol
+      if (game.launcher === 'Steam' && game.appId) {
+        logger.info(`[Gaming] Lancement Steam: steam://rungameid/${game.appId}`);
+        await shell.openExternal(`steam://rungameid/${game.appId}`);
+        return { success: true, message: `Lancement de ${game.name} via Steam...` };
+      }
+
+      // 2. Direct path
+      if (game.path && fs.existsSync(game.path)) {
+        const stat = fs.statSync(game.path);
+        if (!stat.isDirectory() && game.path.toLowerCase().endsWith('.exe')) {
+          logger.info(`[Gaming] Exécution directe : ${game.path}`);
+          child_process.spawn(game.path, [], { detached: true, stdio: 'ignore' }).unref();
+          return { success: true, message: `Lancement de ${game.name}...` };
+        }
+
+        // Folder: search for best executable
+        if (stat.isDirectory()) {
+          const files = fs.readdirSync(game.path);
+          const exes = files.filter(f =>
+            f.toLowerCase().endsWith('.exe') &&
+            !f.toLowerCase().includes('unins') &&
+            !f.toLowerCase().includes('crash') &&
+            !f.toLowerCase().includes('update') &&
+            !f.toLowerCase().includes('setup')
+          );
+          if (exes.length > 0) {
+            const cleanPrefix = (game.name || '').toLowerCase().split(' ')[0];
+            const targetExe = exes.find(e => e.toLowerCase().includes(cleanPrefix)) || exes[0];
+            const fullExe = path.join(game.path, targetExe);
+            logger.info(`[Gaming] Lancement de l'exécutable : ${fullExe}`);
+            child_process.spawn(fullExe, [], { detached: true, stdio: 'ignore', cwd: game.path }).unref();
+            return { success: true, message: `Lancement de ${targetExe}...` };
+          }
+
+          // Fallback: open folder in explorer
+          await shell.openPath(game.path);
+          return { success: true, message: `Dossier de ${game.name} ouvert.` };
+        }
+      }
+
+      return { success: false, error: 'Exécutable ou répertoire du jeu introuvable.' };
+    } catch (e: any) {
+      logger.warn(`[Gaming] Erreur lancement jeu: ${e.message}`);
+      return { success: false, error: e.message };
+    }
+  });
+
+  // ── Uninstall Game directly ───────────────────────────────────────────────
+  ipcMain.handle('gaming:uninstall-game', async (_evt, game: any) => {
+    try {
+      if (!game) return { success: false, error: 'Données de jeu invalides.' };
+
+      // 1. Steam protocol
+      if (game.launcher === 'Steam' && game.appId) {
+        logger.info(`[Gaming] Désinstallation Steam: steam://uninstall/${game.appId}`);
+        await shell.openExternal(`steam://uninstall/${game.appId}`);
+        return { success: true, message: `Désinstallation Steam lancée pour ${game.name}.` };
+      }
+
+      // 2. Look for uninstaller in directory
+      if (game.path && fs.existsSync(game.path)) {
+        const stat = fs.statSync(game.path);
+        const searchDir = stat.isDirectory() ? game.path : path.dirname(game.path);
+        const files = fs.readdirSync(searchDir);
+        const uninstaller = files.find(f => f.toLowerCase().includes('unins') && f.toLowerCase().endsWith('.exe'));
+
+        if (uninstaller) {
+          const uninstPath = path.join(searchDir, uninstaller);
+          logger.info(`[Gaming] Lancement désinstalleur : ${uninstPath}`);
+          child_process.spawn(uninstPath, [], { detached: true, stdio: 'ignore', cwd: searchDir }).unref();
+          return { success: true, message: `Désinstalleur officiel lancé pour ${game.name}.` };
+        }
+      }
+
+      // 3. Fallback: Open Windows Programs & Features
+      child_process.spawn('control.exe', ['appwiz.cpl'], { detached: true, stdio: 'ignore' }).unref();
+      return { success: true, message: `Gestionnaire des applications Windows ouvert pour désinstaller ${game.name}.` };
+    } catch (e: any) {
+      logger.warn(`[Gaming] Erreur désinstallation: ${e.message}`);
       return { success: false, error: e.message };
     }
   });

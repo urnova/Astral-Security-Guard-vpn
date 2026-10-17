@@ -152,23 +152,6 @@ export default function App() {
           />
 
           <div className="app-main">
-            {/* Admin banner */}
-            {!isAdmin && (
-              <div className="admin-banner">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <ShieldAlert size={15} style={{ color: 'var(--warning)', flexShrink: 0 }} />
-                  <span>
-                    <strong>Mode restreint —</strong> Certaines fonctions (Defender, optimisations réseau) nécessitent les droits administrateur.
-                  </span>
-                </div>
-                <div className="admin-banner-actions">
-                  <button className="btn btn-ghost btn-sm" onClick={() => api?.relaunchElevated?.()}>
-                    Relancer en administrateur
-                  </button>
-                </div>
-              </div>
-            )}
-
             {/* Main content: Persistent Tab Panes with zero state-reset when switching */}
             <main className="app-content">
               <div className="tab-pane" style={{ height: '100%', display: activeTab === 'dashboard' ? 'block' : 'none' }}>

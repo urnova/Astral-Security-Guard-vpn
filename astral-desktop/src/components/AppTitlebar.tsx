@@ -10,10 +10,14 @@ interface Props {
 
 export default function AppTitlebar({ gamingActive, currentGame }: Props) {
   const [isAdmin, setIsAdmin] = useState(true);
+  const [appVersion, setAppVersion] = useState('2.5.9');
 
   useEffect(() => {
     api?.getAdminStatus?.().then((r: any) => {
       if (r && typeof r.isAdmin === 'boolean') setIsAdmin(r.isAdmin);
+    }).catch(() => {});
+    api?.getUpdaterState?.().then((s: any) => {
+      if (s?.currentVersion) setAppVersion(s.currentVersion);
     }).catch(() => {});
   }, []);
 
@@ -26,7 +30,7 @@ export default function AppTitlebar({ gamingActive, currentGame }: Props) {
           Astral Vanguard
         </span>
         <span className="tb-ver" style={{ fontSize: 10, color: 'var(--dim)', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--line)' }}>
-          v2.5.8
+          v{appVersion}
         </span>
         <span
           style={{
@@ -54,15 +58,10 @@ export default function AppTitlebar({ gamingActive, currentGame }: Props) {
             <span className="dot" />
             {currentGame ? `Jeu : ${currentGame}` : 'Mode Gaming actif'}
           </span>
-        ) : isAdmin ? (
+        ) : (
           <span className="chip" style={{ WebkitAppRegion: 'no-drag' } as any}>
             <span className="dot" />
             Système protégé
-          </span>
-        ) : (
-          <span className="chip warn" style={{ WebkitAppRegion: 'no-drag' } as any}>
-            <span className="dot" />
-            Mode restreint
           </span>
         )}
       </div>

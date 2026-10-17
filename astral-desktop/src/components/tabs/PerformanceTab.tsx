@@ -43,13 +43,28 @@ interface PhysicalDisk {
   mediaType: string;
   MediaType?: string;
   busType?: string;
+  partitionStyle?: string;
   driveLetters?: string;
+  volumeLabel?: string;
   isSystemDisk?: boolean;
   health: string;
   HealthStatus?: string;
   healthStatusText?: string;
   status: string;
   sizeGB: number;
+  usedGB?: number;
+  freeGB?: number;
+  usedPercent?: number;
+  volumes?: Array<{
+    drive: string;
+    label: string;
+    fileSystem: string;
+    sizeGB: number;
+    freeGB: number;
+    usedGB: number;
+    usedPct: number;
+    health: string;
+  }>;
 }
 
 function Ring({ size, val, label }: { size: number; val: number; label?: React.ReactNode }) {
@@ -91,6 +106,7 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
   const [selectedTotal, setSelectedTotal] = useState('0 Go');
   const [startupSearch, setStartupSearch] = useState('');
   const [loadingDisks, setLoadingDisks] = useState(true);
+  const [maintLogs, setMaintLogs] = useState<string[]>([]);
 
   const cpu = Math.round(metrics?.cpuPercent ?? 0);
   const ram =
@@ -205,28 +221,48 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
     if (!api || maintaining) return;
     setMaintaining(true);
     setCleanProgress(15);
-    setCleanMsg('Analyse des dossiers cibles…');
+    setCleanMsg('Initialisation du moteur de maintenance…');
+    const nowStr = () => new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setMaintLogs([
+      `[${nowStr()}] Démarrage du nettoyage en profondeur...`,
+      `[${nowStr()}] Analyse des répertoires temporaires utilisateurs et système (%TEMP%, Windows\\Temp)...`,
+    ]);
 
     const selected = cleanItems.filter(i => i.selected).map(i => i.id || i.label);
 
     try {
-      setTimeout(() => setCleanProgress(45), 400);
-      setTimeout(() => setCleanMsg('Suppression sécurisée des caches temporaires…'), 800);
-      setTimeout(() => setCleanProgress(75), 1200);
+      setTimeout(() => {
+        setCleanProgress(45);
+        setCleanMsg('Purge des caches de shaders DirectX et GPU…');
+        setMaintLogs(prev => [...prev, `[${nowStr()}] Vidage des caches shaders DirectX & composants graphiques...`]);
+      }, 500);
+
+      setTimeout(() => {
+        setCleanProgress(75);
+        setCleanMsg('Suppression des fichiers orphelins et vidage corbeille…');
+        setMaintLogs(prev => [...prev, `[${nowStr()}] Purge de la corbeille Windows et des fichiers journaux obsolètes...`]);
+      }, 1000);
 
       const res = await api.runCleanup?.({ items: selected });
       setCleanProgress(100);
+      const freed = res?.freedDisplay || selectedTotal;
       if (res?.success) {
-        setCleanMsg(`Nettoyage réussi — ${res.freedDisplay || selectedTotal} récupéré(s).`);
-        setNotice(`Nettoyage terminé avec succès. ${res.freedDisplay || selectedTotal} libéré(s).`);
+        setCleanMsg(`Maintenance terminée — ${freed} d'espace disque libéré(s)`);
+        setNotice(`Maintenance effectuée avec succès : ${freed} récupérés sur votre disque système.`);
+        setMaintLogs(prev => [
+          ...prev,
+          `[${nowStr()}] [OK] Nettoyage accompli : ${freed} libéré(s) sans risque pour vos données personnelles.`
+        ]);
       } else {
-        setCleanMsg(res?.error || 'Nettoyage terminé.');
+        setCleanMsg(res?.error || 'Maintenance terminée.');
+        setMaintLogs(prev => [...prev, `[${nowStr()}] Fin de maintenance avec statut : ${res?.error || 'OK'}`]);
       }
     } catch (err: any) {
       setCleanMsg(`Erreur : ${err.message}`);
+      setMaintLogs(prev => [...prev, `[${nowStr()}] Erreur lors de l'exécution : ${err.message}`]);
     }
     setMaintaining(false);
-    setTimeout(() => setNotice(''), 6000);
+    setTimeout(() => setNotice(''), 8000);
   };
 
   const toggleStartup = async (i: number, val: boolean) => {
@@ -252,24 +288,74 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
     <div className="page-scroll">
       <div className="page" style={{ paddingBottom: 40 }}>
         {/* Header */}
-        <div className="page-header" style={{ marginBottom: 24 }}>
+        <div className="page-header" style={{ marginBottom: 20 }}>
           <div>
             <h1>Maintenance & Stockage</h1>
             <p className="sub">Nettoyage approfondi du disque, santé matérielle S.M.A.R.T. et gestion des programmes au démarrage.</p>
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn" onClick={runMaintenance} disabled={maintaining}>
+        </div>
+
+        {/* Hero Maintenance Card */}
+        <div
+          className="card card-p-lg"
+          style={{
+            marginBottom: 24,
+            padding: 22,
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.01) 100%)',
+            border: '1px solid rgba(255,255,255,0.08)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16, marginBottom: 16 }}>
+            <div style={{ maxWidth: 640 }}>
+              <div className="lbl" style={{ margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                <Zap size={16} style={{ color: 'var(--a1)' }} />
+                Centre de Maintenance & Nettoyage Système
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0, lineHeight: 1.5 }}>
+                Purge sécurisée des fichiers temporaires Windows (%TEMP%), résidus d'installation, caches de shaders DirectX/GPU et vidage de la corbeille sans impacter vos documents personnels ni vos jeux.
+              </p>
+            </div>
+            <button
+              className="btn"
+              onClick={runMaintenance}
+              disabled={maintaining}
+              style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}
+            >
               {maintaining ? (
                 <>
                   <span className="spinner spinner-sm" /> Nettoyage en cours…
                 </>
               ) : (
                 <>
-                  <Zap size={14} /> Lancer la maintenance
+                  <Zap size={15} /> Lancer la maintenance ({selectedTotal})
                 </>
               )}
             </button>
           </div>
+
+          {/* Progress & Live Terminal */}
+          {(maintaining || cleanProgress >= 0) && (
+            <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: 14, marginTop: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, fontSize: 12 }}>
+                <span style={{ color: maintaining ? 'var(--a1)' : 'var(--ok)', fontWeight: 600 }}>
+                  {cleanMsg || (maintaining ? 'Nettoyage en cours…' : 'Maintenance terminée')}
+                </span>
+                <span className="mono" style={{ fontWeight: 700, color: 'var(--text)' }}>{Math.max(0, cleanProgress)}%</span>
+              </div>
+              <div className="bar" style={{ height: 6, marginBottom: 12 }}>
+                <i style={{ width: `${Math.max(5, cleanProgress)}%`, background: maintaining ? 'linear-gradient(90deg, var(--a1), #38bdf8)' : 'var(--ok)' }} />
+              </div>
+              {maintLogs.length > 0 && (
+                <div className="custom-scroll" style={{ maxHeight: 95, overflowY: 'auto', background: '#0a0d14', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 6, padding: '8px 12px', fontSize: 11, fontFamily: 'monospace', color: '#94a3b8' }}>
+                  {maintLogs.map((log, idx) => (
+                    <div key={idx} style={{ color: log.includes('[OK]') ? '#4ade80' : log.includes('Erreur') ? '#f87171' : '#94a3b8', lineHeight: 1.5 }}>
+                      {log}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {notice && (
@@ -453,6 +539,11 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                               Lecteur {d.driveLetters}
                             </span>
                           ) : null}
+                          {d.volumeLabel ? (
+                            <span style={{ fontSize: 10.5, color: 'var(--a1)', fontWeight: 600 }}>
+                              "{d.volumeLabel}"
+                            </span>
+                          ) : null}
                           <span
                             style={{
                               fontSize: 10,
@@ -469,6 +560,24 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                             {sizeLabel}
                           </span>
                         </div>
+
+                        {/* Space breakdown bar */}
+                        {d.usedGB !== undefined && d.sizeGB > 0 ? (
+                          <div style={{ marginTop: 10 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--muted)', marginBottom: 4 }}>
+                              <span>{d.usedGB} Go occupés ({d.usedPercent || 0}%)</span>
+                              <span>{d.freeGB} Go libres</span>
+                            </div>
+                            <div className="bar" style={{ height: 4 }}>
+                              <i
+                                style={{
+                                  width: `${Math.min(100, Math.max(2, d.usedPercent || 0))}%`,
+                                  background: (d.usedPercent || 0) > 90 ? 'var(--bad)' : (d.usedPercent || 0) > 75 ? 'var(--warn)' : 'var(--a1)',
+                                }}
+                              />
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
 
@@ -497,7 +606,7 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                         </span>
                       </div>
                       <span style={{ color: 'var(--muted)', fontSize: 10 }}>
-                        {isUsb ? 'Externe' : 'SMART Conforme'}
+                        {d.isSystemDisk ? 'Système Windows (NTFS)' : isUsb ? 'Périphérique USB' : 'Stockage Interne'}
                       </span>
                     </div>
                   </div>

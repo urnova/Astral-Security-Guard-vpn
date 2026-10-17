@@ -7,12 +7,16 @@
 !macro customInstall
   DetailPrint "Enregistrement du privilège administrateur persistant..."
   nsExec::Exec 'schtasks /create /tn "AstralVanguard_Elevated" /tr "\"$INSTDIR\Astral Vanguard.exe\"" /sc ONLOGON /rl HIGHEST /f'
+  WriteRegStr HKLM "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$INSTDIR\Astral Vanguard.exe" "~ RUNASADMIN"
+  WriteRegStr HKCU "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$INSTDIR\Astral Vanguard.exe" "~ RUNASADMIN"
 !macroend
 
 !macro customUnInstall
   DetailPrint "Arrêt forcé d'Astral Vanguard avant désinstallation..."
   nsExec::Exec 'taskkill /F /IM "Astral Vanguard.exe" /T'
   nsExec::Exec 'schtasks /delete /tn "AstralVanguard_Elevated" /f'
+  DeleteRegValue HKLM "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$INSTDIR\Astral Vanguard.exe"
+  DeleteRegValue HKCU "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$INSTDIR\Astral Vanguard.exe"
   Sleep 800
 
   ${ifNot} ${isUpdated}

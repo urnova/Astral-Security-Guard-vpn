@@ -202,6 +202,8 @@ const api = {
   applyGameProfile: (payload: { game: string; profile: string }) => ipcRenderer.invoke('gaming:apply-game-profile', payload),
   suspendBrowsers: (suspend: boolean) => ipcRenderer.invoke('gaming:suspend-browsers', suspend),
   getHardwareInfo: () => ipcRenderer.invoke('gaming:get-hardware-info'),
+  launchGame: (game: any) => ipcRenderer.invoke('gaming:launch-game', game),
+  uninstallGame: (game: any) => ipcRenderer.invoke('gaming:uninstall-game', game),
   openExternal: (url: string) => ipcRenderer.invoke('app:open-external', url),
 
   // Rollback & System Restore

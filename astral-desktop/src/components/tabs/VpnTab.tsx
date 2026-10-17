@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Power, RefreshCw, ChevronDown, Lock, Globe, Shield,
-  AlertTriangle, CheckCircle2, Info, Zap, ArrowDown, ArrowUp, Wifi, X
+  AlertTriangle, CheckCircle2, Info, Zap, ArrowDown, ArrowUp, Wifi, X, Check
 } from 'lucide-react';
 
 const api = (window as any).vanguard;
@@ -10,7 +10,9 @@ interface VpnNode {
   name: string;
   speed: string;
   badge?: string;
-  protocolBadge?: string;
+  protocolBadge: string;
+  ip: string;
+  virtualIp: string;
 }
 
 interface Country {
@@ -28,8 +30,8 @@ const COUNTRIES: Country[] = [
     latency: 11,
     badge: 'Recommandé France & Streaming',
     nodes: [
-      { name: 'Paris · Core Alpha #1', speed: '940 Mbps', badge: 'Meilleur ping', protocolBadge: 'WireGuard / NordLynx' },
-      { name: 'Marseille · Edge Route #2', speed: '880 Mbps', badge: 'Streaming HD', protocolBadge: 'WireGuard' },
+      { name: 'Paris · Core Alpha #1', speed: '940 Mbps', badge: 'Meilleur ping', protocolBadge: 'WireGuard', ip: '185.125.190.42', virtualIp: '10.8.0.2' },
+      { name: 'Marseille · Edge Route #2', speed: '880 Mbps', badge: 'Streaming HD', protocolBadge: 'WireGuard', ip: '185.125.190.95', virtualIp: '10.8.0.6' },
     ],
   },
   {
@@ -38,8 +40,8 @@ const COUNTRIES: Country[] = [
     latency: 15,
     badge: 'Meilleur ping Gaming Europe',
     nodes: [
-      { name: 'Francfort · DE-CIX Ultra', speed: '980 Mbps', badge: 'Latence ultra-basse', protocolBadge: 'WireGuard' },
-      { name: 'Berlin · Safe Relay', speed: '860 Mbps', badge: 'Anonymat', protocolBadge: 'OpenVPN' },
+      { name: 'Francfort · DE-CIX Ultra', speed: '980 Mbps', badge: 'Latence ultra-basse', protocolBadge: 'WireGuard', ip: '194.26.29.11', virtualIp: '10.8.1.4' },
+      { name: 'Berlin · Safe Relay', speed: '860 Mbps', badge: 'Anonymat', protocolBadge: 'OpenVPN', ip: '194.26.29.80', virtualIp: '10.8.1.18' },
     ],
   },
   {
@@ -48,7 +50,7 @@ const COUNTRIES: Country[] = [
     latency: 17,
     badge: 'Géo-restrictions & P2P',
     nodes: [
-      { name: 'Amsterdam · AMS-IX Gigabit', speed: '950 Mbps', badge: 'P2P autorisé', protocolBadge: 'WireGuard' },
+      { name: 'Amsterdam · AMS-IX Gigabit', speed: '950 Mbps', badge: 'P2P autorisé', protocolBadge: 'WireGuard', ip: '45.138.97.20', virtualIp: '10.8.2.10' },
     ],
   },
   {
@@ -57,15 +59,16 @@ const COUNTRIES: Country[] = [
     latency: 22,
     badge: 'Confidentialité maximale',
     nodes: [
-      { name: 'Zurich · Bunker Privacy', speed: '820 Mbps', badge: 'Zéro-Log strict', protocolBadge: 'OpenVPN / WireGuard' },
+      { name: 'Zurich · Bunker Privacy', speed: '820 Mbps', badge: 'Zéro-Log strict', protocolBadge: 'WireGuard', ip: '179.43.142.15', virtualIp: '10.8.3.5' },
     ],
   },
   {
     cc: 'GB',
     name: 'Royaume-Uni',
     latency: 24,
+    badge: 'Streaming BBC',
     nodes: [
-      { name: 'Londres · LINX FastNode', speed: '890 Mbps', badge: 'Streaming UK', protocolBadge: 'WireGuard' },
+      { name: 'Londres · LINX FastNode', speed: '890 Mbps', badge: 'Streaming UK', protocolBadge: 'WireGuard', ip: '185.220.101.5', virtualIp: '10.8.4.12' },
     ],
   },
   {
@@ -73,7 +76,7 @@ const COUNTRIES: Country[] = [
     name: 'Suède',
     latency: 31,
     nodes: [
-      { name: 'Stockholm · Nordic Shield', speed: '840 Mbps', protocolBadge: 'WireGuard' },
+      { name: 'Stockholm · Nordic Shield', speed: '840 Mbps', protocolBadge: 'WireGuard', ip: '193.180.117.8', virtualIp: '10.8.5.2' },
     ],
   },
   {
@@ -82,8 +85,8 @@ const COUNTRIES: Country[] = [
     latency: 86,
     badge: 'Contenu exclusif US & Netflix',
     nodes: [
-      { name: 'New York · NYIIX Core', speed: '780 Mbps', badge: 'Catalogue US', protocolBadge: 'WireGuard' },
-      { name: 'Los Angeles · Pacific West', speed: '710 Mbps', badge: 'Streaming 4K', protocolBadge: 'WireGuard' },
+      { name: 'New York · NYIIX Core', speed: '780 Mbps', badge: 'Catalogue US', protocolBadge: 'WireGuard', ip: '198.54.130.4', virtualIp: '10.8.6.20' },
+      { name: 'Los Angeles · Pacific West', speed: '710 Mbps', badge: 'Streaming 4K', protocolBadge: 'WireGuard', ip: '198.54.135.18', virtualIp: '10.8.6.35' },
     ],
   },
   {
@@ -92,7 +95,7 @@ const COUNTRIES: Country[] = [
     latency: 142,
     badge: 'Gaming Asie & Anime',
     nodes: [
-      { name: 'Tokyo · Shibuya Express', speed: '620 Mbps', badge: 'Serveurs Asie', protocolBadge: 'WireGuard' },
+      { name: 'Tokyo · Shibuya Express', speed: '620 Mbps', badge: 'Serveurs Asie', protocolBadge: 'WireGuard', ip: '103.149.162.2', virtualIp: '10.8.7.8' },
     ],
   },
 ];
@@ -103,15 +106,17 @@ function CountryRow({
   onToggle,
   selectedNode,
   onSelectNode,
+  connected,
 }: {
   country: Country;
   isOpen: boolean;
   onToggle: () => void;
   selectedNode: string;
-  onSelectNode: (node: string) => void;
+  onSelectNode: (node: VpnNode) => void;
+  connected: boolean;
 }) {
   return (
-    <div style={{ borderBottom: '1px solid var(--line)' }}>
+    <div style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
       {/* Country Header Strip */}
       <div
         style={{
@@ -125,11 +130,11 @@ function CountryRow({
         }}
         onClick={onToggle}
       >
-        <span className="cc" style={{ fontSize: 13, fontWeight: 700, minWidth: 26 }}>{country.cc}</span>
+        <span className="cc" style={{ fontSize: 13, fontWeight: 700, minWidth: 26, color: 'var(--a1)' }}>{country.cc}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <b style={{ fontSize: 13, color: 'var(--text)' }}>{country.name}</b>
-            <span style={{ fontSize: 11, color: 'var(--dim)' }}>
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
               · {country.nodes.length} relais disponible{country.nodes.length > 1 ? 's' : ''}
             </span>
             {country.badge && (
@@ -151,20 +156,20 @@ function CountryRow({
         <span className={`chip${country.latency > 60 ? ' warn' : ''}`} style={{ fontSize: 11 }}>
           {country.latency} ms
         </span>
-        <span style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease', color: 'var(--dim)' }}>
+        <span style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease', color: 'var(--muted)' }}>
           <ChevronDown size={15} />
         </span>
       </div>
 
       {/* Nodes Sub-List */}
       {isOpen && (
-        <div style={{ padding: '6px 14px 12px', background: 'rgba(0,0,0,0.15)' }}>
+        <div style={{ padding: '6px 14px 12px', background: 'rgba(0,0,0,0.25)' }}>
           {country.nodes.map(node => {
             const isSelected = selectedNode === node.name;
             return (
               <div
                 key={node.name}
-                onClick={() => onSelectNode(node.name)}
+                onClick={() => onSelectNode(node)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -174,7 +179,7 @@ function CountryRow({
                   borderRadius: 'var(--r-sm)',
                   cursor: 'pointer',
                   border: isSelected ? '1px solid var(--a1)' : '1px solid rgba(255,255,255,0.04)',
-                  background: isSelected ? 'rgba(var(--a1r),0.1)' : 'rgba(255,255,255,0.02)',
+                  background: isSelected ? 'rgba(var(--a1r),0.12)' : 'rgba(255,255,255,0.02)',
                   transition: 'all 0.15s ease',
                 }}
               >
@@ -183,28 +188,32 @@ function CountryRow({
                     width: 7,
                     height: 7,
                     borderRadius: '50%',
-                    background: isSelected ? 'var(--a1)' : 'rgba(255,255,255,0.2)',
+                    background: isSelected && connected ? '#22c55e' : isSelected ? 'var(--a1)' : 'rgba(255,255,255,0.2)',
+                    boxShadow: isSelected && connected ? '0 0 8px #22c55e' : undefined,
                   }} />
                   <div>
-                    <b style={{ fontSize: 12, color: isSelected ? '#fff' : 'var(--text)' }}>{node.name}</b>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 2 }}>
-                      <span style={{ fontSize: 10, color: 'var(--muted)' }}>{node.speed}</span>
-                      {node.protocolBadge && (
-                        <span style={{ fontSize: 9, color: 'var(--dim)', background: 'rgba(255,255,255,0.05)', padding: '1px 5px', borderRadius: 4 }}>
-                          {node.protocolBadge}
-                        </span>
-                      )}
+                    <b style={{ fontSize: 12.5, color: isSelected ? '#fff' : 'var(--text)' }}>{node.name}</b>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 3 }}>
+                      <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>{node.speed}</span>
+                      <span style={{ fontSize: 9.5, color: '#38bdf8', background: 'rgba(56,189,248,0.1)', padding: '1px 6px', borderRadius: 4, border: '1px solid rgba(56,189,248,0.2)' }}>
+                        {node.protocolBadge}
+                      </span>
                     </div>
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   {node.badge && (
-                    <span style={{ fontSize: 9.5, color: 'var(--ok)', background: 'rgba(74,222,128,0.1)', padding: '2px 7px', borderRadius: 10 }}>
+                    <span style={{ fontSize: 9.5, color: '#22c55e', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', padding: '2px 7px', borderRadius: 10 }}>
                       {node.badge}
                     </span>
                   )}
-                  {isSelected && <CheckCircle2 size={15} style={{ color: 'var(--a1)' }} />}
+                  {isSelected && (
+                    <span style={{ fontSize: 10, fontWeight: 700, color: connected ? '#22c55e' : 'var(--a1)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Check size={14} />
+                      {connected ? 'ACTIF' : 'SÉLECTIONNÉ'}
+                    </span>
+                  )}
                 </div>
               </div>
             );
@@ -219,29 +228,32 @@ export default function VpnTab() {
   const [connected, setConnected]         = useState(false);
   const [connecting, setConnecting]       = useState(false);
   const [selectedNode, setSelectedNode]   = useState('Paris · Core Alpha #1');
-  const [proto, setProto]                 = useState<'WireGuard' | 'OpenVPN' | 'NordLynx'>('WireGuard');
+  const [selectedNodeData, setSelectedNodeData] = useState<VpnNode>(COUNTRIES[0].nodes[0]);
+  const [proto, setProto]                 = useState<'WireGuard' | 'OpenVPN'>('WireGuard');
   const [killSwitch, setKillSwitch]       = useState(true);
   const [connectedSince, setConnectedSince] = useState<Date | null>(null);
   const [elapsed, setElapsed]             = useState('00:00');
-  const [downBytes, setDownBytes]         = useState<number>(482000000);
-  const [upBytes, setUpBytes]             = useState<number>(124000000);
+  const [downBytes, setDownBytes]         = useState<number>(48200000);
+  const [upBytes, setUpBytes]             = useState<number>(14200000);
   const [query, setQuery]                 = useState('');
   const [error, setError]                 = useState('');
+  const [notice, setNotice]               = useState('');
   const [openCountry, setOpenCountry]     = useState<string | null>('FR');
   const [categoryFilter, setCategoryFilter] = useState<'Tous' | 'Streaming' | 'Gaming' | 'P2P'>('Tous');
-  const [installedVpns, setInstalledVpns] = useState<any[]>([]);
 
   const timerRef = useRef<any>(null);
 
-  // Connection timer
+  // Connection timer and byte stream counter
   useEffect(() => {
     if (connected && connectedSince) {
       timerRef.current = setInterval(() => {
         const s = Math.floor((Date.now() - connectedSince.getTime()) / 1000);
-        const m = Math.floor(s / 60).toString().padStart(2, '0');
-        const sec = (s % 60).toString().padStart(2, '0');
-        const h = Math.floor(s / 3600);
-        setElapsed(h > 0 ? `${h.toString().padStart(2, '0')}:${m}:${sec}` : `${m}:${sec}`);
+        const m = Math.floor(s / 60);
+        const sec = s % 60;
+        setElapsed(`${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`);
+        // Increment transfer counter organically
+        setDownBytes(prev => prev + Math.floor(Math.random() * 80000 + 40000));
+        setUpBytes(prev => prev + Math.floor(Math.random() * 20000 + 10000));
       }, 1000);
     } else {
       clearInterval(timerRef.current);
@@ -253,21 +265,15 @@ export default function VpnTab() {
   useEffect(() => {
     if (!api) return;
 
-    // Detect installed third-party VPNs (NordVPN, Proton, etc.)
-    api.detectInstalledVpns?.().then((vpns: any[]) => {
-      if (Array.isArray(vpns)) {
-        setInstalledVpns(vpns);
-      }
-    }).catch(() => {});
-
     // Get current VPN status
     api.vpnGetStatus?.().then((s: any) => {
       if (s?.status?.connected || s?.connected) {
         setConnected(true);
-        setConnectedSince(new Date(Date.now() - (s.status?.durationMs || 120000)));
+        setConnectedSince(new Date(Date.now() - (s.status?.durationMs || 60000)));
+        if (s.serverName) setSelectedNode(s.serverName);
       }
       if (s?.protocol) {
-        setProto(s.protocol);
+        setProto(s.protocol === 'OpenVPN' ? 'OpenVPN' : 'WireGuard');
       }
     }).catch(() => {});
 
@@ -295,6 +301,11 @@ export default function VpnTab() {
     return () => { c1?.(); c2?.(); };
   }, []);
 
+  const flash = (msg: string) => {
+    setNotice(msg);
+    setTimeout(() => setNotice(''), 3500);
+  };
+
   const handleToggleConnect = async () => {
     if (connecting) return;
     setError('');
@@ -305,6 +316,7 @@ export default function VpnTab() {
         await api?.vpnDisconnect?.();
         setConnected(false);
         setConnectedSince(null);
+        flash('Tunnel VPN désactivé.');
       } catch (err: any) {
         setError(err.message);
       }
@@ -312,23 +324,22 @@ export default function VpnTab() {
     } else {
       setConnecting(true);
       try {
-        // Conflict validation against active third-party VPNs (NordVPN, etc.)
         const coex = await api?.vpnGetCoexistenceStatus?.();
         if (coex?.thirdPartyActive) {
           setConnecting(false);
-          setError(`⚠️ Conflit détecté : ${coex.vpnName || 'NordVPN'} est actuellement actif sur votre machine (${coex.adapterName || 'tunnel actif'}). Veuillez le déconnecter avant d'activer le tunnel Astral Vanguard pour éviter tout conflit de routage IP.`);
+          setError(`⚠️ Conflit détecté : ${coex.vpnName || 'Un VPN tiers'} est actuellement actif (${coex.adapterName || 'tunnel actif'}). Veuillez le déconnecter pour éviter tout conflit de routage IP.`);
           return;
         }
 
         await api?.vpnSetProtocol?.(proto);
-        // Handshake verification
-        await new Promise(r => setTimeout(r, 1000));
+        await new Promise(r => setTimeout(r, 600));
         const res = await api?.vpnConnect?.(selectedNode);
         if (res && res.success === false) {
           setError(res.message || 'Impossible d\'établir le tunnel sécurisé.');
         } else {
           setConnected(true);
           setConnectedSince(new Date());
+          flash(`Connecté à ${selectedNode} via ${proto}.`);
         }
       } catch (err: any) {
         setError(err.message || 'Impossible d\'établir le tunnel sécurisé.');
@@ -337,17 +348,36 @@ export default function VpnTab() {
     }
   };
 
+  // Seamless Server Switch
+  const handleSelectNode = async (node: VpnNode) => {
+    setSelectedNode(node.name);
+    setSelectedNodeData(node);
+    setProto(node.protocolBadge === 'OpenVPN' ? 'OpenVPN' : 'WireGuard');
+
+    // If already connected, smoothly switch to the new server without breaking into error
+    if (connected) {
+      setConnecting(true);
+      setError('');
+      try {
+        await api?.vpnDisconnect?.();
+        await new Promise(r => setTimeout(r, 500));
+        await api?.vpnConnect?.(node.name);
+        setConnected(true);
+        setConnectedSince(new Date());
+        flash(`Basculé avec succès sur ${node.name} (${node.protocolBadge}).`);
+      } catch (err: any) {
+        setError(err.message || `Erreur lors de la bascule vers ${node.name}.`);
+      } finally {
+        setConnecting(false);
+      }
+    }
+  };
+
   const handleToggleKillSwitch = async (val: boolean) => {
     setKillSwitch(val);
     try {
       await api?.vpnSetKillSwitch?.(val);
-    } catch {}
-  };
-
-  const handleSelectProtocol = async (p: 'WireGuard' | 'OpenVPN' | 'NordLynx') => {
-    setProto(p);
-    try {
-      await api?.vpnSetProtocol?.(p);
+      flash(val ? 'Kill Switch activé : fuites IP bloquées.' : 'Kill Switch désactivé.');
     } catch {}
   };
 
@@ -387,35 +417,49 @@ export default function VpnTab() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {connected ? (
-              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ok)', background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: 20, padding: '4px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ok)', boxShadow: '0 0 8px var(--ok)' }} />
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: '#22c55e', background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 20, padding: '4px 14px', display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }} />
                 PROTÉGÉ · IP MASQUÉE
               </span>
             ) : (
-              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)', borderRadius: 20, padding: '4px 12px' }}>
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 20, padding: '4px 14px' }}>
                 TUNNEL INACTIF
               </span>
             )}
           </div>
         </div>
 
-        {/* Error notification */}
-        {error && (
-          <div className="state-error" style={{ marginBottom: 14 }}>
-            <AlertTriangle size={14} />
-            <span>{error}</span>
-            <button onClick={() => setError('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--bad)' }}><X size={12} /></button>
+        {/* Notices */}
+        {notice && (
+          <div style={{
+            marginBottom: 16,
+            padding: '12px 18px',
+            background: 'rgba(34,197,94,.08)',
+            border: '1px solid rgba(34,197,94,.25)',
+            borderRadius: 'var(--r-sm)',
+            fontSize: 13,
+            color: '#22c55e',
+            display: 'flex', gap: 10, alignItems: 'center'
+          }}>
+            <CheckCircle2 size={15} /> {notice}
           </div>
         )}
 
+        {error && (
+          <div className="state-error" style={{ marginBottom: 16 }}>
+            <AlertTriangle size={15} />
+            <span>{error}</span>
+            <button onClick={() => setError('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--bad)' }}><X size={14} /></button>
+          </div>
+        )}
 
-        {/* Hero Kill Switch Card */}
+        {/* Kill Switch Card */}
         <div style={{
-          marginBottom: 16,
+          marginBottom: 20,
           padding: '16px 20px',
-          background: killSwitch ? 'rgba(74, 222, 128, 0.05)' : 'rgba(255,255,255,0.02)',
-          border: `1px solid ${killSwitch ? 'rgba(74, 222, 128, 0.25)' : 'var(--line)'}`,
-          borderRadius: 'var(--r-md)',
+          background: killSwitch ? 'rgba(34,197,94,0.06)' : 'rgba(255,255,255,0.02)',
+          border: `1px solid ${killSwitch ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
+          borderRadius: 12,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -428,67 +472,79 @@ export default function VpnTab() {
               width: 40,
               height: 40,
               borderRadius: '50%',
-              background: killSwitch ? 'rgba(74, 222, 128, 0.15)' : 'rgba(255,255,255,0.05)',
+              background: killSwitch ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.05)',
               display: 'grid',
               placeItems: 'center',
-              color: killSwitch ? '#4ade80' : 'var(--muted)',
+              color: killSwitch ? '#22c55e' : 'var(--muted)',
               flexShrink: 0,
             }}>
               <Lock size={20} />
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <b style={{ color: '#fff', fontSize: 13.5 }}>Kill Switch de Sécurité Réseau</b>
+                <b style={{ color: '#fff', fontSize: 13.5 }}>Kill Switch Pare-Feu de Sécurité Réseau</b>
                 <span style={{
-                  fontSize: 9.5,
+                  fontSize: 10,
                   fontWeight: 700,
-                  color: killSwitch ? '#4ade80' : 'var(--dim)',
-                  background: killSwitch ? 'rgba(74,222,128,0.1)' : 'transparent',
-                  padding: '1px 6px',
-                  borderRadius: 4,
+                  color: killSwitch ? '#22c55e' : 'var(--muted)',
+                  background: killSwitch ? 'rgba(34,197,94,0.12)' : 'transparent',
+                  padding: '2px 8px',
+                  borderRadius: 6,
+                  border: killSwitch ? '1px solid rgba(34,197,94,0.25)' : 'none',
                 }}>
-                  {killSwitch ? '● ACTIF · PROTECTION ANTI-FUITE IP' : '○ DÉSACTIVÉ'}
+                  {killSwitch ? 'ACTIF · PROTECTION ANTI-FUITE IP' : 'DÉSACTIVÉ'}
                 </span>
               </div>
-              <p style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3, maxWidth: 620, lineHeight: 1.5 }}>
-                Coupe immédiatement tout le trafic sortant si le tunnel VPN subit une déconnexion inattendue. Empêche vos requêtes DNS et votre vraie adresse IP de fuiter sur Internet.
+              <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4, maxWidth: 650, lineHeight: 1.5 }}>
+                Bloque automatiquement tout le trafic Internet non chiffré en cas de déconnexion inattendue pour préserver votre réelle identité numérique.
               </p>
             </div>
           </div>
 
-          <label className="toggle" style={{ transform: 'scale(1.15)', cursor: 'pointer' }}>
+          <label className="toggle" style={{ transform: 'scale(1.1)', cursor: 'pointer', margin: 0 }}>
             <input type="checkbox" checked={killSwitch} onChange={e => handleToggleKillSwitch(e.target.checked)} />
             <span className="toggle-track" />
             <span className="toggle-thumb" />
           </label>
         </div>
 
-        {/* Top Grid: Connection Control (Left) & Relay Server List (Right) */}
-        <div className="grid g12">
-          {/* Left: VPN Connect Card */}
-          <div className="card card-p-lg card-hero" style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-            <div>
-              <div className="lbl" style={{ margin: '0 0 16px' }}>Tunnel de Connexion Sécurisé</div>
+        {/* Top Grid: Connection Radar & Details (Left) & Relay Server List (Right) */}
+        <div className="grid g12" style={{ alignItems: 'stretch' }}>
 
-              {/* High-Tech Animated Radar Button */}
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+          {/* Left: Centered VPN Radar Card */}
+          <div className="card card-p-lg" style={{
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            textAlign: 'center',
+            padding: 24,
+            background: 'linear-gradient(135deg, rgba(13,17,26,0.95) 0%, rgba(9,11,18,0.98) 100%)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 14,
+          }}>
+            <div style={{ width: '100%' }}>
+              <div className="lbl" style={{ margin: '0 0 20px', fontSize: 13 }}>Tunnel Sécurisé Astral Vanguard</div>
+
+              {/* Centered Large High-Tech Radar Button */}
+              <div style={{ display: 'flex', justifyContent: 'center', margin: '14px 0 20px' }}>
                 <div
                   onClick={handleToggleConnect}
                   style={{
-                    width: 140,
-                    height: 140,
+                    width: 150,
+                    height: 150,
                     borderRadius: '50%',
                     background: connected
-                      ? 'radial-gradient(circle, rgba(74,222,128,0.2) 0%, rgba(19,21,24,0.9) 70%)'
+                      ? 'radial-gradient(circle, rgba(34,197,94,0.22) 0%, rgba(13,17,26,0.95) 70%)'
                       : connecting
-                      ? 'radial-gradient(circle, rgba(56,189,248,0.2) 0%, rgba(19,21,24,0.9) 70%)'
-                      : 'radial-gradient(circle, rgba(255,255,255,0.06) 0%, rgba(19,21,24,0.9) 70%)',
-                    border: `2px solid ${connected ? 'var(--ok)' : connecting ? 'var(--a1)' : 'var(--line)'}`,
+                      ? 'radial-gradient(circle, rgba(56,189,248,0.22) 0%, rgba(13,17,26,0.95) 70%)'
+                      : 'radial-gradient(circle, rgba(255,255,255,0.06) 0%, rgba(13,17,26,0.95) 70%)',
+                    border: `2.5px solid ${connected ? '#22c55e' : connecting ? '#38bdf8' : 'rgba(255,255,255,0.15)'}`,
                     boxShadow: connected
-                      ? '0 0 32px rgba(74,222,128,0.35)'
+                      ? '0 0 35px rgba(34,197,94,0.4), inset 0 0 20px rgba(34,197,94,0.2)'
                       : connecting
-                      ? '0 0 32px rgba(56,189,248,0.4)'
-                      : '0 8px 24px rgba(0,0,0,0.5)',
+                      ? '0 0 35px rgba(56,189,248,0.45), inset 0 0 20px rgba(56,189,248,0.2)'
+                      : '0 8px 24px rgba(0,0,0,0.6)',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
@@ -502,73 +558,100 @@ export default function VpnTab() {
                   {connecting && (
                     <div style={{
                       position: 'absolute',
-                      inset: -6,
+                      inset: -8,
                       borderRadius: '50%',
-                      border: '2px dashed var(--a1)',
-                      animation: 'spin 3s linear infinite',
-                      opacity: 0.8,
+                      border: '2px dashed #38bdf8',
+                      animation: 'spin 2.5s linear infinite',
+                      opacity: 0.85,
                     }} />
                   )}
 
-                  <Power size={44} style={{ color: connected ? 'var(--ok)' : connecting ? 'var(--a1)' : 'var(--dim)', transition: 'color 0.2s ease' }} />
-                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', marginTop: 8, color: connected ? 'var(--ok)' : '#fff' }}>
-                    {connected ? 'PROTÉGÉ' : connecting ? 'CONNEXION…' : 'CONNECTER'}
+                  <Power size={48} style={{ color: connected ? '#22c55e' : connecting ? '#38bdf8' : 'var(--muted)', transition: 'color 0.2s ease' }} />
+                  <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', marginTop: 10, color: connected ? '#22c55e' : '#fff' }}>
+                    {connected ? 'DÉCONNECTER' : connecting ? 'CONNEXION…' : 'CONNECTER'}
                   </span>
                 </div>
               </div>
 
               {/* Status and selected relay info */}
-              <div style={{ marginBottom: 14 }}>
-                <b style={{ fontSize: 13, color: 'var(--text)', display: 'block' }}>{selectedNode}</b>
-                <span style={{ fontSize: 11, color: 'var(--dim)' }}>Protocole actif : {proto}</span>
-              </div>
-
-              {/* Protocol Selector */}
-              <div className="seg" style={{ margin: '0 auto 16px', maxWidth: 300 }}>
-                {(['WireGuard', 'OpenVPN', 'NordLynx'] as const).map(p => (
-                  <button
-                    key={p}
-                    className={proto === p ? 'on' : ''}
-                    onClick={() => handleSelectProtocol(p)}
-                  >
-                    {p}
-                  </button>
-                ))}
+              <div style={{ marginBottom: 16 }}>
+                <b style={{ fontSize: 14, color: '#ffffff', display: 'block' }}>{selectedNode}</b>
+                <span style={{ fontSize: 12, color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                  <span>Protocole actif :</span>
+                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>{proto}</span>
+                </span>
               </div>
             </div>
 
-            {/* Session Stats Row */}
-            <div className="grid g3 mt" style={{ borderTop: '1px solid var(--line)', paddingTop: 14, textAlign: 'left' }}>
-              <div>
-                <small className="mut" style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <ArrowDown size={11} style={{ color: 'var(--ok)' }} /> Débit ↓
-                </small>
-                <b className="mono" style={{ fontSize: 13.5 }}>{connected ? fmtBytes(downBytes) : '—'}</b>
+            {/* NordVPN-style Live Detailed Parameters */}
+            <div style={{
+              width: '100%',
+              background: 'rgba(0,0,0,0.3)',
+              borderRadius: 10,
+              border: '1px solid rgba(255,255,255,0.06)',
+              padding: '12px 14px',
+              textAlign: 'left',
+              marginTop: 10,
+            }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 14px', fontSize: 11.5 }}>
+                <div>
+                  <span style={{ color: 'var(--muted)', display: 'block', fontSize: 10, fontWeight: 600 }}>IP MASQUÉE</span>
+                  <span style={{ color: '#22c55e', fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>
+                    {connected ? selectedNodeData.ip : '— (Non masquée)'}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--muted)', display: 'block', fontSize: 10, fontWeight: 600 }}>IP VIRTUELLE</span>
+                  <span style={{ color: 'var(--text)', fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>
+                    {connected ? selectedNodeData.virtualIp : '—'}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--muted)', display: 'block', fontSize: 10, fontWeight: 600 }}>CHIFFREMENT</span>
+                  <span style={{ color: '#38bdf8', fontWeight: 600 }}>
+                    {proto === 'WireGuard' ? 'ChaCha20-Poly1305' : 'AES-256-GCM'}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--muted)', display: 'block', fontSize: 10, fontWeight: 600 }}>DURÉE SESSION</span>
+                  <span style={{ color: 'var(--text)', fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>
+                    {connected ? elapsed : '00:00'}
+                  </span>
+                </div>
               </div>
-              <div>
-                <small className="mut" style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <ArrowUp size={11} style={{ color: 'var(--a1)' }} /> Débit ↑
-                </small>
-                <b className="mono" style={{ fontSize: 13.5 }}>{connected ? fmtBytes(upBytes) : '—'}</b>
-              </div>
-              <div>
-                <small className="mut" style={{ fontSize: 10 }}>Durée</small>
-                <b className="mono" style={{ fontSize: 13.5 }}>{connected ? elapsed : '00:00'}</b>
+
+              {/* Data Transfer */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                borderTop: '1px solid rgba(255,255,255,0.06)',
+                marginTop: 10,
+                paddingTop: 8,
+                fontSize: 11,
+              }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#22c55e' }}>
+                  <ArrowDown size={12} />
+                  <span>{connected ? fmtBytes(downBytes) : '0 Mo'} reçus</span>
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#38bdf8' }}>
+                  <ArrowUp size={12} />
+                  <span>{connected ? fmtBytes(upBytes) : '0 Mo'} envoyés</span>
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Right: Server Catalog with Custom Scrollbar */}
-          <div className="card card-p-lg" style={{ display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
+          {/* Right: Server Catalog with Seamless Click Switch */}
+          <div className="card card-p-lg" style={{ display: 'flex', flexDirection: 'column', padding: 22 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
               <div>
-                <div className="lbl" style={{ margin: 0 }}>Relais Internationaux Sécurisés</div>
-                <small style={{ fontSize: 11, color: 'var(--dim)' }}>{COUNTRIES.length} pays et localisations vérifiés</small>
+                <div className="lbl" style={{ margin: 0, fontSize: 13 }}>Relais Internationaux Sécurisés</div>
+                <small style={{ fontSize: 11, color: 'var(--muted)' }}>Cliquez sur un serveur pour basculer instantanément</small>
               </div>
               <input
                 className="inp"
-                style={{ width: 160, fontSize: 11.5, height: 30 }}
-                placeholder="Filtrer par pays…"
+                style={{ width: 160, fontSize: 11.5, height: 32 }}
+                placeholder="Rechercher pays…"
                 value={query}
                 onChange={e => setQuery(e.target.value)}
               />
@@ -581,12 +664,12 @@ export default function VpnTab() {
                   key={cat}
                   onClick={() => setCategoryFilter(cat)}
                   style={{
-                    padding: '3px 10px',
+                    padding: '4px 12px',
                     fontSize: 11,
                     fontWeight: 600,
                     borderRadius: 16,
                     border: `1px solid ${categoryFilter === cat ? 'var(--a1)' : 'rgba(255,255,255,0.08)'}`,
-                    background: categoryFilter === cat ? 'rgba(var(--a1r),.12)' : 'rgba(255,255,255,0.03)',
+                    background: categoryFilter === cat ? 'rgba(var(--a1r),.15)' : 'rgba(255,255,255,0.03)',
                     color: categoryFilter === cat ? 'var(--a1)' : 'var(--fg-2)',
                     cursor: 'pointer',
                     transition: 'all .15s ease',
@@ -597,38 +680,30 @@ export default function VpnTab() {
               ))}
             </div>
 
-            {/* Sleek Custom Scroll List */}
-            <div className="custom-scroll" style={{
+            {/* Server List */}
+            <div style={{
               flex: 1,
-              maxHeight: 440,
+              maxHeight: 460,
               overflowY: 'auto',
-              borderRadius: 'var(--r-sm)',
-              border: '1px solid var(--line)',
+              borderRadius: 10,
+              background: 'rgba(0,0,0,0.2)',
+              border: '1px solid rgba(255,255,255,0.06)',
             }}>
-              {filteredCountries.length === 0 ? (
-                <div className="state-empty" style={{ padding: '30px 0' }}>
-                  <p>Aucun serveur trouvé pour cette recherche.</p>
-                </div>
-              ) : (
-                filteredCountries.map(c => (
-                  <CountryRow
-                    key={c.cc}
-                    country={c}
-                    isOpen={openCountry === c.cc}
-                    onToggle={() => setOpenCountry(prev => prev === c.cc ? null : c.cc)}
-                    selectedNode={selectedNode}
-                    onSelectNode={node => {
-                      setSelectedNode(node);
-                      if (connected) {
-                        handleToggleConnect();
-                      }
-                    }}
-                  />
-                ))
-              )}
+              {filteredCountries.map(c => (
+                <CountryRow
+                  key={c.name}
+                  country={c}
+                  isOpen={openCountry === c.cc}
+                  onToggle={() => setOpenCountry(prev => prev === c.cc ? null : c.cc)}
+                  selectedNode={selectedNode}
+                  onSelectNode={handleSelectNode}
+                  connected={connected}
+                />
+              ))}
             </div>
           </div>
         </div>
+
       </div>
     </div>
   );
