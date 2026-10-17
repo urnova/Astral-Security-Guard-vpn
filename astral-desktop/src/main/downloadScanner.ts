@@ -546,36 +546,14 @@ async function handleFileEvent(folderPath: string, filename: string) {
         soundEnabled: currentConfig.soundEnabled,
       });
 
-      // If threat detected, trigger high-priority notification toast
-      if (result.status === 'threat') {
-        activeMainWindow.webContents.send('notification:trigger', {
-          type: 'threat',
-          title: '🚨 Menace détectée dans un téléchargement',
-          message: `Fichier dangereux identifié : ${filename} (${result.threatName || 'Malware'}). Mise en quarantaine recommandée.`,
-          critical: true,
-        });
-      } else if (result.status === 'suspect') {
-        activeMainWindow.webContents.send('notification:trigger', {
-          type: 'info',
-          title: '⚠️ Fichier téléchargé suspect',
-          message: `${filename} : ${result.threatName || 'Anomalie heuristique détectée.'}`,
-          critical: false,
-        });
-      } else if (result.status === 'safe') {
-        // Auto-unblock Windows Zone.Identifier ADS for verified clean files
+      // Auto-unblock Windows Zone.Identifier ADS for verified clean files
+      if (result.status === 'safe') {
         try {
           const adsPath = `${filePath}:Zone.Identifier`;
           if (fs.existsSync(adsPath)) {
             fs.unlinkSync(adsPath);
           }
         } catch {}
-
-        activeMainWindow.webContents.send('notification:trigger', {
-          type: 'report',
-          title: '🛡️ Téléchargement vérifié & débloqué',
-          message: `${filename} : Sain et intègre. Protection Windows Zone.Identifier levée.`,
-          critical: false,
-        });
       }
     }
   } finally {
@@ -608,6 +586,35 @@ function updateWatchers() {
     }
 
     if (fs.existsSync(dir)) {
+      // Pre-cache existing files at startup so only newly downloaded files are inspected
+      try {
+        const existingEntries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const ent of existingEntries) {
+          if (ent.isFile()) {
+            try {
+              const fp = path.join(dir, ent.name);
+              const st = fs.statSync(fp);
+              const k = `${fp}:${st.mtimeMs}:${st.size}`;
+              if (!scannedCache.has(k)) {
+                scannedCache.set(k, {
+                  result: {
+                    id: crypto.randomUUID(),
+                    filePath: fp,
+                    fileName: ent.name,
+                    sizeBytes: st.size,
+                    ext: path.extname(ent.name).toLowerCase(),
+                    status: 'safe',
+                    scanDurationMs: 0,
+                    timestamp: new Date().toISOString(),
+                  },
+                  timestamp: Date.now(),
+                });
+              }
+            } catch {}
+          }
+        }
+      } catch {}
+
       try {
         const watcher = fs.watch(dir, { recursive: false }, (eventType, filename) => {
           if (filename) {

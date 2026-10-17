@@ -4,12 +4,12 @@ import {
 } from 'lucide-react';
 
 const NAV = [
-  { id: 'dashboard',   label: "Vue d'ensemble", Icon: Home },
-  { id: 'security',    label: 'Sécurité',        Icon: Shield },
-  { id: 'performance', label: 'Maintenance',     Icon: Zap },
-  { id: 'gaming',      label: 'Jeux',            Icon: Gamepad2 },
-  { id: 'network',     label: 'Réseau',           Icon: Wifi },
-  { id: 'vpn',         label: 'VPN',              Icon: Lock },
+  { id: 'dashboard',   label: "Vue d'ensemble",         Icon: Home },
+  { id: 'security',    label: 'Sécurité',                Icon: Shield },
+  { id: 'performance', label: 'Maintenance & Matériel', Icon: Zap },
+  { id: 'gaming',      label: 'Jeux & Performance',     Icon: Gamepad2 },
+  { id: 'network',     label: 'Réseau',                   Icon: Wifi },
+  { id: 'vpn',         label: 'VPN',                      Icon: Lock },
 ];
 
 interface Props {

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import {
   Wifi, Play, CheckCircle2, AlertTriangle,
-  Globe, Router, Activity, X, Zap, Shield, ArrowDown, ArrowUp, RefreshCw
+  Globe, Router, Activity, X, Zap, Shield, ArrowDown, ArrowUp, RefreshCw, Sparkles
 } from 'lucide-react';
+import { SlideDrawer } from '../common/SlideDrawer';
 
 const api = (window as any).vanguard;
 
@@ -41,7 +42,7 @@ interface SpeedHistoryPoint {
   up: number;
 }
 
-export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) {
+export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActive: boolean }) {
   const [netInfo, setNetInfo]         = useState<NetworkInfo | null>(null);
   const [selectedDns, setSelectedDns] = useState('Google 8.8.8.8');
   const [dnsOverHttps, setDnsOverHttps] = useState(false);
@@ -67,7 +68,8 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
   const [notice, setNotice]           = useState('');
   const [error, setError]             = useState('');
 
-  // Accélération Réseau Hero State
+  // Accélération Réseau Drawer & Execution State
+  const [showAccelDrawer, setShowAccelDrawer] = useState(false);
   const [optimizing, setOptimizing]   = useState(false);
   const [optStep, setOptStep]         = useState<number>(0);
   const [optLogs, setOptLogs]         = useState<string[]>([]);
@@ -261,15 +263,31 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
       <div className="page">
 
         {/* ── Page Header ── */}
-        <div className="page-header">
+        <div className="page-header" style={{ alignItems: 'center' }}>
           <div>
             <h1>Réseau & Bande Passante</h1>
-            <p className="sub">Diagnostic en temps réel, benchmark de débit multi-flux et accélération de la pile TCP/IP.</p>
+            <p className="sub">Diagnostic en temps réel, benchmark de débit multi-flux et calibration de la pile TCP/IP.</p>
           </div>
-          <span className="chip" style={{ color: '#22c55e', borderColor: 'rgba(34,197,94,0.3)' }}>
-            <span className="dot" style={{ background: '#22c55e' }} />
-            {livePing ? `${livePing} MS · LIAISON OPÉRATIONNELLE` : 'RÉSEAU ACTIF'}
-          </span>
+          <button
+            className="btn btn-outline"
+            onClick={() => setShowAccelDrawer(true)}
+            style={{
+              padding: '9px 18px',
+              fontSize: 12.5,
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              borderColor: 'rgba(56,189,248,0.4)',
+              color: '#38bdf8',
+              background: 'rgba(56,189,248,0.08)',
+              borderRadius: 8,
+              cursor: 'pointer',
+            }}
+          >
+            <Zap size={15} />
+            <span>Centre d'Accélération</span>
+          </button>
         </div>
 
         {/* ── Notice Messages ── */}
@@ -304,106 +322,14 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
           </div>
         )}
 
-        {/* ── Hero Accélération Réseau (Dedicated Execution Card) ── */}
-        <div className="card card-p-lg" style={{
-          background: 'linear-gradient(135deg, rgba(20,27,45,0.75) 0%, rgba(11,15,23,0.95) 100%)',
-          border: '1px solid rgba(56, 189, 248, 0.3)',
-          borderRadius: 14,
-          padding: 24,
-          boxShadow: '0 8px 30px rgba(0,0,0,0.35)',
+        {/* ── 3 Main Structured Cards: Test de Débit / Résolveurs DNS / Options d'Optimisation ── */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          gap: 16,
+          alignItems: 'stretch',
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16, marginBottom: 16 }}>
-            <div style={{ maxWidth: 640 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{
-                  display: 'inline-flex', padding: '5px 10px', borderRadius: 20,
-                  background: 'rgba(56,189,248,0.15)', border: '1px solid #38bdf8',
-                  color: '#38bdf8', fontSize: 11, fontWeight: 700, letterSpacing: '.04em'
-                }}>
-                  OPTIMISATION RÉSEAU
-                </span>
-                <h2 style={{ fontSize: 20, margin: 0, fontWeight: 700 }}>Centre d'Accélération Réseau & Anti-Latence</h2>
-              </div>
-              <p className="mut" style={{ marginTop: 8, fontSize: 13, lineHeight: 1.5 }}>
-                Purge le cache résolveur DNS de Windows, calibre la fenêtre TCP Autotuning pour saturer votre liaison fibre sans étranglement et active le Receive Side Scaling (RSS) sur tous les cœurs de votre processeur.
-              </p>
-            </div>
-
-            <button
-              className="btn"
-              onClick={runNetworkAcceleration}
-              disabled={optimizing}
-              style={{
-                padding: '12px 26px',
-                fontSize: 13.5,
-                fontWeight: 700,
-                background: optimizing ? 'rgba(56,189,248,0.2)' : '#38bdf8',
-                color: optimizing ? '#38bdf8' : '#0b0f17',
-                border: 'none',
-                boxShadow: optimizing ? 'none' : '0 4px 18px rgba(56,189,248,0.35)',
-              }}
-            >
-              {optimizing ? (
-                <>
-                  <span className="spinner spinner-sm" style={{ borderTopColor: '#38bdf8' }} />
-                  <span>Optimisation en cours…</span>
-                </>
-              ) : (
-                <>
-                  <Zap size={16} fill="#0b0f17" />
-                  <span>Lancer l'Accélération Réseau</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Stepper progress if optimizing or logs available */}
-          {(optimizing || optLogs.length > 0) && (
-            <div style={{
-              marginTop: 14,
-              padding: 16,
-              background: '#070a10',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: 10,
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, fontSize: 12, fontWeight: 600 }}>
-                <span style={{ color: '#38bdf8' }}>
-                  {optimizing ? `Étape ${optStep}/4 : Optimisation de la liaison...` : '✓ Accélération terminée'}
-                </span>
-                <span style={{ color: 'var(--muted)' }}>
-                  {optimizing ? `${Math.round((optStep / 4) * 100)}%` : '100%'}
-                </span>
-              </div>
-
-              <div className="bar" style={{ height: 6, marginBottom: 12, background: 'rgba(255,255,255,0.08)' }}>
-                <i style={{
-                  width: `${optimizing ? (optStep / 4) * 100 : 100}%`,
-                  background: 'linear-gradient(90deg, #38bdf8, #22c55e)',
-                  transition: 'width 0.4s ease',
-                }} />
-              </div>
-
-              <div style={{
-                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                fontSize: 11.5,
-                color: '#cbd5e1',
-                lineHeight: 1.6,
-                maxHeight: 100,
-                overflowY: 'auto',
-              }}>
-                {optLogs.map((log, i) => (
-                  <div key={i} style={{ color: log.startsWith('✓') ? '#22c55e' : '#94a3b8' }}>
-                    {log}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* ── Grid: Speedtest (Left) & DNS Selection (Right) ── */}
-        <div className="grid g21 mt" style={{ marginTop: 22, alignItems: 'stretch' }}>
-          {/* Speedtest Card */}
+          {/* Card 1: Test de Débit Multi-Flux */}
           <div className="card card-p-lg" style={{
             display: 'flex',
             flexDirection: 'column',
@@ -412,12 +338,12 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
           }}>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <div className="lbl" style={{ margin: 0, fontSize: 13 }}>Test de Débit Multi-Flux (Fibre 1 Gbps)</div>
-                <span style={{ fontSize: 11, color: 'var(--muted)' }}>Mesure réelle sans artifice</span>
+                <div className="lbl" style={{ margin: 0, fontSize: 13 }}>Test de Débit Multi-Flux</div>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>Fibre 1 Gbps</span>
               </div>
 
               {/* Speedometer Gauge */}
-              <div className="gauge" style={{ maxWidth: 260, margin: '8px auto 4px' }}>
+              <div className="gauge" style={{ maxWidth: 240, margin: '6px auto 4px' }}>
                 <svg viewBox="0 0 300 170">
                   <path className="bgp" d="M25 150 A125 125 0 0 1 275 150" strokeWidth="16" />
                   <path
@@ -428,7 +354,7 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
                   />
                 </svg>
                 <div className="val" style={{ bottom: 10 }}>
-                  <div className="big" style={{ fontSize: 44, fontWeight: 800, fontFamily: 'Space Grotesk, sans-serif' }}>
+                  <div className="big" style={{ fontSize: 40, fontWeight: 800, fontFamily: 'Space Grotesk, sans-serif' }}>
                     {livePhaseType === 'download'
                       ? (liveDownMbps !== null ? liveDownMbps : '…')
                       : livePhaseType === 'upload'
@@ -437,7 +363,7 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
                       ? Math.round(speedResult.down)
                       : (testing ? '…' : '—')}
                   </div>
-                  <div className="mut sm" style={{ letterSpacing: '0.06em', fontWeight: 700, fontSize: 11 }}>
+                  <div className="mut sm" style={{ letterSpacing: '0.06em', fontWeight: 700, fontSize: 10.5 }}>
                     {livePhaseType === 'download'
                       ? 'MBPS DESCENDANT'
                       : livePhaseType === 'upload'
@@ -451,35 +377,34 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
 
               {/* Progress bar during test */}
               {testing && (
-                <div style={{ maxWidth: 240, margin: '6px auto 10px' }}>
+                <div style={{ maxWidth: 220, margin: '4px auto 8px' }}>
                   <div className="bar" style={{ height: 4 }}>
                     <i style={{ width: `${Math.max(8, gaugeVal)}%`, background: '#38bdf8', transition: 'width 0.2s ease' }} />
                   </div>
-                  <span style={{ fontSize: 11, color: '#38bdf8', display: 'block', textAlign: 'center', marginTop: 4, fontWeight: 600 }}>
+                  <span style={{ fontSize: 10.5, color: '#38bdf8', display: 'block', textAlign: 'center', marginTop: 4, fontWeight: 600 }}>
                     {livePhase}
                   </span>
                 </div>
               )}
             </div>
 
-            {/* Launch / Cancel buttons */}
             <div>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', margin: '8px 0 14px' }}>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', margin: '8px 0 12px' }}>
                 <button
                   className="btn"
-                  style={{ padding: '10px 28px', fontSize: 13, fontWeight: 700 }}
+                  style={{ padding: '9px 24px', fontSize: 12.5, fontWeight: 700 }}
                   onClick={runSpeedTest}
                   disabled={testing}
                 >
                   {testing ? (
                     <>
                       <span className="spinner spinner-sm" />
-                      <span>Mesure multi-flux en cours…</span>
+                      <span>Mesure en cours…</span>
                     </>
                   ) : (
                     <>
                       <Play size={14} fill="currentColor" />
-                      <span>Démarrer le test</span>
+                      <span>Lancer le test</span>
                     </>
                   )}
                 </button>
@@ -487,44 +412,43 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
                   <button
                     className="btn btn-ghost"
                     onClick={() => { api?.cancelSpeedtest?.(); setLivePhase('Annulation…'); }}
-                    style={{ padding: '10px 16px', fontSize: 12, color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)' }}
+                    style={{ padding: '9px 14px', fontSize: 12, color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)' }}
                   >
                     Annuler
                   </button>
                 )}
               </div>
 
-              {/* 4 Metric Stats */}
-              <div className="grid g4" style={{ textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12 }}>
+              {/* Metric Stats */}
+              <div className="grid g4" style={{ textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 10 }}>
                 <div>
-                  <small style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, display: 'block' }}>LATENCE ICMP</small>
-                  <b style={{ fontSize: 14, color: '#22c55e' }}>{speedResult ? `${speedResult.ping} ms` : (livePing ? `${livePing} ms` : '—')}</b>
+                  <small style={{ fontSize: 9.5, color: 'var(--muted)', fontWeight: 600, display: 'block' }}>LATENCE</small>
+                  <b style={{ fontSize: 13, color: '#22c55e' }}>{speedResult ? `${speedResult.ping} ms` : (livePing ? `${livePing} ms` : '—')}</b>
                 </div>
                 <div>
-                  <small style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, display: 'block' }}>GIGUE (JITTER)</small>
-                  <b style={{ fontSize: 14, color: 'var(--text)' }}>{speedResult ? `${speedResult.jitter} ms` : (testing ? '1.2 ms' : '—')}</b>
+                  <small style={{ fontSize: 9.5, color: 'var(--muted)', fontWeight: 600, display: 'block' }}>GIGUE</small>
+                  <b style={{ fontSize: 13, color: 'var(--text)' }}>{speedResult ? `${speedResult.jitter} ms` : (testing ? '1.2 ms' : '—')}</b>
                 </div>
                 <div>
-                  <small style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, display: 'block' }}>DÉBIT DESCENDANT</small>
-                  <b style={{ fontSize: 14, color: '#38bdf8' }}>{speedResult ? `${speedResult.down} Mbps` : (liveDownMbps !== null ? `${liveDownMbps} Mbps` : '—')}</b>
+                  <small style={{ fontSize: 9.5, color: 'var(--muted)', fontWeight: 600, display: 'block' }}>RÉCEPTION</small>
+                  <b style={{ fontSize: 13, color: '#38bdf8' }}>{speedResult ? `${speedResult.down} Mbps` : (liveDownMbps !== null ? `${liveDownMbps} Mbps` : '—')}</b>
                 </div>
                 <div>
-                  <small style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, display: 'block' }}>DÉBIT MONTANT</small>
-                  <b style={{ fontSize: 14, color: '#a78bfa' }}>{speedResult ? `${speedResult.up} Mbps` : (liveUpMbps !== null ? `${liveUpMbps} Mbps` : '—')}</b>
+                  <small style={{ fontSize: 9.5, color: 'var(--muted)', fontWeight: 600, display: 'block' }}>ENVOI</small>
+                  <b style={{ fontSize: 13, color: '#a78bfa' }}>{speedResult ? `${speedResult.up} Mbps` : (liveUpMbps !== null ? `${liveUpMbps} Mbps` : '—')}</b>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* DNS Server Selector */}
+          {/* Card 2: Résolveurs DNS Système */}
           <div className="card card-p-lg" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: 22 }}>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <div className="lbl" style={{ margin: 0, fontSize: 13 }}>Résolveurs DNS Système</div>
-                <span style={{ fontSize: 11, color: 'var(--muted)' }}>Configuration IPv4 active</span>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>IPv4</span>
               </div>
 
-              {/* DNS Presets */}
               <div className="list">
                 {DNS_PRESETS.map(d => {
                   const isActive = netInfo?.dns && (
@@ -540,21 +464,21 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
                       key={d.id}
                       className={`row clickable${isActive ? ' selected' : ''}`}
                       onClick={() => applyDns(d.id, d.name)}
-                      style={{ padding: '9px 12px', borderRadius: 8 }}
+                      style={{ padding: '8px 12px', borderRadius: 8 }}
                     >
                       <div className="rt">
                         <b style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
                           {d.name}
                           {isActive && (
-                            <span style={{ fontSize: 9.5, fontWeight: 700, color: '#22c55e', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 4, padding: '1px 6px' }}>
+                            <span style={{ fontSize: 9, fontWeight: 700, color: '#22c55e', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 4, padding: '1px 5px' }}>
                               ACTIF
                             </span>
                           )}
                         </b>
-                        <small style={{ fontSize: 11, color: 'var(--muted)' }}>{d.label}</small>
+                        <small style={{ fontSize: 10.5, color: 'var(--muted)' }}>{d.label}</small>
                       </div>
                       {d.ping !== null && (
-                        <span style={{ color: d.ping < 12 ? '#22c55e' : '#facc15', fontWeight: 600, fontSize: 11.5 }}>
+                        <span style={{ color: d.ping < 12 ? '#22c55e' : '#facc15', fontWeight: 600, fontSize: 11 }}>
                           {d.ping} ms
                         </span>
                       )}
@@ -564,38 +488,50 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
               </div>
             </div>
 
-            {/* Network Feature Toggles */}
-            <div style={{ marginTop: 14, borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12 }}>
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 10, fontSize: 11, color: 'var(--muted)' }}>
+              <span>Serveur actuel : </span>
+              <b style={{ color: '#ffffff' }}>{netInfo?.dns || 'Google Public DNS'}</b>
+            </div>
+          </div>
+
+          {/* Card 3: Options d'Optimisation Réseau */}
+          <div className="card card-p-lg" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: 22 }}>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div className="lbl" style={{ margin: 0, fontSize: 13 }}>Options d'Optimisation</div>
+                <span style={{ fontSize: 11, color: '#38bdf8', fontWeight: 600 }}>Temps réel</span>
+              </div>
+
               <div className="list">
                 {[
                   {
                     key: 'doh',
                     label: 'DNS sur HTTPS (DoH)',
-                    desc: 'Chiffre vos requêtes DNS pour empêcher les intermédiaires de suivre votre navigation.',
+                    desc: 'Chiffre les requêtes DNS pour empêcher les écoutes et blocages FAI.',
                     val: dnsOverHttps,
                     set: setDnsOverHttps,
                   },
                   {
                     key: 'ipv6',
                     label: 'Désactiver IPv6',
-                    desc: 'Prévient les fuites d\'adresse IPv6 et stabilise la connexion aux serveurs de jeu.',
+                    desc: 'Élimine les fuites de routage IPv6 et stabilise les pings en jeu multijoueur.',
                     val: ipv6Disabled,
                     set: setIpv6Disabled,
                   },
                   {
                     key: 'antiBufferbloat',
-                    label: 'Anti-Bufferbloat Gaming',
-                    desc: 'Priorise les flux UDP en direct pour éviter les sauts de ping pendant les sessions.',
+                    label: 'Anti-Bufferbloat UDP',
+                    desc: 'Priorise le trafic direct sans file d\'attente réseau pour éviter les pics de latence.',
                     val: antiBufferbloat,
                     set: setAntiBufferbloat,
                   },
                 ].map(({ key, label, desc, val, set }) => (
-                  <div className="row" key={key} style={{ padding: '6px 0', border: 'none', alignItems: 'center' }}>
+                  <div className="row" key={key} style={{ padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', alignItems: 'center' }}>
                     <div className="rt" style={{ paddingRight: 10 }}>
                       <b style={{ fontSize: 12 }}>{label}</b>
-                      <small style={{ fontSize: 11, display: 'block', color: 'var(--muted)' }}>{desc}</small>
+                      <small style={{ fontSize: 11, display: 'block', color: 'var(--muted)', marginTop: 2 }}>{desc}</small>
                     </div>
-                    <label className="toggle" style={{ transform: 'scale(0.8)', transformOrigin: 'right center', margin: 0 }}>
+                    <label className="toggle" style={{ transform: 'scale(0.85)', transformOrigin: 'right center', margin: 0 }}>
                       <input type="checkbox" checked={val} onChange={e => set(e.target.checked)} />
                       <span className="toggle-track" />
                       <span className="toggle-thumb" />
@@ -604,11 +540,35 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
                 ))}
               </div>
             </div>
+
+            <div style={{
+              background: 'rgba(56,189,248,0.06)',
+              border: '1px solid rgba(56,189,248,0.2)',
+              borderRadius: 8,
+              padding: '12px 14px',
+              marginTop: 14,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+            }}>
+              <div>
+                <b style={{ fontSize: 12, color: '#f1f5f9' }}>Calibrage global TCP/IP</b>
+                <p style={{ fontSize: 11, color: 'var(--muted)', margin: '2px 0 0' }}>Flush DNS, autotuning et répartition RSS.</p>
+              </div>
+              <button
+                className="btn btn-sm"
+                onClick={() => setShowAccelDrawer(true)}
+                style={{ fontSize: 11, padding: '5px 12px', background: '#38bdf8', color: '#090d16', border: 'none', fontWeight: 700, cursor: 'pointer' }}
+              >
+                Ouvrir
+              </button>
+            </div>
           </div>
         </div>
 
         {/* ── Bottom Grid: Historique Chart (Left) & Adaptateur Physique (Right) ── */}
-        <div className="grid g2 mt" style={{ marginTop: 22 }}>
+        <div className="grid g2 mt" style={{ marginTop: 20 }}>
           {/* Timeseries Graph */}
           <div className="card card-p-lg" style={{ padding: 22 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
@@ -681,7 +641,6 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
                 <Router size={15} style={{ color: 'var(--a1)' }} />
                 Adaptateur Réseau & FAI Actif
               </div>
-              <span style={{ fontSize: 11, color: '#22c55e', fontWeight: 600 }}>Télémétrie automatique</span>
             </div>
 
             <div className="list">
@@ -705,6 +664,170 @@ export default function NetworkTab({ gamingActive }: { gamingActive: boolean }) 
         </div>
 
       </div>
+
+      {/* ── Slide-Over Drawer: Centre d'Accélération Réseau ── */}
+      <SlideDrawer
+        isOpen={showAccelDrawer}
+        onClose={() => setShowAccelDrawer(false)}
+        title="Centre d'Accélération Réseau"
+        subtitle="Optimisation TCP/IP, purge DNS et calibration de latence"
+        width={520}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Customer Explanation Banner */}
+          <div style={{
+            background: 'rgba(56,189,248,0.07)',
+            border: '1px solid rgba(56,189,248,0.25)',
+            borderRadius: 10,
+            padding: 16,
+          }}>
+            <h4 style={{ margin: '0 0 8px', fontSize: 13, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Sparkles size={16} />
+              Qu'est-ce que l'accélération réseau Astral ?
+            </h4>
+            <p style={{ margin: 0, fontSize: 12, color: '#cbd5e1', lineHeight: 1.55 }}>
+              Cette procédure effectue un réglage sécurisé et transparent des paramètres réseau de Windows sans modification matérielle ni coupure prolongée de votre accès Internet.
+            </p>
+          </div>
+
+          {/* 4 Execution Steps Explanation */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {[
+              {
+                step: '1',
+                title: 'Purge du Cache DNS Windows',
+                desc: 'Supprime immédiatement les résolutions d\'adresses IP expirées ou erronées afin d\'accélérer le premier chargement de chaque site web et serveur de jeu.',
+              },
+              {
+                step: '2',
+                title: 'Calibrage de la Fenêtre TCP Autotuning',
+                desc: 'Déverrouille les restrictions de pile réseau de Windows pour permettre à votre connexion de saturer sans goulot d\'étranglement les liaisons fibre jusqu\'à 1 Gbps+.',
+              },
+              {
+                step: '3',
+                title: 'Receive Side Scaling (RSS) Multi-Cœur',
+                desc: 'Distribue automatiquement la réception des paquets réseau entrants sur l\'ensemble des cœurs logiques de votre processeur au lieu de saturer un seul cœur.',
+              },
+              {
+                step: '4',
+                title: 'Priorisation UDP Anti-Bufferbloat',
+                desc: 'Minimise l\'engorgement des tampons réseau de Windows pour supprimer les montées subites de latence (lag spikes) pendant vos parties en ligne.',
+              },
+            ].map((item) => (
+              <div
+                key={item.step}
+                style={{
+                  background: 'rgba(255,255,255,0.02)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  borderRadius: 8,
+                  padding: '12px 14px',
+                  display: 'flex',
+                  gap: 12,
+                  alignItems: 'flex-start',
+                }}
+              >
+                <span style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: '50%',
+                  background: 'rgba(56,189,248,0.15)',
+                  color: '#38bdf8',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  display: 'grid',
+                  placeItems: 'center',
+                  flexShrink: 0,
+                }}>
+                  {item.step}
+                </span>
+                <div>
+                  <b style={{ fontSize: 12.5, color: '#f8fafc', display: 'block' }}>{item.title}</b>
+                  <p style={{ margin: '3px 0 0', fontSize: 11.5, color: '#94a3b8', lineHeight: 1.45 }}>{item.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Action Trigger */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
+            <button
+              className="btn"
+              onClick={runNetworkAcceleration}
+              disabled={optimizing}
+              style={{
+                width: '100%',
+                padding: '12px 20px',
+                fontSize: 13,
+                fontWeight: 700,
+                background: optimizing ? 'rgba(56,189,248,0.2)' : '#38bdf8',
+                color: optimizing ? '#38bdf8' : '#090d16',
+                border: 'none',
+                borderRadius: 8,
+                boxShadow: optimizing ? 'none' : '0 4px 18px rgba(56,189,248,0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                cursor: 'pointer',
+              }}
+            >
+              {optimizing ? (
+                <>
+                  <span className="spinner spinner-sm" style={{ borderTopColor: '#38bdf8' }} />
+                  <span>Optimisation en cours…</span>
+                </>
+              ) : (
+                <>
+                  <Zap size={16} fill="#090d16" />
+                  <span>Lancer l'Accélération Réseau Complète</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Live Progress Logs */}
+          {(optimizing || optLogs.length > 0) && (
+            <div style={{
+              padding: 14,
+              background: '#070a10',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 8,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, fontSize: 11.5, fontWeight: 600 }}>
+                <span style={{ color: '#38bdf8' }}>
+                  {optimizing ? `Étape ${optStep}/4 en cours…` : '✓ Calibration terminée'}
+                </span>
+                <span style={{ color: 'var(--muted)' }}>
+                  {optimizing ? `${Math.round((optStep / 4) * 100)}%` : '100%'}
+                </span>
+              </div>
+
+              <div className="bar" style={{ height: 5, marginBottom: 10, background: 'rgba(255,255,255,0.08)' }}>
+                <i style={{
+                  width: `${optimizing ? (optStep / 4) * 100 : 100}%`,
+                  background: 'linear-gradient(90deg, #38bdf8, #22c55e)',
+                  transition: 'width 0.4s ease',
+                }} />
+              </div>
+
+              <div style={{
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                fontSize: 11,
+                color: '#cbd5e1',
+                lineHeight: 1.55,
+                maxHeight: 110,
+                overflowY: 'auto',
+              }}>
+                {optLogs.map((log, i) => (
+                  <div key={i} style={{ color: log.startsWith('✓') ? '#22c55e' : '#94a3b8' }}>
+                    {log}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </SlideDrawer>
     </div>
   );
 }

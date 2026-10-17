@@ -64,9 +64,11 @@ export function createOrGetNotificationWindow(): BrowserWindow {
       sandbox: true,
       webSecurity: true,
       allowRunningInsecureContent: false,
+      autoplayPolicy: 'no-user-gesture-required' as any,
     },
   });
 
+  popupWin.setAlwaysOnTop(true, 'screen-saver');
   popupWin.setMenu(null);
   popupWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   popupWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -75,16 +77,35 @@ export function createOrGetNotificationWindow(): BrowserWindow {
   popupWin.webContents.on('will-navigate', (event, url) => {
     event.preventDefault();
     if (url.includes('vanguard://close')) {
-      if (popupWin && !popupWin.isDestroyed()) {
-        popupWin.hide();
-      }
+      if (popupWin && !popupWin.isDestroyed()) popupWin.hide();
     } else if (url.includes('vanguard://focus')) {
-      if (currentClickFocusCallback) {
-        currentClickFocusCallback();
+      if (currentClickFocusCallback) currentClickFocusCallback();
+      if (popupWin && !popupWin.isDestroyed()) popupWin.hide();
+    } else if (url.includes('vanguard://delete')) {
+      try {
+        const u = new URL(url);
+        const targetPath = decodeURIComponent(u.searchParams.get('file') || '');
+        if (targetPath && fs.existsSync(targetPath)) {
+          fs.unlinkSync(targetPath);
+          logger.info(`[DownloadScanner] Fichier supprimé par l'utilisateur: ${targetPath}`);
+        }
+      } catch (err: any) {
+        logger.warn('[DownloadScanner] Erreur suppression fichier:', err.message);
       }
-      if (popupWin && !popupWin.isDestroyed()) {
-        popupWin.hide();
+      if (popupWin && !popupWin.isDestroyed()) popupWin.hide();
+    } else if (url.includes('vanguard://quarantine')) {
+      try {
+        const u = new URL(url);
+        const targetPath = decodeURIComponent(u.searchParams.get('file') || '');
+        if (targetPath && fs.existsSync(targetPath)) {
+          const quarPath = `${targetPath}.vanguard_quarantine`;
+          fs.renameSync(targetPath, quarPath);
+          logger.info(`[DownloadScanner] Fichier mis en quarantaine: ${quarPath}`);
+        }
+      } catch (err: any) {
+        logger.warn('[DownloadScanner] Erreur mise en quarantaine:', err.message);
       }
+      if (popupWin && !popupWin.isDestroyed()) popupWin.hide();
     }
   });
 
@@ -168,17 +189,18 @@ export function showAvastStyleToast({
             align-items: stretch;
             justify-content: stretch;
             height: 100vh;
-            padding: 6px;
+            margin: 0;
+            padding: 0;
             box-sizing: border-box;
             user-select: none;
           }
           .card {
             width: 100%;
             height: 100%;
-            background: #0b0f19;
+            background: #0d111a;
             border: 1px solid ${borderColor};
-            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.9), 0 0 12px ${accentColor}20;
-            border-radius: 12px;
+            border-radius: 10px;
+            box-shadow: none;
             padding: 13px 16px 12px;
             display: flex;
             flex-direction: column;
@@ -186,12 +208,12 @@ export function showAvastStyleToast({
             color: #f1f5f9;
             cursor: pointer;
             position: relative;
+            box-sizing: border-box;
             animation: slideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            transition: border-color 0.2s ease;
           }
           .card:hover {
             border-color: ${accentColor};
-            box-shadow: 0 14px 34px rgba(0, 0, 0, 0.95), 0 0 20px ${accentColor}30;
           }
           @keyframes slideIn {
             from { transform: translateY(16px); opacity: 0; }
@@ -289,7 +311,7 @@ export function showAvastStyleToast({
             <div class="message">${escapeHtml(message)}</div>
           </div>
           <div class="footer">
-            <span>Astral Vanguard v${app.getVersion() || "2.5.9"}</span>
+            <span>Astral Vanguard v${app.getVersion() || "2.5.10"}</span>
             <span class="action-hint">Ouvrir l'application ➔</span>
           </div>
         </div>
@@ -297,16 +319,50 @@ export function showAvastStyleToast({
         <script>
           try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(${type === 'threat' ? 440 : 587.33}, ctx.currentTime);
-            gain.gain.setValueAtTime(0.04, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start();
-            osc.stop(ctx.currentTime + 0.23);
+            if (ctx.state === 'suspended') ctx.resume();
+            const now = ctx.currentTime;
+            const notifType = '${type}';
+
+            if (notifType === 'threat') {
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = 'sawtooth';
+              osc.frequency.setValueAtTime(880, now);
+              osc.frequency.exponentialRampToValueAtTime(440, now + 0.18);
+              gain.gain.setValueAtTime(0.06, now);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+              osc.connect(gain); gain.connect(ctx.destination);
+              osc.start(now); osc.stop(now + 0.22);
+            } else if (notifType === 'gaming') {
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = 'triangle';
+              osc.frequency.setValueAtTime(659.25, now);
+              osc.frequency.exponentialRampToValueAtTime(880, now + 0.12);
+              gain.gain.setValueAtTime(0.05, now);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+              osc.connect(gain); gain.connect(ctx.destination);
+              osc.start(now); osc.stop(now + 0.16);
+            } else if (notifType === 'network' || notifType === 'ping') {
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(659.25, now);
+              gain.gain.setValueAtTime(0.04, now);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+              osc.connect(gain); gain.connect(ctx.destination);
+              osc.start(now); osc.stop(now + 0.15);
+            } else {
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(587.33, now);
+              osc.frequency.exponentialRampToValueAtTime(880, now + 0.14);
+              gain.gain.setValueAtTime(0.04, now);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+              osc.connect(gain); gain.connect(ctx.destination);
+              osc.start(now); osc.stop(now + 0.18);
+            }
           } catch(e) {}
         </script>
       </body>
@@ -337,13 +393,14 @@ export function showAvastStyleDownloadScan({
   threatName?: string;
   isUnsigned?: boolean;
 }) {
-  const win = createOrGetNotificationWindow();
-  const { x, y } = getPopupPosition(420, 180);
-  win.setBounds({ x, y, width: 420, height: 180 });
-
   const isThreat = status === 'threat';
   const isSuspect = status === 'suspect';
   const isClean = !isThreat && !isSuspect;
+  const popupHeight = (isThreat || isSuspect) ? 200 : 165;
+  const win = createOrGetNotificationWindow();
+  const { x, y } = getPopupPosition(420, popupHeight);
+  win.setBounds({ x, y, width: 420, height: popupHeight });
+
   const accentColor = isThreat ? '#ef4444' : isSuspect ? '#f59e0b' : '#22c55e';
   const statusTitle = isThreat
     ? 'Menace bloquée dans le téléchargement'
@@ -365,6 +422,22 @@ export function showAvastStyleDownloadScan({
     ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`
     : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
 
+  const actionButtonsHtml = (isThreat || isSuspect) ? `
+    <div class="action-bar">
+      <button class="btn btn-danger" onclick="window.location.href='vanguard://delete?file=${encodeURIComponent(filePath)}'">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        Supprimer
+      </button>
+      <button class="btn btn-warning" onclick="window.location.href='vanguard://quarantine?file=${encodeURIComponent(filePath)}'">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Quarantaine
+      </button>
+      <button class="btn btn-ghost" onclick="window.location.href='vanguard://close'">
+        Ignorer
+      </button>
+    </div>
+  ` : '';
+
   const html = `
     <!DOCTYPE html>
     <html>
@@ -372,37 +445,41 @@ export function showAvastStyleDownloadScan({
         <meta charset="utf-8">
         <style>
           * { box-sizing: border-box; margin: 0; padding: 0; }
+          html, body {
+            width: 100%; height: 100%;
+          }
           body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: transparent;
             overflow: hidden;
             display: flex;
-            align-items: center;
-            justify-content: center;
+            align-items: stretch;
+            justify-content: stretch;
             height: 100vh;
-            padding: 6px;
+            margin: 0;
+            padding: 0;
             box-sizing: border-box;
             user-select: none;
           }
           .card {
             width: 100%;
             height: 100%;
-            background: #0b0f19;
-            border: 1px solid ${isThreat ? 'rgba(239, 68, 68, 0.45)' : isSuspect ? 'rgba(245, 158, 11, 0.45)' : 'rgba(34, 197, 94, 0.45)'};
-            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.9), 0 0 12px ${accentColor}20;
-            border-radius: 12px;
+            background: #0d111a;
+            border: 1px solid ${isThreat ? 'rgba(239, 68, 68, 0.55)' : isSuspect ? 'rgba(245, 158, 11, 0.55)' : 'rgba(34, 197, 94, 0.55)'};
+            border-radius: 10px;
+            box-shadow: none;
             padding: 13px 16px 12px;
             position: relative;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
             color: #f1f5f9;
+            box-sizing: border-box;
             animation: slideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            transition: border-color 0.2s ease;
           }
           .card:hover {
             border-color: ${accentColor};
-            box-shadow: 0 14px 34px rgba(0, 0, 0, 0.95), 0 0 20px ${accentColor}30;
           }
           @keyframes slideIn {
             from { transform: translateY(16px); opacity: 0; }
@@ -469,7 +546,53 @@ export function showAvastStyleDownloadScan({
           .message {
             font-size: 12px;
             color: #94a3b8;
-            line-height: 1.45;
+            line-height: 1.4;
+          }
+          .action-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+            margin-bottom: 2px;
+          }
+          .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 5px 11px;
+            border-radius: 6px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: all 0.15s ease;
+          }
+          .btn-danger {
+            background: rgba(239, 68, 68, 0.18);
+            border-color: rgba(239, 68, 68, 0.45);
+            color: #fca5a5;
+          }
+          .btn-danger:hover {
+            background: rgba(239, 68, 68, 0.32);
+            color: #ffffff;
+          }
+          .btn-warning {
+            background: rgba(245, 158, 11, 0.16);
+            border-color: rgba(245, 158, 11, 0.4);
+            color: #fde68a;
+          }
+          .btn-warning:hover {
+            background: rgba(245, 158, 11, 0.3);
+            color: #ffffff;
+          }
+          .btn-ghost {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.1);
+            color: #94a3b8;
+          }
+          .btn-ghost:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
           }
           .footer {
             display: flex;
@@ -495,11 +618,54 @@ export function showAvastStyleDownloadScan({
             <div class="file-name">${escapeHtml(fileName)}</div>
             <div class="message">${escapeHtml(statusDesc)}</div>
           </div>
+          ${actionButtonsHtml}
           <div class="footer">
-            <span>Astral Vanguard v${app.getVersion() || "2.5.9"}</span>
+            <span>Astral Vanguard v${app.getVersion() || "2.5.10"}</span>
             <span>Moteur heuristique autonome</span>
           </div>
         </div>
+
+        <script>
+          try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            if (ctx.state === 'suspended') ctx.resume();
+            const now = ctx.currentTime;
+            const isThreat = ${isThreat};
+            const isSuspect = ${isSuspect};
+
+            if (isThreat) {
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = 'sawtooth';
+              osc.frequency.setValueAtTime(880, now);
+              osc.frequency.exponentialRampToValueAtTime(440, now + 0.22);
+              gain.gain.setValueAtTime(0.07, now);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+              osc.connect(gain); gain.connect(ctx.destination);
+              osc.start(now); osc.stop(now + 0.26);
+            } else if (isSuspect) {
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = 'triangle';
+              osc.frequency.setValueAtTime(659.25, now);
+              osc.frequency.exponentialRampToValueAtTime(554.37, now + 0.16);
+              gain.gain.setValueAtTime(0.05, now);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+              osc.connect(gain); gain.connect(ctx.destination);
+              osc.start(now); osc.stop(now + 0.2);
+            } else {
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(587.33, now);
+              osc.frequency.exponentialRampToValueAtTime(880, now + 0.14);
+              gain.gain.setValueAtTime(0.04, now);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+              osc.connect(gain); gain.connect(ctx.destination);
+              osc.start(now); osc.stop(now + 0.18);
+            }
+          } catch(e) {}
+        </script>
       </body>
     </html>
   `;

@@ -10,6 +10,43 @@ Ce journal consigne de manière chronologique et détaillée toutes les modifica
 * **`framer-motion-ui` & `opera-gx-aesthetic`** : Conception de l'interface en mode sombre profond, accents néon adaptatifs, micro-interactions, skeleton loaders et compteurs animés fluides.
 * **`native-audio-synth`** : Moteur sonore Web Audio API synthétisant des carillons discrets pour chaque type d'alerte sans dépendance de fichiers audio externes.
 
+## [2.5.10] - Préversion Bêta (2026-10-17)
+
+### 🪟 Interface, Tiroir Latéral & Expérience Zéro Flou
+- Tiroir Latéral Universel (Slide-Over Drawer) : Remplacement de l'ensemble des fenêtres modales centrées et opaques par un tiroir coulissant latéral élégant, non intrusif et fluide, avec fermeture intuitive sur clic extérieur ou touche Échap.
+- Éradication Définitive du Cadre Flou DWM : Suppression intégrale de tout effet d'ombre et de flou translucide sur les fenêtres transparentes Electron (HUD et Notifications Avast). Rendu pixel-perfect avec fond obsidian solide et bordures nettes.
+- Barre de Défilement Sombre Globale : Remplacement de la barre de défilement blanche native Windows par un ascenseur personnalisé discret et fin sur tous les menus, listes de serveurs et panneaux contextuels.
+
+### 🛡️ Sentinelle Téléchargements & Notifications Interactives
+- Zéro Spam de Notifications : Suppression des notifications doublons lors de l'apparition des fiches de détection.
+- Actions Immédiates sur Menace : Les cartes d'analyse affichent désormais des boutons d'action interactifs directs (Supprimer, Quarantaine, Ignorer) pour un traitement instantané des fichiers suspects.
+- Pré-mise en cache Silencieuse : Analyse ciblée uniquement sur les nouveaux fichiers téléchargés, évitant toute tempête de notifications au démarrage.
+- Moteur Audio Procédural & Contrôle de Volume : Synthèse Web Audio intégrée pour 5 profils d'alerte distincts (Sécurité, VPN, Réseau, Gaming, Succès), avec curseur de volume et bouton de test dans les Paramètres.
+
+### 🔒 Tunnel VPN, Basculement Automatique & Intégration Tray
+- Connexion Autonome Depuis le Tray : La connexion rapide et la sélection de serveurs depuis la zone de notification Windows s'exécutent directement dans le processus principal sans dépendre de l'état de la fenêtre.
+- Synchronisation d'État Temps Réel : Résolution de l'état "Déconnecté" persistant dans le Tray et diffusion instantanée des changements d'état vers toutes les fenêtres.
+- Basculement Automatique (Bêta) : Nouveau module intelligent de basculement vers le relais le plus rapide en cas de perte de connectivité ou de hausse de latence.
+- Badges & Latence Dynamiques : Calcul en direct des pings de chaque relais et attribution dynamique des badges "Recommandé" et "Meilleur ping gaming".
+- Détection Binaire OpenVPN Kernel : Intégration directe du moteur OpenVPN 2.7.6 détecté sur la machine hôte pour une fiabilité maximale du tunnel.
+- Interface VPN Épurée : Suppression de la grande bannière verte redondante au profit d'un panneau plus lisible et moderne.
+
+### 🌐 Réseau & Accélération Débit
+- Interface Réseau Structurée : Réorganisation complète en 3 cartes claires et distinctes (Test de débit multi-flux, Résolveurs DNS système, Options d'optimisation).
+- Centre d'Accélération Réseau en Tiroir : Migration des diagnostics et de la purge TCP/IP vers un tiroir coulissant avec journal en direct et explications pas-à-pas.
+
+### 🛠️ Maintenance & Matériel
+- Refonte des Onglets : Renommage en "Maintenance & Matériel" et "Jeux & Performance" pour une navigation claire.
+- Regroupement Matériel & Pilotes Officiels : Intégration du centre matériel (GPU Nvidia RTX 3060 Ti avec vérification de pilote GeForce, CPU, RAM, Carte mère ROG STRIX avec lien officiel de mise à jour BIOS) dans l'onglet Maintenance.
+- Guide Flash BIOS ASUS ROG : Guide complet EZ Flash 3 accessible directement via un tiroir coulissant dédié.
+- Carte de Maintenance Client-Friendly : Explications claires et rassurantes des opérations (nettoyage RAM, fichiers temporaires, caches de shaders DirectX, corbeille) avec protection anti-conflit gaming automatique.
+
+### 🎮 Jeux & Performance
+- Cartes de Jeux Aérées : Mise en valeur des illustrations avec bannières larges, badges de plateformes (Steam, Epic Games), bouton de lancement rapide et désinstallation directe.
+- Fiches de Profils en Tiroir Latéral : Présentation détaillée des profils de session dans un tiroir latéral accessible en un clic.
+
+---
+
 ## [2.5.9] - Refonte Vérité Terrain, Stabilité Matérielle & Expérience Zero-Défaut (2026-10-17)
 
 ### 🛡️ Sécurité & Privilèges Système

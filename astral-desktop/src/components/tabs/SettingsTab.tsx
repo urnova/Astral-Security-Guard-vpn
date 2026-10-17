@@ -126,14 +126,35 @@ export default function SettingsTab({
   // Notifications
   const [notifEnabled, setNotifEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [soundVolume, setSoundVolume]   = useState(70);
 
   // Updates
   const [autoUpdate, setAutoUpdate]         = useState(true);
   const [betaChannel, setBetaChannel]       = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateStatus, setUpdateStatus]     = useState('');
-  const [currentVersion, setCurrentVersion] = useState('2.5.9');
+  const [currentVersion, setCurrentVersion] = useState('2.5.10');
   const [updateInfo, setUpdateInfo]         = useState<{ version?: string; hasUpdate?: boolean } | null>(null);
+
+  const playTestNotificationSound = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const vol = (soundVolume / 100) * 0.15;
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12);
+      gain.gain.setValueAtTime(vol, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.28);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.3);
+    } catch {}
+  };
 
   // Admin status
   const [isAdmin, setIsAdmin]               = useState<boolean | null>(null);
@@ -841,6 +862,37 @@ export default function SettingsTab({
                     tabIndex={0}
                   />
                 </div>
+
+                {soundEnabled && (
+                  <div className="setting-row">
+                    <div className="setting-info">
+                      <div className="setting-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Volume2 size={15} style={{ color: 'var(--a1)' }} />
+                        Volume des notifications ({soundVolume}%)
+                      </div>
+                      <div className="setting-desc">Niveau sonore des alertes procédurales Web Audio (sécurité, gaming, vpn)</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 220 }}>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={soundVolume}
+                        onChange={e => setSoundVolume(Number(e.target.value))}
+                        style={{ flex: 1, accentColor: 'var(--a1)', cursor: 'pointer' }}
+                      />
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={playTestNotificationSound}
+                        style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
+                      >
+                        <Volume2 size={13} />
+                        <span>Tester le son</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Centre d'essai et de test des notifications */}
@@ -1195,7 +1247,7 @@ export default function SettingsTab({
                 </div>
                 <div>
                   <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Astral Vanguard</h2>
-                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>v{currentVersion} · Suite de Sécurité & Optimisation Gaming</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>v{currentVersion} (Bêta Pré-release) · Suite de Sécurité & Optimisation Gaming</div>
                 </div>
               </div>
 

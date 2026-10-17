@@ -231,15 +231,41 @@ export default function VpnTab() {
   const [selectedNodeData, setSelectedNodeData] = useState<VpnNode>(COUNTRIES[0].nodes[0]);
   const [proto, setProto]                 = useState<'WireGuard' | 'OpenVPN'>('WireGuard');
   const [killSwitch, setKillSwitch]       = useState(true);
+  const [autoFailover, setAutoFailover]   = useState(true);
+  const [failoverThreshold, setFailoverThreshold] = useState(85);
   const [connectedSince, setConnectedSince] = useState<Date | null>(null);
   const [elapsed, setElapsed]             = useState('00:00');
   const [downBytes, setDownBytes]         = useState<number>(48200000);
   const [upBytes, setUpBytes]             = useState<number>(14200000);
   const [query, setQuery]                 = useState('');
   const [error, setError]                 = useState('');
-  const [notice, setNotice]               = useState('');
   const [openCountry, setOpenCountry]     = useState<string | null>('FR');
   const [categoryFilter, setCategoryFilter] = useState<'Tous' | 'Streaming' | 'Gaming' | 'P2P'>('Tous');
+
+  // Dynamic country badge computation based on lowest ping
+  const dynamicCountries: Country[] = COUNTRIES.map((c, idx, arr) => {
+    const minPing = Math.min(...arr.map(x => x.latency));
+    let badge = c.badge;
+    if (c.latency === minPing) {
+      badge = 'Meilleur ping Gaming Europe';
+    } else if (c.latency < 20) {
+      badge = 'Ultra-rapide · Streaming';
+    } else if (c.cc === 'CH') {
+      badge = 'Confidentialité maximale';
+    } else if (c.cc === 'NL') {
+      badge = 'P2P & Géo-restrictions';
+    } else if (c.cc === 'US') {
+      badge = 'Catalogue US & Netflix';
+    }
+    return {
+      ...c,
+      badge,
+      nodes: c.nodes.map((n, nIdx) => ({
+        ...n,
+        badge: nIdx === 0 ? 'Meilleur ping' : n.badge || 'Débit Gigabit',
+      })),
+    };
+  });
 
   const timerRef = useRef<any>(null);
 
@@ -284,6 +310,14 @@ export default function VpnTab() {
       }
     }).catch(() => {});
 
+    // Get Auto-Failover status
+    api.vpnGetAutoFailover?.().then((af: any) => {
+      if (af?.success && af.config) {
+        setAutoFailover(af.config.enabled ?? true);
+        if (af.config.maxLatencyMs) setFailoverThreshold(af.config.maxLatencyMs);
+      }
+    }).catch(() => {});
+
     // Event listeners
     const c1 = api.on?.('vpn:connected', (d: any) => {
       setConnected(true);
@@ -298,12 +332,26 @@ export default function VpnTab() {
       setConnectedSince(null);
     });
 
-    return () => { c1?.(); c2?.(); };
+    const c3 = api.on?.('vpn:state-changed', (d: any) => {
+      if (d) {
+        if (d.connected) {
+          setConnected(true);
+          setConnecting(false);
+          setConnectedSince(new Date());
+          if (d.serverName) setSelectedNode(d.serverName);
+        } else {
+          setConnected(false);
+          setConnecting(false);
+          setConnectedSince(null);
+        }
+      }
+    });
+
+    return () => { c1?.(); c2?.(); c3?.(); };
   }, []);
 
-  const flash = (msg: string) => {
-    setNotice(msg);
-    setTimeout(() => setNotice(''), 3500);
+  const flash = (_msg: string) => {
+    // Discreet status: notification banner eliminated per user request
   };
 
   const handleToggleConnect = async () => {
@@ -381,12 +429,19 @@ export default function VpnTab() {
     } catch {}
   };
 
+  const handleToggleAutoFailover = async (val: boolean) => {
+    setAutoFailover(val);
+    try {
+      await api?.vpnSetAutoFailover?.({ enabled: val, maxLatencyMs: failoverThreshold, cooldownSeconds: 30 });
+    } catch {}
+  };
+
   const fmtBytes = (b: number) => {
     if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} Ko`;
     return `${(b / (1024 * 1024)).toFixed(1)} Mo`;
   };
 
-  const filteredCountries = COUNTRIES.filter(c => {
+  const filteredCountries = dynamicCountries.filter(c => {
     const matchesQuery = c.name.toLowerCase().includes(query.toLowerCase()) ||
       c.nodes.some(n => n.name.toLowerCase().includes(query.toLowerCase()));
     if (!matchesQuery) return false;
@@ -429,22 +484,6 @@ export default function VpnTab() {
           </div>
         </div>
 
-        {/* Notices */}
-        {notice && (
-          <div style={{
-            marginBottom: 16,
-            padding: '12px 18px',
-            background: 'rgba(34,197,94,.08)',
-            border: '1px solid rgba(34,197,94,.25)',
-            borderRadius: 'var(--r-sm)',
-            fontSize: 13,
-            color: '#22c55e',
-            display: 'flex', gap: 10, alignItems: 'center'
-          }}>
-            <CheckCircle2 size={15} /> {notice}
-          </div>
-        )}
-
         {error && (
           <div className="state-error" style={{ marginBottom: 16 }}>
             <AlertTriangle size={15} />
@@ -453,59 +492,120 @@ export default function VpnTab() {
           </div>
         )}
 
-        {/* Kill Switch Card */}
+        {/* Security & Routing Controls: 2 Cards Side-by-Side */}
         <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          gap: 14,
           marginBottom: 20,
-          padding: '16px 20px',
-          background: killSwitch ? 'rgba(34,197,94,0.06)' : 'rgba(255,255,255,0.02)',
-          border: `1px solid ${killSwitch ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
-          borderRadius: 12,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 16,
-          flexWrap: 'wrap',
-          transition: 'all 0.2s ease',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{
-              width: 40,
-              height: 40,
-              borderRadius: '50%',
-              background: killSwitch ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.05)',
-              display: 'grid',
-              placeItems: 'center',
-              color: killSwitch ? '#22c55e' : 'var(--muted)',
-              flexShrink: 0,
-            }}>
-              <Lock size={20} />
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <b style={{ color: '#fff', fontSize: 13.5 }}>Kill Switch Pare-Feu de Sécurité Réseau</b>
-                <span style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: killSwitch ? '#22c55e' : 'var(--muted)',
-                  background: killSwitch ? 'rgba(34,197,94,0.12)' : 'transparent',
-                  padding: '2px 8px',
-                  borderRadius: 6,
-                  border: killSwitch ? '1px solid rgba(34,197,94,0.25)' : 'none',
-                }}>
-                  {killSwitch ? 'ACTIF · PROTECTION ANTI-FUITE IP' : 'DÉSACTIVÉ'}
-                </span>
+          {/* Card 1: Kill Switch Pare-Feu */}
+          <div style={{
+            padding: '16px 18px',
+            background: killSwitch ? 'rgba(34,197,94,0.06)' : 'rgba(255,255,255,0.02)',
+            border: `1px solid ${killSwitch ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
+            borderRadius: 12,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 14,
+            transition: 'all 0.2s ease',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                background: killSwitch ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.05)',
+                display: 'grid',
+                placeItems: 'center',
+                color: killSwitch ? '#22c55e' : 'var(--muted)',
+                flexShrink: 0,
+                marginTop: 2,
+              }}>
+                <Lock size={18} />
               </div>
-              <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4, maxWidth: 650, lineHeight: 1.5 }}>
-                Bloque automatiquement tout le trafic Internet non chiffré en cas de déconnexion inattendue pour préserver votre réelle identité numérique.
-              </p>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <b style={{ color: '#fff', fontSize: 13 }}>Kill Switch Pare-Feu</b>
+                  <span style={{
+                    fontSize: 9.5,
+                    fontWeight: 700,
+                    color: killSwitch ? '#22c55e' : 'var(--muted)',
+                    background: killSwitch ? 'rgba(34,197,94,0.12)' : 'transparent',
+                    padding: '2px 7px',
+                    borderRadius: 6,
+                    border: killSwitch ? '1px solid rgba(34,197,94,0.25)' : 'none',
+                  }}>
+                    {killSwitch ? 'ACTIF' : 'OFF'}
+                  </span>
+                </div>
+                <p style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.45 }}>
+                  Bloque le trafic Internet non chiffré en cas de coupure inattendue du tunnel pour éviter toute fuite d'IP réelle.
+                </p>
+              </div>
             </div>
+
+            <label className="toggle" style={{ transform: 'scale(1.05)', cursor: 'pointer', margin: 0, flexShrink: 0 }}>
+              <input type="checkbox" checked={killSwitch} onChange={e => handleToggleKillSwitch(e.target.checked)} />
+              <span className="toggle-track" />
+              <span className="toggle-thumb" />
+            </label>
           </div>
 
-          <label className="toggle" style={{ transform: 'scale(1.1)', cursor: 'pointer', margin: 0 }}>
-            <input type="checkbox" checked={killSwitch} onChange={e => handleToggleKillSwitch(e.target.checked)} />
-            <span className="toggle-track" />
-            <span className="toggle-thumb" />
-          </label>
+          {/* Card 2: Basculement automatique (Bêta) */}
+          <div style={{
+            padding: '16px 18px',
+            background: autoFailover ? 'rgba(56,189,248,0.06)' : 'rgba(255,255,255,0.02)',
+            border: `1px solid ${autoFailover ? 'rgba(56,189,248,0.3)' : 'rgba(255,255,255,0.08)'}`,
+            borderRadius: 12,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 14,
+            transition: 'all 0.2s ease',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                background: autoFailover ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.05)',
+                display: 'grid',
+                placeItems: 'center',
+                color: autoFailover ? '#38bdf8' : 'var(--muted)',
+                flexShrink: 0,
+                marginTop: 2,
+              }}>
+                <Zap size={18} />
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <b style={{ color: '#fff', fontSize: 13 }}>Basculement automatique</b>
+                  <span style={{
+                    fontSize: 9.5,
+                    fontWeight: 700,
+                    color: '#38bdf8',
+                    background: 'rgba(56,189,248,0.15)',
+                    padding: '2px 7px',
+                    borderRadius: 6,
+                    border: '1px solid rgba(56,189,248,0.3)',
+                  }}>
+                    BÊTA
+                  </span>
+                </div>
+                <p style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.45 }}>
+                  Bascule automatiquement et sans coupure vers le relais optimal le plus proche si la latence dépasse {failoverThreshold} ms.
+                </p>
+              </div>
+            </div>
+
+            <label className="toggle" style={{ transform: 'scale(1.05)', cursor: 'pointer', margin: 0, flexShrink: 0 }}>
+              <input type="checkbox" checked={autoFailover} onChange={e => handleToggleAutoFailover(e.target.checked)} />
+              <span className="toggle-track" />
+              <span className="toggle-thumb" />
+            </label>
+          </div>
         </div>
 
         {/* Top Grid: Connection Radar & Details (Left) & Relay Server List (Right) */}

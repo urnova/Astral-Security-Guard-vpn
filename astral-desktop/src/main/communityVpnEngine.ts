@@ -98,6 +98,20 @@ class CommunityVpnEngine {
       path.resolve(__dirname, '../../bin/openvpn.exe'),
     ];
 
+    try {
+      const nordBase = 'C:\\Program Files\\NordVPN';
+      if (fs.existsSync(nordBase)) {
+        const versions = fs.readdirSync(nordBase).filter((f) => /^\d+\./.test(f)).sort().reverse();
+        for (const v of versions) {
+          const p = path.join(nordBase, v, 'Resources\\Binaries\\64bit\\openvpn-nordvpn.exe');
+          if (fs.existsSync(p)) {
+            candidatePaths.unshift(p);
+            break;
+          }
+        }
+      }
+    } catch {}
+
     for (const p of candidatePaths) {
       if (fs.existsSync(p)) return p;
     }

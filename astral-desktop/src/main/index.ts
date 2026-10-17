@@ -5,7 +5,7 @@ import { logger } from './logger';
 import { isAdmin, getWindowsBuildInfo, relaunchElevated } from './adminHelper';
 import { setupAutoUpdater } from './updater';
 import { setupSecurityIPC } from './security';
-import { setupVpnIPC, cleanupAstralFirewallRules } from './vpn';
+import { setupVpnIPC, cleanupAstralFirewallRules, performVpnConnect, performVpnDisconnect, isVpnConnected, getActiveVpnNodeName } from './vpn';
 import { setupPerformanceIPC } from './performance';
 import { setupNetworkIPC } from './network';
 import { setupGamingIPC, startGameDetection } from './gaming';
@@ -142,7 +142,7 @@ function createMainWindow() {
 
   // Setup all IPC modules
   setupSecurityIPC(mainWin);
-  setupVpnIPC(mainWin);
+  setupVpnIPC(mainWin, (opts) => updateTrayState(opts));
   setupPerformanceIPC(mainWin);
   setupNetworkIPC(mainWin);
   setupGamingIPC(mainWin, () => overlayWin);
@@ -225,8 +225,8 @@ export function createOverlay() {
       allowRunningInsecureContent: false,
     },
   });
-  // Allow dragging and clicking close button on the HUD pill
   overlayWin.setIgnoreMouseEvents(false);
+  overlayWin.setAlwaysOnTop(true, 'screen-saver');
 
   overlayWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   overlayWin.webContents.on('will-navigate', (e) => e.preventDefault());
@@ -238,14 +238,18 @@ export function createOverlay() {
     overlayWin.loadFile(path.join(__dirname, '../../dist/index.html'), { hash: '/overlay' });
   }
 
+  mainWin?.webContents.send('hud:state-changed', { active: true });
+
   overlayWin.on('closed', () => {
     overlayWin = null;
+    mainWin?.webContents.send('hud:state-changed', { active: false });
   });
 }
 
 export function destroyOverlay() {
   overlayWin?.close();
   overlayWin = null;
+  mainWin?.webContents.send('hud:state-changed', { active: false });
 }
 
 export function toggleOverlay() {
@@ -364,36 +368,31 @@ export function updateTrayState(opts: {
         {
           label: '⚡ Connexion Rapide (Paris · Core Alpha #1)',
           click: () => {
-            showAndFocus();
-            mainWin?.webContents.send('vpn:quick-connect', 'Paris · Core Alpha #1');
+            performVpnConnect('Paris · Core Alpha #1', mainWin ?? undefined);
           },
         },
         {
           label: '🇩🇪 Francfort · DE-CIX Ultra (15ms)',
           click: () => {
-            showAndFocus();
-            mainWin?.webContents.send('vpn:quick-connect', 'Francfort · DE-CIX Ultra');
+            performVpnConnect('Francfort · DE-CIX Ultra', mainWin ?? undefined);
           },
         },
         {
           label: '🇳🇱 Amsterdam · AMS-IX Gigabit (17ms)',
           click: () => {
-            showAndFocus();
-            mainWin?.webContents.send('vpn:quick-connect', 'Amsterdam · AMS-IX Gigabit');
+            performVpnConnect('Amsterdam · AMS-IX Gigabit', mainWin ?? undefined);
           },
         },
         {
           label: '🇨🇭 Zurich · Bunker Privacy (22ms)',
           click: () => {
-            showAndFocus();
-            mainWin?.webContents.send('vpn:quick-connect', 'Zurich · Bunker Privacy');
+            performVpnConnect('Zurich · Bunker Privacy', mainWin ?? undefined);
           },
         },
         {
           label: '🇺🇸 New York · NYIIX Core (86ms)',
           click: () => {
-            showAndFocus();
-            mainWin?.webContents.send('vpn:quick-connect', 'New York · NYIIX Core');
+            performVpnConnect('New York · NYIIX Core', mainWin ?? undefined);
           },
         },
         { type: 'separator' },
@@ -401,7 +400,7 @@ export function updateTrayState(opts: {
           label: '🔴 Déconnecter le VPN',
           enabled: trayVpnConnected,
           click: () => {
-            mainWin?.webContents.send('vpn:quick-disconnect');
+            performVpnDisconnect(mainWin ?? undefined);
           },
         },
       ],
@@ -592,6 +591,11 @@ ipcMain.handle('overlay:show', () => createOverlay());
 ipcMain.handle('overlay:hide', () => destroyOverlay());
 ipcMain.handle('overlay:toggle', () => toggleOverlay());
 ipcMain.handle('overlay:status', () => Boolean(overlayWin));
+ipcMain.handle('hud:get-state', () => Boolean(overlayWin));
+ipcMain.handle('hud:toggle', () => {
+  toggleOverlay();
+  return Boolean(overlayWin);
+});
 ipcMain.handle('app:quit', () => {
   minimizeToTray = false;
   try {

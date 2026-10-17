@@ -129,6 +129,40 @@ a:hover { text-decoration: underline; }
   overflow: hidden;
 }
 
+/* ── Custom Sleek Scrollbar (Élimination de la barre Windows blanche) ─────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  transition: background 0.2s ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--a1r), 0.55);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 /* Titlebar */
 .app-titlebar {
   height: var(--titlebar-h);

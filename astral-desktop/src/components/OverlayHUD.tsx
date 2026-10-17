@@ -130,9 +130,8 @@ export default function OverlayHUD() {
           width: '100%',
           height: 38,
           background: '#0d111a',
-          border: '1px solid rgba(56, 189, 248, 0.35)',
+          border: '1px solid rgba(56, 189, 248, 0.45)',
           borderRadius: 20,
-          boxShadow: '0 6px 20px rgba(0, 0, 0, 0.85), 0 0 12px rgba(56, 189, 248, 0.18)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -150,7 +149,6 @@ export default function OverlayHUD() {
               height: 8,
               borderRadius: '50%',
               background: presentmon.isCapturing ? '#4ade80' : '#38bdf8',
-              boxShadow: presentmon.isCapturing ? '0 0 8px #4ade80' : '0 0 8px #38bdf8',
             }}
           />
           <span

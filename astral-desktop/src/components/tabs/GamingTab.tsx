@@ -3,6 +3,7 @@ import {
   Gamepad2, Power, Monitor, Wifi, Cpu, Eye, Zap, SlidersHorizontal,
   Clock, ExternalLink, Info, X, ShieldCheck, Play, Trash2, HelpCircle
 } from 'lucide-react';
+import { SlideDrawer } from '../common/SlideDrawer';
 
 const api = (window as any).vanguard;
 
@@ -170,24 +171,7 @@ export default function GamingTab({
   const [notice, setNotice]               = useState('');
   const [noticeType, setNoticeType]       = useState<'info' | 'success' | 'error'>('info');
   const [launcherFilter, setLauncherFilter] = useState<string>('Tous');
-  const [hardware, setHardware]           = useState<{
-    gpuName: string;
-    gpuDriver: string;
-    gpuDriverRaw: string;
-    gpuDriverDate: string;
-    driverUrl: string;
-    cpuName: string;
-    cpuCores: number;
-    cpuThreads: number;
-    ramGB: number;
-    motherboard: string;
-    biosVersion: string;
-    biosDate: string;
-    biosUrl: string;
-  } | null>(null);
-
   const [showProfileDetails, setShowProfileDetails] = useState(false);
-  const [showBiosGuide, setShowBiosGuide] = useState(false);
   const [gameProfiles, setGameProfiles]   = useState<Record<string, Profile>>({});
   const [gameOptEnabled, setGameOptEnabled] = useState<Record<string, boolean>>(() => {
     try {
@@ -275,17 +259,17 @@ export default function GamingTab({
       });
     });
 
-    api?.getHardwareInfo?.().then((res: any) => {
-      if (res?.success && res.hardware) {
-        setHardware(res.hardware);
+    const c4 = api.on?.('hud:state-changed', (d: any) => {
+      if (typeof d?.visible === 'boolean') {
+        setHudEnabled(d.visible);
       }
-    }).catch(() => {});
+    });
 
     const autoRescanInterval = setInterval(() => {
       loadGames(false);
     }, 10 * 60 * 1000);
 
-    return () => { c1?.(); c2?.(); c3?.(); clearInterval(autoRescanInterval); };
+    return () => { c1?.(); c2?.(); c3?.(); c4?.(); clearInterval(autoRescanInterval); };
   }, []);
 
   /* ── Load games automatically ── */
@@ -688,108 +672,6 @@ export default function GamingTab({
           </div>
         </div>
 
-        {/* ── Matériel Détecté & Centre Pilotes / BIOS ── */}
-        <div className="card card-p-lg mt" style={{ marginTop: 22 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-            <div className="lbl" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-              <Monitor size={15} style={{ color: 'var(--a1)' }} />
-              Centre Matériel & Pilotes Officiels (NVIDIA & ASUS)
-            </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button
-                className="btn-ghost"
-                onClick={() => setShowBiosGuide(true)}
-                style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 6 }}
-              >
-                <HelpCircle size={13} style={{ color: 'var(--a1)' }} />
-                <span>Guide Flash BIOS</span>
-              </button>
-              {hardware?.driverUrl && (
-                <button
-                  className="btn-ghost"
-                  onClick={() => api?.openExternal?.(hardware.driverUrl)}
-                  style={{ fontSize: 11, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 6 }}
-                >
-                  <span>Pilotes NVIDIA Officiels</span>
-                  <ExternalLink size={12} />
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="grid g4" style={{ gap: 14 }}>
-            {/* GPU */}
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
-              <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>CARTE GRAPHIQUE (GPU)</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={hardware?.gpuName}>
-                {hardware?.gpuName || 'NVIDIA GeForce RTX 3060 Ti'}
-              </div>
-              <div style={{ fontSize: 11, color: '#38bdf8', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span>Pilote installé : <b>v{hardware?.gpuDriver || '561.74'}</b></span>
-              </div>
-              <div style={{ marginTop: 8 }}>
-                <button
-                  className="btn-ghost"
-                  onClick={() => api?.openExternal?.(hardware?.driverUrl || 'https://www.nvidia.com/fr-fr/geforce/drivers/')}
-                  style={{ fontSize: 10.5, padding: '3px 8px', borderRadius: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                >
-                  <span>Vérifier mise à jour GeForce</span>
-                  <ExternalLink size={10} />
-                </button>
-              </div>
-            </div>
-
-            {/* CPU */}
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
-              <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>PROCESSEUR (CPU)</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={hardware?.cpuName}>
-                {hardware?.cpuName || 'Intel(R) Core(TM) i7-8700 CPU @ 3.20GHz'}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-                {hardware?.cpuCores ? `${hardware.cpuCores} Cœurs / ${hardware.cpuThreads} Threads` : '6 Cœurs / 12 Threads'}
-              </div>
-              <div style={{ fontSize: 11, color: '#22c55e', marginTop: 8 }}>
-                Priorité dynamique gérée
-              </div>
-            </div>
-
-            {/* RAM */}
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
-              <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>MÉMOIRE VIVE (RAM)</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginTop: 4 }}>
-                {hardware?.ramGB ? `${hardware.ramGB} Go Détectés` : '32 Go Détectés'}
-              </div>
-              <div style={{ fontSize: 11, color: '#68b894', marginTop: 4 }}>
-                Canal mémoire double optimisé
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>
-                Cache système et jeux actif
-              </div>
-            </div>
-
-            {/* Motherboard & BIOS */}
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
-              <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>CARTE MÈRE & BIOS</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={hardware?.motherboard}>
-                {hardware?.motherboard || 'ASUS ROG STRIX Z370-F GAMING'}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-                BIOS UEFI : <b>v{hardware?.biosVersion || '3004'}</b>
-              </div>
-              <div style={{ marginTop: 8 }}>
-                <button
-                  className="btn-ghost"
-                  onClick={() => api?.openExternal?.(hardware?.biosUrl || 'https://rog.asus.com/fr/motherboards/rog-strix/rog-strix-z370-f-gaming-model/helpdesk_bios/')}
-                  style={{ fontSize: 10.5, padding: '3px 8px', borderRadius: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                >
-                  <span>Support BIOS ASUS ROG</span>
-                  <ExternalLink size={10} />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* ── Game Library ── */}
         <div className="card card-p-lg mt" style={{ marginTop: 22 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
@@ -858,83 +740,116 @@ export default function GamingTab({
                       position: 'relative',
                       overflow: 'hidden',
                       borderRadius: 12,
-                      border: `1px solid ${isOpt ? 'rgba(var(--a1r),.35)' : 'rgba(255,255,255,0.08)'}`,
+                      border: `1px solid ${isOpt ? 'rgba(56,189,248,0.35)' : 'rgba(255,255,255,0.08)'}`,
                       background: '#0d111a',
                       display: 'flex',
                       flexDirection: 'column',
-                      justifyContent: 'space-between',
-                      minHeight: 210,
-                      boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                      minHeight: 255,
+                      boxShadow: '0 4px 18px rgba(0,0,0,0.5)',
+                      transition: 'border-color 0.2s ease, transform 0.2s ease',
                     }}
                   >
-                    {/* Background */}
-                    <div
-                      className="gc-bg"
-                      style={{
+                    {/* Top Artwork Banner */}
+                    <div style={{
+                      position: 'relative',
+                      width: '100%',
+                      height: 115,
+                      overflow: 'hidden',
+                      background: game.bannerUrl ? '#070a10' : `linear-gradient(135deg, ${game.color1}, ${game.color2})`,
+                    }}>
+                      {game.bannerUrl ? (
+                        <img
+                          src={game.bannerUrl}
+                          alt={game.name}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                            display: 'block',
+                          }}
+                        />
+                      ) : (
+                        <div style={{
+                          width: '100%',
+                          height: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 48,
+                          fontWeight: 900,
+                          color: 'rgba(255,255,255,0.12)',
+                        }}>
+                          {game.initial}
+                        </div>
+                      )}
+
+                      {/* Subtle Dark Gradient at bottom of artwork */}
+                      <div style={{
                         position: 'absolute',
                         inset: 0,
-                        backgroundImage: game.bannerUrl
-                          ? `linear-gradient(to top, rgba(13,17,26,0.98) 30%, rgba(13,17,26,0.6) 70%, rgba(13,17,26,0.3) 100%), url(${game.bannerUrl})`
-                          : `linear-gradient(135deg, ${game.color1}, ${game.color2})`,
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
-                        opacity: game.bannerUrl ? 0.85 : 0.2,
-                        zIndex: 1,
-                      }}
-                    />
+                        background: 'linear-gradient(to top, #0d111a 0%, rgba(13,17,26,0.2) 60%, rgba(0,0,0,0.4) 100%)',
+                      }} />
 
-                    {!game.bannerUrl && (
-                      <div className="gc-initial" style={{ position: 'absolute', right: 12, top: 12, opacity: 0.15, fontSize: 64, fontWeight: 900, zIndex: 1 }}>
-                        {game.initial}
+                      {/* Badges on top of artwork */}
+                      <div style={{
+                        position: 'absolute',
+                        top: 8,
+                        left: 8,
+                        right: 8,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}>
+                        <span style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: '2px 7px',
+                          borderRadius: 6,
+                          background: 'rgba(0,0,0,0.85)',
+                          border: '1px solid rgba(255,255,255,0.15)',
+                          color: '#ffffff',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5,
+                        }}>
+                          <LauncherSvg launcher={game.launcher} size={11} />
+                          {game.launcher}
+                        </span>
+
+                        <span style={{
+                          fontSize: 9.5,
+                          fontWeight: 700,
+                          padding: '2px 7px',
+                          borderRadius: 6,
+                          background: `${PROFILE_META[assignedProfile].color}25`,
+                          border: `1px solid ${PROFILE_META[assignedProfile].color}50`,
+                          color: PROFILE_META[assignedProfile].color,
+                        }}>
+                          {assignedProfile.toUpperCase()}
+                        </span>
                       </div>
-                    )}
+                    </div>
 
-                    {/* Content */}
-                    <div style={{ position: 'relative', zIndex: 2, padding: 14, display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between' }}>
-                      {/* Top Badges & Name */}
+                    {/* Content below artwork */}
+                    <div style={{
+                      padding: '12px 14px 14px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      flex: 1,
+                      justifyContent: 'space-between',
+                      gap: 10,
+                    }}>
                       <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                          <span style={{
-                            fontSize: 10.5,
-                            fontWeight: 700,
-                            padding: '3px 8px',
-                            borderRadius: 6,
-                            background: 'rgba(0,0,0,0.85)',
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            color: 'rgba(255,255,255,0.95)',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 5,
-                          }}>
-                            <LauncherSvg launcher={game.launcher} size={12} />
-                            {game.launcher}
-                          </span>
-
-                          <span style={{
-                            fontSize: 9.5,
-                            fontWeight: 700,
-                            padding: '2px 8px',
-                            borderRadius: 6,
-                            background: `${PROFILE_META[assignedProfile].color}25`,
-                            border: `1px solid ${PROFILE_META[assignedProfile].color}50`,
-                            color: PROFILE_META[assignedProfile].color,
-                          }}>
-                            {assignedProfile.toUpperCase()}
-                          </span>
-                        </div>
-
                         {/* Title */}
                         <b
                           style={{
                             fontSize: 14,
                             fontWeight: 700,
-                            marginBottom: 8,
                             display: 'block',
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             color: '#ffffff',
-                            textShadow: '0 2px 4px rgba(0,0,0,0.8)',
                           }}
                           title={game.name}
                         >
@@ -942,16 +857,16 @@ export default function GamingTab({
                         </b>
                       </div>
 
-                      {/* Controls Bottom Area */}
-                      <div>
-                        {/* Direct Action Buttons: Lancer & Désinstaller */}
-                        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                      {/* Bottom Controls Area */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {/* Action buttons: Lancer & Désinstaller */}
+                        <div style={{ display: 'flex', gap: 8 }}>
                           <button
                             className="btn"
                             onClick={() => handleLaunchGame(game)}
                             style={{
                               flex: 2,
-                              padding: '8px 12px',
+                              padding: '7px 12px',
                               fontSize: 12,
                               fontWeight: 700,
                               display: 'flex',
@@ -961,6 +876,7 @@ export default function GamingTab({
                               background: 'var(--a1)',
                               color: '#0b0f17',
                               borderRadius: 6,
+                              cursor: 'pointer',
                             }}
                           >
                             <Play size={13} fill="#0b0f17" />
@@ -973,14 +889,15 @@ export default function GamingTab({
                             title="Désinstaller ce jeu"
                             style={{
                               flex: 1,
-                              padding: '8px 10px',
+                              padding: '7px 10px',
                               fontSize: 11,
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
                               gap: 5,
                               borderRadius: 6,
-                              color: 'rgba(255,255,255,0.6)',
+                              color: 'rgba(255,255,255,0.7)',
+                              cursor: 'pointer',
                             }}
                           >
                             <Trash2 size={12} />
@@ -994,9 +911,8 @@ export default function GamingTab({
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            marginBottom: 8,
-                            padding: '4px 8px',
-                            background: 'rgba(0,0,0,0.65)',
+                            padding: '3px 8px',
+                            background: 'rgba(0,0,0,0.5)',
                             borderRadius: 6,
                             border: '1px solid rgba(255,255,255,0.06)',
                           }}
@@ -1004,7 +920,7 @@ export default function GamingTab({
                           <span style={{ fontSize: 10, color: isOpt ? 'var(--a1)' : 'var(--muted)', fontWeight: 600 }}>
                             {isOpt ? 'Optimisation active' : 'Par défaut Windows'}
                           </span>
-                          <label className="toggle" style={{ transform: 'scale(0.72)', transformOrigin: 'right center', margin: 0 }}>
+                          <label className="toggle" style={{ transform: 'scale(0.7)', transformOrigin: 'right center', margin: 0 }}>
                             <input
                               type="checkbox"
                               checked={isOpt}
@@ -1035,7 +951,7 @@ export default function GamingTab({
                                   flex: 1,
                                   fontSize: 9.5,
                                   fontWeight: 700,
-                                  padding: '5px 2px',
+                                  padding: '4px 2px',
                                   borderRadius: 5,
                                   border: `1px solid ${isCurrent ? PROFILE_META[p].color : 'rgba(255,255,255,0.1)'}`,
                                   background: isCurrent ? `${PROFILE_META[p].color}26` : 'rgba(0,0,0,0.5)',
@@ -1058,194 +974,59 @@ export default function GamingTab({
           )}
         </div>
 
-        {/* ── Modal Guide Mise à Jour BIOS ASUS ── */}
-        {showBiosGuide && (
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(0,0,0,0.8)',
-              zIndex: 9999,
-              display: 'grid',
-              placeItems: 'center',
-              padding: 24,
-            }}
-            onClick={() => setShowBiosGuide(false)}
-          >
-            <div
-              className="card card-p-lg"
-              style={{
-                width: '100%',
-                maxWidth: 620,
-                background: '#0d111a',
-                border: '1px solid rgba(255,255,255,0.15)',
-                borderRadius: 14,
-                boxShadow: '0 20px 50px rgba(0,0,0,0.8)',
-                padding: 24,
-              }}
-              onClick={e => e.stopPropagation()}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <HelpCircle size={20} style={{ color: 'var(--a1)' }} />
-                  <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Procédure de Mise à Jour BIOS (ASUS ROG)</h3>
-                </div>
-                <button
-                  className="btn-ghost"
-                  onClick={() => setShowBiosGuide(false)}
-                  style={{ padding: '6px 8px', borderRadius: 8 }}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>
-                <p style={{ margin: '0 0 14px 0', color: 'var(--muted)' }}>
-                  La mise à jour du BIOS d'une carte mère ASUS ROG STRIX s'effectue hors de Windows via l'utilitaire <b>ASUS EZ Flash 3</b> intégré au BIOS UEFI pour une sécurité maximale :
-                </p>
-
-                <ol style={{ paddingLeft: 20, margin: '0 0 16px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <li>
-                    <b>Télécharger le firmware officiel :</b> Rendez-vous sur la page support officielle ASUS ROG et téléchargez le fichier BIOS le plus récent (format <code>.CAP</code>).
-                  </li>
-                  <li>
-                    <b>Préparer une clé USB :</b> Formatez une clé USB en <b>FAT32</b> (ou FAT16). Copiez le fichier <code>.CAP</code> directement à la racine de la clé.
-                  </li>
-                  <li>
-                    <b>Entrer dans le BIOS UEFI :</b> Redémarrez le PC et appuyez de manière répétée sur la touche <span className="kbd">Suppr</span> ou <span className="kbd">F2</span> dès l'affichage du logo ASUS.
-                  </li>
-                  <li>
-                    <b>Lancer ASUS EZ Flash 3 :</b> Passez en mode Avancé (<span className="kbd">F7</span>), puis naviguez vers l'onglet <b>Tool (Outils)</b> &gt; <b>ASUS EZ Flash 3 Utility</b>.
-                  </li>
-                  <li>
-                    <b>Sélectionner et Flasher :</b> Sélectionnez la clé USB, choisissez le fichier <code>.CAP</code> et validez. <b>Ne coupez jamais l'alimentation</b> pendant l'écriture du firmware.
-                  </li>
-                </ol>
-
-                <div style={{ padding: 12, borderRadius: 8, background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.25)', color: '#eab308', fontSize: 12 }}>
-                  ⚠ <b>Avertissement de sécurité :</b> Une interruption d'alimentation pendant le flashage du BIOS peut rendre la carte mère inopérante. Assurez-vous d'une alimentation électrique stable avant de lancer l'opération.
-                </div>
-              </div>
-
-              <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                {hardware?.biosUrl && (
-                  <button
-                    className="btn-ghost"
-                    onClick={() => api?.openExternal?.(hardware.biosUrl)}
-                    style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                  >
-                    <span>Ouvrir Support ASUS ROG</span>
-                    <ExternalLink size={13} />
-                  </button>
-                )}
-                <button
-                  className="btn"
-                  onClick={() => setShowBiosGuide(false)}
-                  style={{ padding: '8px 20px', fontSize: 12 }}
-                >
-                  Fermer
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Detailed Profile Configuration Modal ── */}
-        {showProfileDetails && (
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(0,0,0,0.8)',
-              zIndex: 9999,
-              display: 'grid',
-              placeItems: 'center',
-              padding: 24,
-            }}
-            onClick={() => setShowProfileDetails(false)}
-          >
-            <div
-              className="card card-p-lg"
-              style={{
-                width: '100%',
-                maxWidth: 680,
-                background: '#0d111a',
-                border: '1px solid rgba(255,255,255,0.15)',
-                borderRadius: 14,
-                boxShadow: '0 20px 50px rgba(0,0,0,0.8)',
-                padding: 24,
-              }}
-              onClick={e => e.stopPropagation()}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <ShieldCheck size={20} style={{ color: 'var(--a1)' }} />
-                  <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Profils de Session & Vérité Terrain</h3>
-                </div>
-                <button
-                  className="btn-ghost"
-                  onClick={() => setShowProfileDetails(false)}
-                  style={{ padding: '6px 8px', borderRadius: 8 }}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5, marginBottom: 18 }}>
-                Chaque profil applique des ajustements système réversibles mesurables. À la fermeture du jeu ou à la désactivation, <b>tous les paramètres d'origine (priorités, plan d'énergie, réseau) sont automatiquement restaurés</b> sans altérer Windows.
-              </p>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ padding: 14, borderRadius: 10, background: 'rgba(56,189,248,0.05)', border: '1px solid rgba(56,189,248,0.2)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <b style={{ color: '#38bdf8', fontSize: 13.5 }}>⚡ Profil Compétitif (Esports & Latence Minimale)</b>
-                    <span className="chip" style={{ fontSize: 10, color: '#38bdf8', borderColor: 'rgba(56,189,248,0.3)' }}>Latence min</span>
-                  </div>
-                  <ul style={{ margin: '8px 0 0 16px', padding: 0, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
-                    <li><b>Priorité processeur :</b> <code>AboveNormal</code> pour le processus de jeu au premier plan.</li>
-                    <li><b>Plan d'alimentation :</b> Bascule temporaire sur <code>Performances Élevées</code> (suppression du core parking).</li>
-                    <li><b>Réseau :</b> Priorité de trafic UDP, bufferbloat Wi-Fi réduit et latence de rendu ultra-faible.</li>
-                  </ul>
-                </div>
-
-                <div style={{ padding: 14, borderRadius: 10, background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.2)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <b style={{ color: '#22c55e', fontSize: 13.5 }}>⚖ Profil Équilibré (Standard & Polyvalent)</b>
-                    <span className="chip" style={{ fontSize: 10, color: '#22c55e', borderColor: 'rgba(34,197,94,0.3)' }}>Recommandé</span>
-                  </div>
-                  <ul style={{ margin: '8px 0 0 16px', padding: 0, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
-                    <li><b>Priorité processeur :</b> Dynamique et respectueuse des températures CPU/GPU.</li>
-                    <li><b>Streaming & multitâche :</b> Compatibilité totale avec OBS Studio, Discord et enregistreurs.</li>
-                    <li><b>Protection réseau :</b> Purgation des files de saturation réseau sans monopolisation.</li>
-                  </ul>
-                </div>
-
-                <div style={{ padding: 14, borderRadius: 10, background: 'rgba(167,139,250,0.05)', border: '1px solid rgba(167,139,250,0.2)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <b style={{ color: '#a78bfa', fontSize: 13.5 }}>🎨 Profil Qualité (Titres AAA & Immersion Visuelle)</b>
-                    <span className="chip" style={{ fontSize: 10, color: '#a78bfa', borderColor: 'rgba(167,139,250,0.3)' }}>Fidélité max</span>
-                  </div>
-                  <ul style={{ margin: '8px 0 0 16px', padding: 0, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
-                    <li><b>Allocation GPU :</b> Priorité aux threads de compilation de shaders DirectX 12 / Vulkan.</li>
-                    <li><b>Stabilité de trame :</b> Évite les chutes de framerate lors du streaming de textures lourdes.</li>
-                  </ul>
-                </div>
-              </div>
-
-              <div style={{ marginTop: 18, textAlign: 'right' }}>
-                <button
-                  className="btn"
-                  onClick={() => setShowProfileDetails(false)}
-                  style={{ padding: '8px 20px', fontSize: 12 }}
-                >
-                  Compris
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
       </div>
+
+      {/* ── Slide-Over Drawer: Profils de Performance & Vérité Terrain ── */}
+      <SlideDrawer
+        isOpen={showProfileDetails}
+        onClose={() => setShowProfileDetails(false)}
+        title="Profils de Performance & Vérité Terrain"
+        subtitle="Ajustements système mesurables et 100% réversibles"
+        width={560}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.55, margin: 0 }}>
+            Chaque profil applique des ajustements système réversibles mesurables. À la fermeture du jeu ou à la désactivation, <b>tous les paramètres d'origine (priorités, plan d'énergie, réseau) sont automatiquement restaurés</b> sans altérer Windows.
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ padding: 14, borderRadius: 10, background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.25)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <b style={{ color: '#38bdf8', fontSize: 13.5 }}>⚡ Profil Compétitif (Esports & Latence Minimale)</b>
+                <span className="chip" style={{ fontSize: 10, color: '#38bdf8', borderColor: 'rgba(56,189,248,0.3)' }}>Latence min</span>
+              </div>
+              <ul style={{ margin: '8px 0 0 16px', padding: 0, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
+                <li><b>Priorité processeur :</b> <code>AboveNormal</code> pour le processus de jeu au premier plan.</li>
+                <li><b>Plan d'alimentation :</b> Bascule temporaire sur <code>Performances Élevées</code> (suppression du core parking).</li>
+                <li><b>Réseau :</b> Priorité de trafic UDP, bufferbloat Wi-Fi réduit et latence de rendu ultra-faible.</li>
+              </ul>
+            </div>
+
+            <div style={{ padding: 14, borderRadius: 10, background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.25)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <b style={{ color: '#22c55e', fontSize: 13.5 }}>⚖ Profil Équilibré (Standard & Polyvalent)</b>
+                <span className="chip" style={{ fontSize: 10, color: '#22c55e', borderColor: 'rgba(34,197,94,0.3)' }}>Recommandé</span>
+              </div>
+              <ul style={{ margin: '8px 0 0 16px', padding: 0, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
+                <li><b>Priorité processeur :</b> Dynamique et respectueuse des températures CPU/GPU.</li>
+                <li><b>Streaming & multitâche :</b> Compatibilité totale avec OBS Studio, Discord et enregistreurs.</li>
+                <li><b>Protection réseau :</b> Purgation des files de saturation réseau sans monopolisation.</li>
+              </ul>
+            </div>
+
+            <div style={{ padding: 14, borderRadius: 10, background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.25)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <b style={{ color: '#a78bfa', fontSize: 13.5 }}>🎨 Profil Qualité (Titres AAA & Immersion Visuelle)</b>
+                <span className="chip" style={{ fontSize: 10, color: '#a78bfa', borderColor: 'rgba(167,139,250,0.3)' }}>Fidélité max</span>
+              </div>
+              <ul style={{ margin: '8px 0 0 16px', padding: 0, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
+                <li><b>Allocation GPU :</b> Priorité aux threads de compilation de shaders DirectX 12 / Vulkan.</li>
+                <li><b>Stabilité de trame :</b> Évite les chutes de framerate lors du streaming de textures lourdes.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </SlideDrawer>
     </div>
   );
 }
