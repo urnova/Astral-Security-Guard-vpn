@@ -39,17 +39,28 @@ function broadcastState() {
   }
 }
 
+let onPrepareForQuitCallback: (() => void) | null = null;
+
+export function registerQuitPreparer(cb: () => void) {
+  onPrepareForQuitCallback = cb;
+}
+
 /**
  * Handles quitAndInstall cleanly.
- * NOTE ON SYNTAX:
- * - electron-builder <= v26 (electron-updater <= 6.x, installed: 6.1.7): expects positional arguments
- *   autoUpdater.quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean)
- * - electron-builder >= v27 (electron-updater >= 7.x): expects destructured object
- *   autoUpdater.quitAndInstall({ isSilent?: boolean, isForceRunAfter?: boolean })
- * We dynamically inspect function arity or invoke with defensive fallback to guarantee silent execution.
+ * Silent mode (/S) is essential on Windows NSIS so the installer applies the update
+ * seamlessly without hanging in interactive GUI mode.
  */
-export function quitAndInstallUpdate(isSilent = false, isForceRunAfter = true): void {
+export function quitAndInstallUpdate(isSilent = true, isForceRunAfter = true): void {
   logger.info(`[AutoUpdater] Invoking quitAndInstall (isSilent=${isSilent}, isForceRunAfter=${isForceRunAfter})`);
+  
+  if (onPrepareForQuitCallback) {
+    try {
+      onPrepareForQuitCallback();
+    } catch (err: any) {
+      logger.warn('[AutoUpdater] onPrepareForQuitCallback threw:', err.message);
+    }
+  }
+
   try {
     const fn = (autoUpdater as any).quitAndInstall;
     if (typeof fn === 'function' && fn.length === 1) {
@@ -67,10 +78,19 @@ export function quitAndInstallUpdate(isSilent = false, isForceRunAfter = true): 
       (autoUpdater as any).quitAndInstall({ isSilent, isForceRunAfter });
     }
   }
+
+  // Safety fallback: if app hasn't terminated within 2.5s, exit directly to free installer file lock
+  setTimeout(() => {
+    logger.info('[AutoUpdater] Forcing application exit to release single-instance mutex for installer');
+    app.exit(0);
+  }, 2500);
 }
 
-export function setupAutoUpdater(win: BrowserWindow) {
+export function setupAutoUpdater(win: BrowserWindow, onPrepareForQuit?: () => void) {
   mainWindow = win;
+  if (onPrepareForQuit) {
+    onPrepareForQuitCallback = onPrepareForQuit;
+  }
   updaterState.currentVersion = app.getVersion();
 
   // Configure logger for autoUpdater
@@ -182,7 +202,7 @@ export function setupAutoUpdater(win: BrowserWindow) {
 
   ipcMain.handle('updater:install', async () => {
     logger.info('[AutoUpdater] User confirmed installation, proceeding with quitAndInstall');
-    quitAndInstallUpdate(false, true);
+    quitAndInstallUpdate(true, true);
     return { success: true };
   });
 

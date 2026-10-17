@@ -10,7 +10,7 @@ interface Props {
 
 export default function AppTitlebar({ gamingActive, currentGame }: Props) {
   const [isAdmin, setIsAdmin] = useState(true);
-  const [appVersion, setAppVersion] = useState('2.5.10');
+  const [appVersion, setAppVersion] = useState('2.5.11');
 
   useEffect(() => {
     api?.getAdminStatus?.().then((r: any) => {

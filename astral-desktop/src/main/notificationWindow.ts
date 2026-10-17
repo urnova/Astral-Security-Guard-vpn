@@ -311,7 +311,7 @@ export function showAvastStyleToast({
             <div class="message">${escapeHtml(message)}</div>
           </div>
           <div class="footer">
-            <span>Astral Vanguard v${app.getVersion() || "2.5.10"}</span>
+            <span>Astral Vanguard v${app.getVersion() || "2.5.11"}</span>
             <span class="action-hint">Ouvrir l'application ➔</span>
           </div>
         </div>
@@ -620,7 +620,7 @@ export function showAvastStyleDownloadScan({
           </div>
           ${actionButtonsHtml}
           <div class="footer">
-            <span>Astral Vanguard v${app.getVersion() || "2.5.10"}</span>
+            <span>Astral Vanguard v${app.getVersion() || "2.5.11"}</span>
             <span>Moteur heuristique autonome</span>
           </div>
         </div>

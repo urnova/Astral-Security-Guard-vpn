@@ -133,7 +133,7 @@ export default function SettingsTab({
   const [betaChannel, setBetaChannel]       = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateStatus, setUpdateStatus]     = useState('');
-  const [currentVersion, setCurrentVersion] = useState('2.5.10');
+  const [currentVersion, setCurrentVersion] = useState('2.5.11');
   const [updateInfo, setUpdateInfo]         = useState<{ version?: string; hasUpdate?: boolean } | null>(null);
 
   const playTestNotificationSound = () => {

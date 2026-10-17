@@ -16,6 +16,7 @@ interface UpdateModalProps {
 export default function UpdateModal({ info, onClose, gamingActive = false }: UpdateModalProps) {
   const [updaterState, setUpdaterState]   = useState<any>(null);
   const [downloading, setDownloading]     = useState(false);
+  const [installing, setInstalling]       = useState(false);
   const [downloadError, setDownloadError] = useState('');
 
   useEffect(() => {
@@ -67,6 +68,7 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
       return;
     }
     if (!api) return;
+    setInstalling(true);
     await api.installUpdate?.();
   };
 
@@ -301,10 +303,11 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
             <button
               className="btn"
               onClick={handleInstallNow}
+              disabled={installing}
               style={{ display: 'flex', alignItems: 'center', gap: 8 }}
             >
-              <RefreshCw size={13} />
-              <span>Installer et redémarrer</span>
+              <RefreshCw size={13} className={installing ? 'animate-spin' : ''} />
+              <span>{installing ? 'Redémarrage et installation…' : 'Installer et redémarrer'}</span>
             </button>
           )}
         </div>

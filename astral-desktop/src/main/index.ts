@@ -36,6 +36,7 @@ let mainWin: BrowserWindow | null = null;
 let overlayWin: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let minimizeToTray = loadPreferences().minimizeToTray;
+let isQuitting = false;
 
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 
@@ -163,7 +164,15 @@ function createMainWindow() {
     windowShown = true;
     logger.info('[App] Revealing main window...');
     mainWin.show();
-    setupAutoUpdater(mainWin);
+    setupAutoUpdater(mainWin, () => {
+      logger.info('[App] Preparing clean shutdown for update installation...');
+      isQuitting = true;
+      minimizeToTray = false;
+      try {
+        tray?.destroy();
+        tray = null;
+      } catch {}
+    });
     startGameDetection(mainWin, () => overlayWin, setOverlayWin);
 
     // Check elevation and broadcast status
@@ -187,7 +196,7 @@ function createMainWindow() {
   }, 2000);
 
   mainWin.on('close', (e) => {
-    if (minimizeToTray) {
+    if (minimizeToTray && !isQuitting) {
       e.preventDefault();
       mainWin?.hide();
     }
@@ -536,6 +545,8 @@ app.whenReady().then(async () => {
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
+  minimizeToTray = false;
   try {
     tray?.destroy();
     tray = null;
