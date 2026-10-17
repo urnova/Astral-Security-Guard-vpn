@@ -39,7 +39,7 @@ const pkgPath = path.join(rootDir, 'astral-desktop', 'package.json');
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 const VERSION = pkg.version;
 const TAG = `v${VERSION}`;
-const RELEASE_NAME = `Astral Vanguard v${VERSION} - Refonte Intégrale Design System & Packaging`;
+const RELEASE_NAME = `Astral Vanguard v${VERSION} (Bêta Pré-release)`;
 
 function httpsRequest(urlStr, options = {}, bodyBufferOrStream = null) {
   return new Promise((resolve, reject) => {
@@ -137,11 +137,11 @@ async function main() {
       headers: { 'Content-Type': 'application/json' }
     }, Buffer.from(JSON.stringify({
       tag_name: TAG,
-      target_commitish: 'main',
+      target_commitish: 'refactor/v3-baseline',
       name: RELEASE_NAME,
       body: releaseNotes,
       draft: true,
-      prerelease: false
+      prerelease: true
     })));
     console.log(`[Release] Created draft release ID: ${release.id}`);
   } else {
@@ -218,14 +218,14 @@ async function main() {
   }
   console.log(`[Release] ✅ All required assets verified with exact sizes.`);
 
-  // 5. Publish release: mark draft: false, prerelease: false, make_latest: "true"
+  // 5. Publish release: mark draft: false, prerelease: true, make_latest: "true"
   console.log(`[Release] Publishing release as Latest...`);
   const publishedRelease = await httpsRequest(`https://api.github.com/repos/${OWNER}/${REPO}/releases/${release.id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' }
   }, Buffer.from(JSON.stringify({
     draft: false,
-    prerelease: false,
+    prerelease: true,
     make_latest: 'true'
   })));
 
@@ -234,12 +234,12 @@ async function main() {
 
   // 6. Test public endpoints
   console.log(`[Verification] Testing public endpoints...`);
-  const latestEndpoint = await httpsRequest(`https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`);
-  console.log(`[Verification] Latest release resolved: tag=${latestEndpoint.tag_name}, draft=${latestEndpoint.draft}`);
+  const releaseEndpoint = await httpsRequest(`https://api.github.com/repos/${OWNER}/${REPO}/releases/tags/${TAG}`);
+  console.log(`[Verification] Release resolved: tag=${releaseEndpoint.tag_name}, draft=${releaseEndpoint.draft}, prerelease=${releaseEndpoint.prerelease}`);
 
-  const latestYmlAsset = latestEndpoint.assets.find(a => a.name === 'latest.yml');
-  const exeHyphenAsset = latestEndpoint.assets.find(a => a.name === `Astral-Vanguard-Setup-${VERSION}.exe`);
-  const exeSpaceAsset = latestEndpoint.assets.find(a => a.name === `Astral Vanguard Setup ${VERSION}.exe`);
+  const latestYmlAsset = releaseEndpoint.assets.find(a => a.name === 'latest.yml');
+  const exeHyphenAsset = releaseEndpoint.assets.find(a => a.name === `Astral-Vanguard-Setup-${VERSION}.exe`);
+  const exeSpaceAsset = releaseEndpoint.assets.find(a => a.name === `Astral Vanguard Setup ${VERSION}.exe`);
 
   console.log(`- latest.yml: ${latestYmlAsset ? `FOUND (${latestYmlAsset.browser_download_url})` : 'MISSING'}`);
   console.log(`- Astral-Vanguard-Setup-${VERSION}.exe: ${exeHyphenAsset ? `FOUND (${exeHyphenAsset.browser_download_url})` : 'MISSING'}`);
