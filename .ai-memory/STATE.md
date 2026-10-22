@@ -2,7 +2,9 @@
 
 ## État Actuel
 - **Version courante :** `v0.1.1` (Bêta Pré-release).
-- **Statut :** Refonte et audit v0.1.1 entièrement implémentés et validés par typecheck TypeScript et bancs de tests.
+- **Git Commit :** `3bb8dcb` sur `refactor/v3-baseline` et synchronisé sur `main`.
+- **Git Tag & Release :** `v0.1.1` publié sur GitHub en tant que pré-release (URL: https://github.com/urnova/Astral-Security-Guard-vpn/releases/tag/v0.1.1).
+- **Statut :** Déploiement et publication réussis, code source 100% validé.
 - **Vérifications validées :**
   - Typecheck TypeScript (`tsc -p tsconfig.json --noEmit`) : 100% Succès (code 0).
   - Lot 1 Sécurité : 8 PASS, 0 FAIL.
