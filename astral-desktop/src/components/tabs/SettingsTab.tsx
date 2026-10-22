@@ -137,7 +137,7 @@ export default function SettingsTab({
   const [betaChannel, setBetaChannel]       = useState(true);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateStatus, setUpdateStatus]     = useState('');
-  const [currentVersion, setCurrentVersion] = useState('0.1.3');
+  const [currentVersion, setCurrentVersion] = useState('0.1.4');
   const [updateInfo, setUpdateInfo]         = useState<{ version?: string; hasUpdate?: boolean } | null>(null);
 
   const playTestNotificationSound = () => {
@@ -187,6 +187,11 @@ export default function SettingsTab({
         if (p.lastName) setLastName(p.lastName);
         if (typeof p.soundEnabled === 'boolean') setSoundEnabled(p.soundEnabled);
         if (typeof p.notificationsEnabled === 'boolean') setNotifEnabled(p.notificationsEnabled);
+        if (p.network) {
+          if (typeof p.network.dnsOverHttps === 'boolean') setDohEnabled(p.network.dnsOverHttps);
+          if (typeof p.network.ipv6Disabled === 'boolean') setDisableIpv6(p.network.ipv6Disabled);
+          if (typeof p.network.antiBufferbloat === 'boolean') setBufferbloat(p.network.antiBufferbloat);
+        }
       }
     }).catch(() => {});
 
@@ -1038,7 +1043,11 @@ export default function SettingsTab({
                   </div>
                   <div
                     className={`sw ${dohEnabled ? 'on' : ''}`}
-                    onClick={() => setDohEnabled(!dohEnabled)}
+                    onClick={async () => {
+                      const next = !dohEnabled;
+                      setDohEnabled(next);
+                      await api?.saveUserProfile?.({ network: { dnsOverHttps: next } }).catch(() => {});
+                    }}
                     role="switch"
                     aria-checked={dohEnabled}
                     tabIndex={0}
@@ -1052,7 +1061,11 @@ export default function SettingsTab({
                   </div>
                   <div
                     className={`sw ${disableIpv6 ? 'on' : ''}`}
-                    onClick={() => setDisableIpv6(!disableIpv6)}
+                    onClick={async () => {
+                      const next = !disableIpv6;
+                      setDisableIpv6(next);
+                      await api?.saveUserProfile?.({ network: { ipv6Disabled: next } }).catch(() => {});
+                    }}
                     role="switch"
                     aria-checked={disableIpv6}
                     tabIndex={0}
@@ -1066,7 +1079,12 @@ export default function SettingsTab({
                   </div>
                   <div
                     className={`sw ${antiBufferbloat ? 'on' : ''}`}
-                    onClick={() => setBufferbloat(!antiBufferbloat)}
+                    onClick={async () => {
+                      const next = !antiBufferbloat;
+                      setBufferbloat(next);
+                      await api?.saveUserProfile?.({ network: { antiBufferbloat: next } }).catch(() => {});
+                      await api?.setGamingSetting?.({ key: 'antiBufferbloat', value: next }).catch(() => {});
+                    }}
                     role="switch"
                     aria-checked={antiBufferbloat}
                     tabIndex={0}

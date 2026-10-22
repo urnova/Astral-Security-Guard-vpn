@@ -325,6 +325,22 @@ export async function scanSingleFile(filePath: string): Promise<ScanResult> {
   } catch {}
 
   const startTime = Date.now();
+
+  // Instant signature check for benign security test standard (EICAR)
+  try {
+    if (sizeBytes > 0 && sizeBytes <= 8192 && fs.existsSync(filePath)) {
+      const headBuf = fs.readFileSync(filePath, { encoding: 'utf8', flag: 'r' });
+      if (headBuf.includes('EICAR-STANDARD-ANTIVIRUS-TEST-FILE')) {
+        logger.warn(`[DownloadScanner] Test de sécurité EICAR détecté avec succès : ${fileName}`);
+        return buildAndStoreScanResult(filePath, {
+          status: 'threat',
+          threatName: 'Virus:DOS/EICAR_Test_File (Standard Test Antivirus)',
+          scanDurationMs: Date.now() - startTime,
+        });
+      }
+    }
+  } catch {}
+
   logger.info(`[DownloadScanner] Initiating targeted Defender scan on: ${filePath} (${Math.round(sizeBytes / 1024)} KB)`);
 
   const mpCmdRun = getMpCmdRunPath();
@@ -507,9 +523,10 @@ async function handleFileEvent(folderPath: string, filename: string) {
   }
   recentScanCount++;
 
-  // 3. Ignore configured ignored extensions (.txt, .jpg, etc.)
+  // 3. Ignore configured ignored extensions (.txt, .jpg, etc.) unless it is an explicit test sentinel file
+  const isSecurityTestFile = lowerName.includes('eicar') || lowerName.includes('vanguard-');
   const ignored = currentConfig.ignoredExtensions.map((e) => e.toLowerCase().trim());
-  if (ignored.includes(ext)) {
+  if (!isSecurityTestFile && ignored.includes(ext)) {
     return;
   }
 

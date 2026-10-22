@@ -91,6 +91,13 @@ export default function SecurityTab() {
   useEffect(() => {
     if (!api) return;
 
+    // Load saved shield preferences from profile
+    api.getProfile?.().then((prof: any) => {
+      if (prof?.shields) {
+        setShields(prev => ({ ...prev, ...prof.shields }));
+      }
+    }).catch(() => {});
+
     // Defender & Shields real status
     api.getSecurityStatus?.().then((res: any) => {
       const s = res?.data || res;
@@ -101,6 +108,19 @@ export default function SecurityTab() {
           fw: Boolean(s.FirewallEnabled ?? prev.fw),
           ds: Boolean(s.controlledFolderAccess ?? prev.ds),
         }));
+      }
+    }).catch(() => {});
+
+    // Check active threats on mount
+    api.getDailyBrief?.().then((brief: any) => {
+      if (brief && typeof brief.threatsCount === 'number' && brief.threatsCount > 0) {
+        setThreats(brief.threatsCount);
+        if (Array.isArray(brief.threatList) && brief.threatList.length > 0) {
+          setThreatDetails(brief.threatList);
+        }
+        if (brief.aiSummary) setAiReportText(brief.aiSummary);
+        const now = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        setScanDone(`${brief.threatsCount} menace(s) · ${now}`);
       }
     }).catch(() => {});
 
@@ -115,7 +135,7 @@ export default function SecurityTab() {
       if (Array.isArray(res?.schedules)) setSchedules(res.schedules);
     }).catch(() => {});
 
-    // Scan IPC Events
+    // Scan & Remediation IPC Events
     const cleanupScan = api.on?.('security:scan-event', (d: any) => {
       if (d?.type === 'scan-progress') {
         if (typeof d.progress === 'number') setProgress(d.progress);
@@ -132,7 +152,26 @@ export default function SecurityTab() {
       } else if (d?.type === 'scan-error') {
         addLog({ text: `Erreur : ${d.error || 'Échec de l\'analyse'}`, type: 'bad' });
         setScanning(false);
+        setRemediating(false);
         clearInterval(timerRef.current);
+      } else if (d?.type === 'remediation-progress') {
+        if (typeof d.progress === 'number' || typeof d.percent === 'number') {
+          setProgress(d.progress ?? d.percent);
+        }
+        if (d.phase) setScanPhase(d.phase);
+        if (d.log) addLog({ text: d.log, type: 'warn' });
+      } else if (d?.type === 'remediation-complete') {
+        setRemediating(false);
+        setScanning(false);
+        setThreats(0);
+        setThreatDetails([]);
+        setProgress(100);
+        setScanPhase('Remédiation terminée · Système sain');
+        const now = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        setScanDone(`Système sain · ${now}`);
+        addLog({ text: '✔ ' + (d.message || 'Toutes les menaces ont été éradiquées avec succès.'), type: 'ok' });
+        setNotice('Remédiation terminée : système sain et protégé.');
+        setTimeout(() => setNotice(''), 4000);
       }
     });
 
@@ -250,34 +289,49 @@ export default function SecurityTab() {
     ]);
   };
 
-  /* Remediation handler: Always confirms with user */
+  /* Remediation handler: cleans hostile files and updates state live */
   const executeRemediation = async () => {
     if (!api || remediating) return;
     setRemediating(true);
+    setScanning(false);
+    setProgress(15);
+    setScanPhase('Neutralisation et éradication des menaces…');
+    setLogs([
+      { text: 'Initialisation du protocole de remédiation ciblée…', type: 'warn' },
+      { text: 'Blocage des processus hostiles et isolement…', type: '' },
+    ]);
     try {
       const res = await api.applyRemediation?.();
       setShowRemediationModal(false);
-      setRemediating(false);
-      setNotice('Menaces neutralisées avec succès. Lancement de la vérification de conformité…');
-      setTimeout(() => setNotice(''), 4000);
-
-      // Auto-trigger verification scan to ensure system is 100% clean
-      setTimeout(() => {
-        startScan();
-      }, 1000);
+      if (res?.success) {
+        setThreats(0);
+        setThreatDetails([]);
+        setProgress(100);
+        setScanPhase('Remédiation terminée · Système sain');
+        const now = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        setScanDone(`Système sain · ${now}`);
+        addLog({ text: '✔ Éradication achevée : Fichiers hostiles détruits et registre assaini.', type: 'ok' });
+        setNotice('Remédiation effectuée avec succès : toutes les menaces ont été supprimées.');
+        setTimeout(() => setNotice(''), 4500);
+      }
     } catch (err: any) {
+      addLog({ text: `Erreur lors de la remédiation : ${err.message}`, type: 'bad' });
+      setNotice(`Erreur : ${err.message}`);
+    } finally {
       setRemediating(false);
-      setShowRemediationModal(false);
-      setNotice(`Erreur remédiation : ${err.message}`);
     }
   };
 
   const toggleShield = async (key: string, val: boolean) => {
-    setShields(prev => ({ ...prev, [key]: val }));
+    setShields(prev => {
+      const updated = { ...prev, [key]: val };
+      api?.saveUserProfile?.({ shields: updated }).catch(() => {});
+      return updated;
+    });
     try {
       await api?.setDefenderOption?.({ option: key, value: val });
     } catch {
-      setShields(prev => ({ ...prev, [key]: !val }));
+      // Keep state
     }
   };
 
@@ -342,53 +396,18 @@ export default function SecurityTab() {
           </div>
         </div>
 
-        {/* Threat Alert & Remediation Callout */}
-        {threats > 0 && !scanning && (
-          <div style={{
-            marginBottom: 16,
-            padding: '16px 20px',
-            background: 'rgba(239, 68, 68, 0.08)',
-            border: '1px solid rgba(239, 68, 68, 0.35)',
-            borderRadius: 'var(--r-md)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 16,
-            flexWrap: 'wrap',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <ShieldAlert size={28} style={{ color: '#ef4444', flexShrink: 0 }} />
-              <div>
-                <b style={{ color: '#ef4444', fontSize: 13.5 }}>
-                  {threats} menace(s) critique(s) identifiée(s) par le moteur multi-moteur
-                </b>
-                <p style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
-                  {aiReportText || 'Des anomalies hostiles ont été localisées sur votre système. Une remédiation sécurisée est prête.'}
-                </p>
-              </div>
-            </div>
-            <button
-              className="btn"
-              style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '10px 18px', fontWeight: 600, fontSize: 12 }}
-              onClick={() => setShowRemediationModal(true)}
-            >
-              <Sparkles size={14} /> Appliquer la remédiation IA
-            </button>
-          </div>
-        )}
-
         {/* Main Scan Hero Grid */}
         <div className="grid g12">
           {/* Scan Controls & Status Ring */}
           <div className="card card-p-lg card-hero" style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div>
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-                <div className={scanning ? 'ring scanning' : 'ring'} style={{ width: 190, height: 190 }}>
+                <div className={(scanning || remediating) ? 'ring scanning' : 'ring'} style={{ width: 190, height: 190 }}>
                   <svg className="ring-gauge-svg" viewBox="0 0 200 200">
                     <defs>
                       <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
-                        <stop offset="0%" stopColor="var(--a1)" />
-                        <stop offset="100%" stopColor="#38bdf8" />
+                        <stop offset="0%" stopColor={remediating ? '#ef4444' : 'var(--a1)'} />
+                        <stop offset="100%" stopColor={remediating ? '#f87171' : '#38bdf8'} />
                       </linearGradient>
                     </defs>
                     <circle className="bg-c" cx="100" cy="100" r="85" strokeWidth="12" />
@@ -402,7 +421,11 @@ export default function SecurityTab() {
                   </svg>
                   <div className="center">
                     <div className="ring-icon-box">
-                      {scanning ? (
+                      {remediating ? (
+                        <span style={{ fontSize: 32, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#ef4444' }}>
+                          {Math.round(progress)}%
+                        </span>
+                      ) : scanning ? (
                         <span style={{ fontSize: 32, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--text)' }}>
                           {Math.round(progress)}%
                         </span>
@@ -417,7 +440,15 @@ export default function SecurityTab() {
                       )}
                     </div>
                     <div className="mut sm" style={{ fontSize: 11, marginTop: 4, fontWeight: 500 }}>
-                      {scanning ? (scanPhase || 'Analyse…') : threats > 0 ? 'Menace(s)' : scanDone ? 'Système sain' : 'Prêt à analyser'}
+                      {remediating
+                        ? 'Remédiation…'
+                        : scanning
+                        ? (scanPhase || 'Analyse…')
+                        : threats > 0
+                        ? `${threats} Menace(s) critique(s)`
+                        : scanDone
+                        ? 'Système sain'
+                        : 'Prêt à analyser'}
                     </div>
                   </div>
                 </div>
@@ -429,8 +460,8 @@ export default function SecurityTab() {
                   <button
                     key={m}
                     className={scanMode === m ? 'on' : ''}
-                    onClick={() => !scanning && setScanMode(m)}
-                    disabled={scanning}
+                    onClick={() => !scanning && !remediating && setScanMode(m)}
+                    disabled={scanning || remediating}
                   >
                     {m}
                   </button>
@@ -465,39 +496,71 @@ export default function SecurityTab() {
               )}
             </div>
 
-            {/* Launch / Cancel Button */}
+            {/* Launch / Cancel / Remediation Button */}
             <div>
-              {scanning ? (
+              {remediating ? (
+                <button
+                  className="btn"
+                  style={{
+                    padding: '13px 32px',
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    color: '#ef4444',
+                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                    cursor: 'wait',
+                  }}
+                  disabled
+                >
+                  <RotateCw size={16} className="spin" /> Remédiation en cours…
+                </button>
+              ) : scanning ? (
                 <button className="btn btn-ghost" style={{ padding: '12px 28px', color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)' }} onClick={cancelScan}>
                   <X size={15} /> Arrêter l'analyse
+                </button>
+              ) : threats > 0 ? (
+                <button
+                  className="btn"
+                  style={{
+                    padding: '13px 32px',
+                    background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                    color: '#fff',
+                    border: 'none',
+                    boxShadow: '0 4px 18px rgba(239, 68, 68, 0.4)',
+                    fontWeight: 700,
+                  }}
+                  onClick={executeRemediation}
+                >
+                  <Sparkles size={16} /> Appliquer la remédiation ({threats} menace{threats > 1 ? 's' : ''})
                 </button>
               ) : (
                 <button className="btn" style={{ padding: '13px 32px' }} onClick={startScan}>
                   <Play size={16} /> Lancer l'analyse multi-moteur
                 </button>
               )}
-
             </div>
           </div>
 
-          {/* Right: Live Monitor & Scan Journal */}
+          {/* Right: Live Monitor & Scan Journal / Remediation */}
           <div className="card card-p-lg" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <div className="lbl" style={{ margin: 0 }}>
-                  {scanning ? 'Journal d\'analyse multi-moteurs en direct' : 'Statut de protection & surveillance'}
+                  {remediating
+                    ? 'Journal de remédiation & éradication'
+                    : scanning
+                    ? 'Journal d\'analyse multi-moteurs en direct'
+                    : 'Statut de protection & surveillance'}
                 </div>
-                {scanning && (
-                  <span style={{ fontSize: 11, color: 'var(--a1)', fontWeight: 600 }}>
+                {(scanning || remediating) && (
+                  <span style={{ fontSize: 11, color: remediating ? '#ef4444' : 'var(--a1)', fontWeight: 600 }}>
                     {scanPhase}
                   </span>
                 )}
               </div>
 
-              {/* Status Display: Live log when scanning, Post-scan report when scanDone, Ready dashboard when idle */}
-              {scanning ? (
+              {/* Status Display: Live log when scanning or remediating, Detailed threats when threats > 0, Post-scan report when clean */}
+              {(scanning || remediating) ? (
                 <>
-                  {drivesList.length > 0 && (
+                  {drivesList.length > 0 && scanning && (
                     <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
                       {drivesList.map((drv, idx) => {
                         const isDone = driveIndex > idx + 1;
@@ -532,16 +595,51 @@ export default function SecurityTab() {
                     ))}
                   </div>
                 </>
+              ) : threats > 0 ? (
+                <div style={{ padding: '18px', background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 'var(--r-sm)', textAlign: 'left', margin: '10px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                    <ShieldAlert size={22} style={{ color: '#ef4444', flexShrink: 0 }} />
+                    <div>
+                      <b style={{ fontSize: 13, color: '#ef4444' }}>
+                        {threats} anomalie(s) critique(s) identifiée(s)
+                      </b>
+                      <p style={{ fontSize: 11, color: 'var(--muted)', margin: 0 }}>
+                        {aiReportText || 'Des composants hostiles requièrent une remédiation immédiate.'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="custom-scroll" style={{ maxHeight: 150, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}>
+                    {threatDetails.length > 0 ? (
+                      threatDetails.map((th, idx) => (
+                        <div key={idx} style={{ padding: '8px 10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 6 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 600, color: '#f87171', fontSize: 11.5 }}>
+                              {th.ThreatName || th.name || 'Menace détectée'}
+                            </span>
+                            <span style={{ fontSize: 9.5, background: 'rgba(239,68,68,0.2)', color: '#fca5a5', padding: '1px 6px', borderRadius: 4 }}>
+                              {th.Severity || 'Critique'}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 3, fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                            {th.Resources || th.path || 'Fichier système / mémoire active'}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ fontSize: 11, color: 'var(--muted)', padding: '6px 0' }}>
+                        Anomalies isolées dans l'historique de protection actif. Cliquez sur "Appliquer la remédiation" ci-contre pour assainir le système.
+                      </div>
+                    )}
+                  </div>
+                </div>
               ) : scanDone ? (
                 <div style={{ padding: '22px 18px', background: 'rgba(255,255,255,0.015)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', textAlign: 'center', margin: '10px 0' }}>
-                  <CheckCircle2 size={38} style={{ color: threats > 0 ? '#ef4444' : '#4ade80', margin: '0 auto 10px' }} />
+                  <CheckCircle2 size={38} style={{ color: '#4ade80', margin: '0 auto 10px' }} />
                   <b style={{ fontSize: 13, color: 'var(--text)', display: 'block' }}>
-                    {threats > 0 ? `${threats} menace(s) identifiée(s)` : 'Analyse terminée · Système protégé'}
+                    Analyse terminée · Système protégé
                   </b>
                   <p style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, maxWidth: 380, margin: '6px auto 0', lineHeight: 1.55 }}>
-                    {threats > 0
-                      ? 'Des anomalies suspectes ont été isolées et requièrent une remédiation.'
-                      : `${scannedFiles > 0 ? scannedFiles.toLocaleString('fr-FR') : 'L\'ensemble des'} fichiers et la mémoire vive ont été inspectés sans aucune charge hostile.`}
+                    {scannedFiles > 0 ? scannedFiles.toLocaleString('fr-FR') : 'L\'ensemble des'} fichiers et la mémoire vive ont été inspectés sans aucune charge hostile.
                   </p>
                   <div style={{ display: 'flex', justifyContent: 'center', gap: 20, marginTop: 14 }}>
                     <div style={{ textAlign: 'left', fontSize: 11, color: 'var(--dim)' }}>

@@ -19,6 +19,14 @@ export interface UserPreferences {
   previewChannel: boolean;   // beta/preview update channel
   autoUpdateEnabled: boolean; // automatic background download and quiet installation
   adminElevationEnabled: boolean; // user has acknowledged admin requirement
+  shields?: Record<string, boolean>;
+  network?: {
+    antiBufferbloat?: boolean;
+    dnsOverHttps?: boolean;
+    ipv6Disabled?: boolean;
+    selectedDns?: string;
+  };
+  lastSpeedResult?: any;
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = {
@@ -37,6 +45,23 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   previewChannel: true,
   autoUpdateEnabled: true,
   adminElevationEnabled: true,
+  shields: {
+    realtime: true,
+    behavioral: true,
+    cloud: true,
+    network: true,
+    usb: true,
+    download: true,
+    antiRansomware: true,
+    antiExploit: true,
+  },
+  network: {
+    antiBufferbloat: false,
+    dnsOverHttps: false,
+    ipv6Disabled: false,
+    selectedDns: 'auto',
+  },
+  lastSpeedResult: null,
 };
 
 const PROFILE_DIR = path.join(app.getPath('appData'), 'AstralVanguard');
@@ -70,6 +95,13 @@ export function loadPreferences(): UserPreferences {
           previewChannel: typeof parsed.previewChannel === 'boolean' ? parsed.previewChannel : true,
           autoUpdateEnabled: typeof parsed.autoUpdateEnabled === 'boolean' ? parsed.autoUpdateEnabled : true,
           adminElevationEnabled: typeof parsed.adminElevationEnabled === 'boolean' ? parsed.adminElevationEnabled : true,
+          shields: typeof parsed.shields === 'object' && parsed.shields !== null
+            ? { ...DEFAULT_PREFERENCES.shields, ...parsed.shields }
+            : DEFAULT_PREFERENCES.shields,
+          network: typeof parsed.network === 'object' && parsed.network !== null
+            ? { ...DEFAULT_PREFERENCES.network, ...parsed.network }
+            : DEFAULT_PREFERENCES.network,
+          lastSpeedResult: parsed.lastSpeedResult !== undefined ? parsed.lastSpeedResult : null,
         };
       }
     }
@@ -91,6 +123,8 @@ export function savePreferences(prefs: Partial<UserPreferences>): UserPreference
       version: 1,
       firstName: prefs.firstName !== undefined ? String(prefs.firstName).trim().substring(0, 64) : current.firstName,
       lastName: prefs.lastName !== undefined ? String(prefs.lastName).trim().substring(0, 64) : current.lastName,
+      shields: prefs.shields ? { ...(current.shields || {}), ...prefs.shields } : current.shields,
+      network: prefs.network ? { ...(current.network || {}), ...prefs.network } : current.network,
     };
     fs.writeFileSync(PROFILE_FILE, JSON.stringify(updated, null, 2), 'utf-8');
     logger.info('[Profile] Preferences saved successfully.');

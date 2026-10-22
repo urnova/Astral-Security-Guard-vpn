@@ -10,6 +10,51 @@ Ce journal consigne de manière chronologique et détaillée toutes les modifica
 * **`framer-motion-ui` & `opera-gx-aesthetic`** : Conception de l'interface en mode sombre profond, accents néon adaptatifs, micro-interactions, skeleton loaders et compteurs animés fluides.
 * **`native-audio-synth`** : Moteur sonore Web Audio API synthétisant des carillons discrets pour chaque type d'alerte sans dépendance de fichiers audio externes.
 
+## [0.1.4] - Bêta Pré-Release (2026-10-22)
+
+### 🛡️ Laboratoire Sentinelle & Fichiers de Test EICAR (.com / .exe)
+- **Détection infaillible et téléchargements directs** :
+  - Déploiement d'échantillons inoffensifs conformes EICAR (`vanguard-eicar-test.com`, `vanguard-eicar-test.txt`) directement dans `public/downloads/` du portail web.
+  - Résolution définitive des erreurs de téléchargement réseau (« Erreur réseau ») sur la page `/test-sentinel`.
+  - Intégration de la détection instantanée de la signature standard EICAR (`Virus:DOS/EICAR_Test_File`) dans la sentinelle de téléchargements `downloadScanner.ts` avec levée d'exclusion des extensions de test.
+
+### 🧪 Multimoteur & Éradication des Menaces Fantômes Defender
+- **Nettoyage de l'historique et flux de remédiation interactif** :
+  - Élimination des 4 menaces fantômes résiduelles de l'historique PowerShell `Get-MpThreatDetection` : vérification stricte de l'existence physique du fichier (`fs.existsSync(item.Resources)`) pour ne retenir que les menaces actives réelles.
+  - Remplacement de la bannière rouge statique par un bouton héroïque dynamique « Appliquer la remédiation » dans l'onglet Sécurité dès qu'une menace active est détectée.
+  - Jauge circulaire animée de remédiation avec flux de logs de désinfection en temps réel (`security:apply-remediation`) et panneau d'état détaillé affichant les fichiers et sévérités détectés.
+
+### 💾 Persistance Intégrale des Préférences & Toggles
+- **Sauvegarde et synchronisation universelle** :
+  - Extension du profil utilisateur (`profile.ts`) avec fusion récursive : mémorisation fiable des boucliers actifs (`shields`), des réglages réseau (`antiBufferbloat`, `dnsOverHttps`, `ipv6Disabled`, `selectedDns`), et du dernier diagnostic de débit (`lastSpeedResult`).
+  - Synchronisation multi-vues bidirectionnelle : la bascule de l'Anti-Bufferbloat ou du DoH dans l'onglet Paramètres, Réseau ou Gaming s'enregistre immédiatement dans le profil et persiste aux redémarrages.
+
+### 📊 Dashboard Réactif & Alerte Immédiate
+- **Feedback visuel en temps réel** :
+  - Réactivité dynamique du tableau de bord : contour lumineux rouge/ambre et badge d'avertissement instantanés dès qu'une menace active est signalée par le multimoteur.
+  - Bouton d'action directe « Lancer la remédiation immédiate » sur la carte Brief et la carte Protection Globale pour éradiquer les menaces sans friction.
+
+### 🧹 Modal de Maintenance Système Assistée & Journalisation en Direct
+- **Visualisation continue de la maintenance** :
+  - Correction de la fermeture instantanée du modal de maintenance dans l'onglet Performance : maintien de la fenêtre active pendant toute la procédure.
+  - Interface bifaciale immersive : jauge circulaire animée d'avancement à gauche avec pourcentage et statut, et console d'événements à droite (`perf:maintenance-progress`) avec défilement automatique des nettoyages système.
+  - Bouton de clôture explicite « Terminer » avec confirmation visuelle à la fin de la maintenance.
+
+### 🌐 Refonte Ergonomique de l'Onglet Réseau (3 Niveaux & Vanguard Line Quality)
+- **Restitution de l'historique et ergonomie plein format** :
+  - Restauration immédiate des mesures de débit au lancement (`lastSpeedResult`), éliminant l'affichage factice « ADSL/4G Grade C » par défaut.
+  - Réorganisation sans rupture en 3 niveaux équilibrés : Tachymètre de débit et diagnostic à l'étage supérieur, DNS rapides et commutateurs d'optimisation au niveau médian.
+  - Nouvelle carte pleine largeur « Vanguard AI Line Quality Score » à la base, intégrant une jauge circulaire d'efficience, un badge de qualité A+, une télémétrie complète (gigue, bufferbloat, latence DNS) et un bouton de réévaluation instantané.
+
+### 🔒 Relais VPN & Résilience du Catalogue
+- **Éradication de l'erreur « Serveur introuvable »** :
+  - Téléchargement et mise en cache automatique du catalogue communautaire de relais VPN dès que le cache local est vide.
+  - Algorithme de sélection intelligent avec repli automatique sur le relais le plus rapide et accessible du pays sélectionné ou mondialement.
+
+### 🔔 Notifications Système Unifiées
+- **Alertes natives et retours sonores fiabilisés** :
+  - Notification système native et sonores déclenchées à la fin des analyses antivirus, à l'issue de la maintenance du PC, ainsi qu'aux événements de connexion et déconnexion du tunnel VPN.
+
 ## [0.1.3] - Bêta Pré-Release (2026-10-22)
 
 ### 🛡️ Sentinelle des Téléchargements : Éradication des Notifications en Double

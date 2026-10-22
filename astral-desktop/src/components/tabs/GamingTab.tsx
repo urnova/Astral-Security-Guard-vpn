@@ -239,6 +239,12 @@ export default function GamingTab({
       }
     }).catch(() => {});
 
+    api.getProfile?.().then((prof: any) => {
+      if (typeof prof?.network?.antiBufferbloat === 'boolean') {
+        setAntiBufferbloat(prof.network.antiBufferbloat);
+      }
+    }).catch(() => {});
+
     loadGames();
 
     /* IPC events */
@@ -326,6 +332,9 @@ export default function GamingTab({
   const toggleSetting = async (key: string, val: boolean) => {
     try {
       await api?.setGamingSetting?.({ key, value: val });
+      if (key === 'antiBufferbloat') {
+        api?.saveUserProfile?.({ network: { antiBufferbloat: val } }).catch(() => {});
+      }
       if (key === 'suspendBg') {
         await api?.suspendBrowsers?.(val);
         flash(val ? 'Navigateurs mis en priorité Idle (libère RAM).' : 'Navigateurs restaurés en priorité Normale.', 'success');

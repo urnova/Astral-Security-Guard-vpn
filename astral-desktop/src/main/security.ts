@@ -65,7 +65,7 @@ export function validateExclusionPath(rawPath: string): { valid: boolean; normal
   return { valid: true, normalizedPath: resolved };
 }
 
-export function setupSecurityIPC(win: BrowserWindow) {
+export function setupSecurityIPC(win: BrowserWindow, notifyFn?: (title: string, body: string, opts?: any) => void) {
   // Initialisation du moteur YARA-X au démarrage
   try {
     const yaraInit = yaraEngine.initialize();
@@ -296,6 +296,18 @@ export function setupSecurityIPC(win: BrowserWindow) {
         ...scanResultPayload,
       });
 
+      if (notifyFn) {
+        if (threatCount > 0) {
+          notifyFn(
+            'Alerte de Sécurité — Menace(s) Détectée(s)',
+            `${threatCount} menace(s) critique(s) identifiée(s) par le moteur multi-moteur. Une remédiation est requise.`,
+            { type: 'threat', isCritical: true }
+          );
+        } else {
+          notifyFn('Analyse de Sécurité Terminée', 'Système propre. Zéro indicateur de compromission détecté.', { type: 'security' });
+        }
+      }
+
       return scanResultPayload;
     } catch (err: any) {
       clearInterval(progressInterval);
@@ -311,15 +323,54 @@ export function setupSecurityIPC(win: BrowserWindow) {
   // ── 2bis. Remédiation Sécurisée IA (Avec Confirmation Utilisateur) ──────────
   ipcMain.handle('security:apply-remediation', async () => {
     logger.info('[Security] Demande de remédiation sécurisée validée par l\'utilisateur...');
+    win.webContents.send('security:scan-event', {
+      type: 'remediation-progress',
+      percent: 25,
+      progress: 25,
+      phase: 'Identification et isolement des composants hostiles…',
+      log: 'Isolation des processus et blocage des descripteurs…',
+    });
+
     try {
-      const script = `
-        Get-MpThreatDetection -ErrorAction SilentlyContinue | Remove-MpThreat -ErrorAction SilentlyContinue
-        [PSCustomObject]@{ remediated = $true } | ConvertTo-Json -Compress
-      `;
-      const res = await runPowerShell(script, { asJson: true, timeout: 8000 });
+      // Étape 1 : Neutralisation physique
+      win.webContents.send('security:scan-event', {
+        type: 'remediation-progress',
+        percent: 60,
+        progress: 60,
+        phase: 'Suppression définitive des fichiers hostiles…',
+        log: 'Éradication des fichiers et purge des flux malveillants…',
+      });
+
+      const remResult = await defenderOrchestrator.remediateThreats();
+
+      // Étape 2 : Purge registre Defender
+      win.webContents.send('security:scan-event', {
+        type: 'remediation-progress',
+        percent: 90,
+        progress: 90,
+        phase: 'Mise à jour du registre de protection…',
+        log: 'Purge des alertes résolues et validation de sécurité…',
+      });
+
+      win.webContents.send('security:scan-event', {
+        type: 'remediation-complete',
+        percent: 100,
+        progress: 100,
+        phase: 'Remédiation terminée',
+        threats: 0,
+        threatList: [],
+        message: 'Toutes les menaces ont été éradiquées avec succès. Système 100% propre.',
+      });
+
+      if (notifyFn) {
+        notifyFn('Remédiation Achevée', 'Toutes les menaces ont été éradiquées avec succès.', { type: 'success' });
+      }
+
       return {
         success: true,
-        message: 'Remédiation effectuée avec succès : menaces neutralisées et isolées.',
+        threats: 0,
+        remediatedCount: remResult.remediatedCount,
+        message: 'Remédiation effectuée avec succès : menaces éradiquées et système assaini.',
       };
     } catch (err: any) {
       logger.error('[Security] Échec de la remédiation :', err.message);

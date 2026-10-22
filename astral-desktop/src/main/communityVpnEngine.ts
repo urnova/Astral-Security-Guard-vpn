@@ -358,17 +358,38 @@ class CommunityVpnEngine {
       };
     }
 
+    // Auto-téléchargement transparent du catalogue si vide
+    if (this.cachedServers.length === 0) {
+      logger.info('[VPN] Catalogue local vide, téléchargement des relais avant connexion…');
+      await this.fetchServerCatalog();
+    }
+
     // Trouver le serveur dans le catalogue (par ID, par IP exacte ou par inclusion d'adresse IP)
     const cleanId = serverId ? serverId.trim() : '';
-    const server = this.cachedServers.find(
+    let server = this.cachedServers.find(
       (s) =>
         s.id === cleanId ||
         s.ip === cleanId ||
         (cleanId && s.ip && cleanId.includes(s.ip)) ||
         (cleanId && s.hostname && cleanId.includes(s.hostname))
     );
+
+    // Fallback intelligent : si le serveur demandé n'est pas trouvé (ex: nom générique ou IP non disponible),
+    // basculer vers le meilleur serveur du pays demandé ou le relais le plus rapide disponible
+    if (!server && this.cachedServers.length > 0) {
+      const lower = cleanId.toLowerCase();
+      server = this.cachedServers.find((s) =>
+        (s.country && lower.includes(s.country.toLowerCase())) ||
+        (s.countryCode && lower.includes(s.countryCode.toLowerCase()))
+      ) || this.cachedServers[0];
+
+      if (server) {
+        logger.info(`[VPN] Serveur demandé [${cleanId}] résolu vers le meilleur relais actif disponible [${server.country} - ${server.ip}]`);
+      }
+    }
+
     if (!server) {
-      return { success: false, message: `Serveur introuvable dans le catalogue (${cleanId || 'aucun ID fourni'}).` };
+      return { success: false, message: `Aucun relais disponible dans le catalogue pour le moment.` };
     }
 
     // Valider et assainir la configuration OVPN

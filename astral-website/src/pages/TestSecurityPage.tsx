@@ -12,28 +12,8 @@ import {
   Info
 } from 'lucide-react';
 
-const EICAR_CONTENT = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
-
 export default function TestSecurityPage() {
   const [downloadTriggered, setDownloadTriggered] = useState<string | null>(null);
-
-  const handleDownloadBlob = (filename: string) => {
-    try {
-      const blob = new Blob([EICAR_CONTENT], { type: 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      setDownloadTriggered(filename);
-      setTimeout(() => setDownloadTriggered(null), 5000);
-    } catch (e: any) {
-      alert(`Erreur de téléchargement : ${e.message}`);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-[#0d0f12] text-[#e2e8f0] font-sans antialiased selection:bg-cyan-500/30 selection:text-cyan-200">
@@ -120,7 +100,7 @@ export default function TestSecurityPage() {
               <div>
                 <h3 className="font-bold text-white text-base">Fichier Direct (.com)</h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  Téléchargement du fichier standard <code>vanguard-eicar-test.com</code> servi par notre CDN sécurisé.
+                  Téléchargement du fichier standard <code>vanguard-eicar-test.com</code> certifié inoffensif.
                 </p>
               </div>
             </div>
@@ -141,29 +121,33 @@ export default function TestSecurityPage() {
             </div>
           </div>
 
-          {/* Action 2: Dynamic Executable Generator */}
+          {/* Action 2: Text Test File (.txt) */}
           <div className="bg-[#14171b] border border-white/10 hover:border-cyan-500/40 transition-all rounded-2xl p-6 flex flex-col justify-between group shadow-lg">
             <div className="space-y-3">
               <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
                 <Sparkles className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-white text-base">Exécutable de Test (.exe)</h3>
+                <h3 className="font-bold text-white text-base">Fichier Texte (.txt)</h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  Génération dynamique dans le navigateur d'un fichier <code>vanguard-test-menace.exe</code>.
+                  Téléchargement direct de <code>vanguard-eicar-test.txt</code>, garanti sans aucun blocage du navigateur.
                 </p>
               </div>
             </div>
 
             <div className="pt-6">
-              <button
-                type="button"
-                onClick={() => handleDownloadBlob('vanguard-test-menace.exe')}
+              <a
+                href="/downloads/vanguard-eicar-test.txt"
+                download="vanguard-eicar-test.txt"
+                onClick={() => {
+                  setDownloadTriggered('vanguard-eicar-test.txt');
+                  setTimeout(() => setDownloadTriggered(null), 5000);
+                }}
                 className="w-full inline-flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 text-white font-semibold text-sm transition-all shadow-lg shadow-cyan-600/20 hover:shadow-cyan-600/30 cursor-pointer"
               >
                 <Download className="w-4 h-4" />
-                Générer & Télécharger .EXE
-              </button>
+                Télécharger .TXT (Standard EICAR)
+              </a>
             </div>
           </div>
         </div>

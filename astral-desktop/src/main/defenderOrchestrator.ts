@@ -443,9 +443,9 @@ class DefenderOrchestrator {
   }
 
   /**
-   * Récupère l'historique réel des menaces détectées
+   * Récupère l'historique réel des menaces détectées avec vérification de présence active
    */
-  public async getDetectionHistory(limit = 20): Promise<DefenderThreat[]> {
+  public async getDetectionHistory(limit = 20, activeOnly = true): Promise<DefenderThreat[]> {
     try {
       const script = `
         Get-MpThreatDetection -ErrorAction SilentlyContinue |
@@ -457,7 +457,7 @@ class DefenderOrchestrator {
       let raw = res.data || [];
       if (!Array.isArray(raw)) raw = raw ? [raw] : [];
 
-      return raw.map((item: any) => {
+      const list: DefenderThreat[] = raw.map((item: any) => {
         let resList: string[] = [];
         if (Array.isArray(item.Resources)) {
           resList = item.Resources.map((r: any) => String(r).replace(/^file:_/, ''));
@@ -470,12 +470,69 @@ class DefenderOrchestrator {
           name: item.ThreatName || 'Menace détectée (Heuristique)',
           detectionTime: item.InitialDetectionTime || new Date().toISOString(),
           resources: resList,
-          status: 'detecte',
+          status: 'detecte' as const,
         };
       });
+
+      if (!activeOnly) return list;
+
+      // Filtrer : ne conserver que les menaces dont au moins un fichier physique existe encore sur le disque
+      const activeThreats: DefenderThreat[] = [];
+      for (const t of list) {
+        const hasExistingFile = t.resources.some((r) => {
+          try {
+            // Nettoyer les préfixes webfile:_ ou file:_
+            const clean = r.replace(/^(webfile|file):_/, '');
+            return fs.existsSync(clean);
+          } catch {
+            return false;
+          }
+        });
+
+        if (hasExistingFile) {
+          activeThreats.push(t);
+        }
+      }
+
+      return activeThreats;
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Exécute la remédiation active sur les menaces
+   */
+  public async remediateThreats(threats?: DefenderThreat[]): Promise<{ success: boolean; remediatedCount: number; errors: string[] }> {
+    const toClean = threats || (await this.getDetectionHistory(20, true));
+    let cleaned = 0;
+    const errors: string[] = [];
+
+    for (const t of toClean) {
+      for (const r of t.resources) {
+        try {
+          const cleanPath = r.replace(/^(webfile|file):_/, '');
+          if (fs.existsSync(cleanPath)) {
+            fs.unlinkSync(cleanPath);
+            cleaned++;
+            logger.info(`[DefenderRemediation] Fichier menaçant supprimé avec succès : ${cleanPath}`);
+          }
+        } catch (e: any) {
+          errors.push(`Erreur suppression ${r} : ${e.message}`);
+        }
+      }
+    }
+
+    // Déclencher le nettoyage interne de Defender
+    try {
+      await runPowerShell('Remove-MpThreat -ErrorAction SilentlyContinue', { timeout: 8000 });
+    } catch {}
+
+    return {
+      success: errors.length === 0,
+      remediatedCount: cleaned,
+      errors,
+    };
   }
 }
 

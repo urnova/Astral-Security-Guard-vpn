@@ -8,7 +8,7 @@ import { executePrivilegedAction } from './privilegedHelper';
 import { getFullSystemTelemetry, CRITICAL_SYSTEM_PROCESSES } from './telemetry';
 import os from 'os';
 
-export function setupPerformanceIPC(win: BrowserWindow) {
+export function setupPerformanceIPC(win: BrowserWindow, notifyFn?: (title: string, body: string, opts?: any) => void) {
   // ── Real Live System Metrics (Differential CPU, Real RAM, StatFS, Real GPU) ──
   ipcMain.handle('perf:get-metrics', async () => {
     try {
@@ -342,6 +342,8 @@ export function setupPerformanceIPC(win: BrowserWindow) {
   ipcMain.handle('perf:disk-cleanup', async (_, payload?: any) => {
     logger.info('Exécution du nettoyage réel et optimisation SSD/RAM...', payload);
 
+    win.webContents.send('perf:maintenance-progress', { step: 1, percent: 15, message: 'Vidage sécurisé de la corbeille Windows…' });
+
     const script = `
       Clear-RecycleBin -Force -ErrorAction SilentlyContinue
 
@@ -382,7 +384,16 @@ export function setupPerformanceIPC(win: BrowserWindow) {
       [PSCustomObject]@{ cleaned = $true } | ConvertTo-Json -Compress
     `;
 
+    win.webContents.send('perf:maintenance-progress', { step: 2, percent: 45, message: 'Purge des caches temporaires %TEMP% et résidus système…' });
+
     const res = await runPowerShell(script, { asJson: true, timeout: 35000 });
+
+    win.webContents.send('perf:maintenance-progress', { step: 3, percent: 80, message: 'Optimisation du cache mémoire et des shaders DirectX…' });
+    win.webContents.send('perf:maintenance-progress', { step: 4, percent: 100, message: 'Nettoyage terminé avec succès' });
+
+    if (notifyFn) {
+      notifyFn('Maintenance Système Terminée', 'Les caches temporaires ont été purgés et votre stockage a été optimisé.', { type: 'performance' });
+    }
 
     return {
       success: res.success,

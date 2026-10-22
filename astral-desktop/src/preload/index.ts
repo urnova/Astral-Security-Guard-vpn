@@ -25,6 +25,7 @@ const ALLOWED_EVENT_CHANNELS = new Set([
   'gaming:toggle-manual',
   'perf:trigger-clean-ram',
   'perf:metrics-update',
+  'perf:maintenance-progress',
   'updater:status',
   'updater:state-changed',
   'doctor:ping-update',
@@ -242,7 +243,8 @@ const api = {
 
   // User Profile
   getProfile: () => ipcRenderer.invoke('profile:get'),
-  saveUserProfile: (profile: { firstName: string; lastName: string }) => ipcRenderer.invoke('profile:save', profile),
+  saveUserProfile: (profile: any) => ipcRenderer.invoke('profile:save', profile),
+  savePreferences: (prefs: any) => ipcRenderer.invoke('profile:save', prefs),
 
   // Notifications
   testNotification: (payload?: any) =>

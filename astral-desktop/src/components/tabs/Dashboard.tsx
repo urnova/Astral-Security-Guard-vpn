@@ -249,140 +249,206 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
         </div>
 
         {/* Samsung Now Brief Style Assistant Card */}
-        <div
-          className="card card-p-lg"
-          style={{
-            marginBottom: 20,
-            background: 'linear-gradient(135deg, rgba(20,24,33,0.95) 0%, rgba(15,18,25,0.98) 100%)',
-            border: '1px solid rgba(var(--a1r), 0.22)',
-            boxShadow: '0 8px 28px rgba(0,0,0,0.4)',
-            position: 'relative',
-            overflow: 'hidden',
-          }}
-        >
-          {/* Subtle accent corner glow */}
-          <div
-            style={{
-              position: 'absolute',
-              top: -40,
-              right: -40,
-              width: 140,
-              height: 140,
-              borderRadius: '50%',
-              background: 'radial-gradient(circle, rgba(var(--a1r), 0.14) 0%, transparent 70%)',
-              pointerEvents: 'none',
-            }}
-          />
-
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 8,
-                  background: 'rgba(var(--a1r), 0.15)',
-                  border: '1px solid rgba(var(--a1r), 0.3)',
-                  display: 'grid',
-                  placeItems: 'center',
-                  color: 'var(--a1)',
-                }}
-              >
-                <Sparkles size={16} />
-              </div>
-              <div>
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.01em' }}>
-                  Brief Système Quotidien
-                </span>
-                <span style={{ fontSize: 11, color: 'var(--dim)', marginLeft: 8 }}>
-                  Assistant IA Local & Télémétrie en direct
-                </span>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span className="chip" style={{ fontSize: 11.5, background: 'rgba(104,184,148,0.12)', color: 'var(--ok)', fontWeight: 600, padding: '3px 10px' }}>
-                <CheckCircle2 size={13} />
-                Indice Système : {secScore}/100
-              </span>
-            </div>
-          </div>
-
-          <div style={{ marginTop: 6 }}>
-            <h3 style={{ fontSize: 15.5, fontWeight: 700, color: '#f8fafc', marginBottom: 8, letterSpacing: '-0.01em' }}>
-              {brief?.headline || 'Votre système est parfaitement opérationnel et sécurisé'}
-            </h3>
-            <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, marginBottom: 14, maxWidth: 900 }}>
-              {brief?.conversationalNowBrief || brief?.summary || 'Bonjour ! Toutes les couches de protection Microsoft Defender et sentinelles sont actives sans anomalie.'}
-            </p>
-
-            {/* Quick telemetry indicators */}
+        {(() => {
+          const hasThreats = (brief?.threatsCount ?? 0) > 0;
+          return (
             <div
+              className="card card-p-lg"
               style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                gap: 10,
-                padding: '10px 14px',
-                borderRadius: 'var(--r-sm)',
-                background: 'rgba(0,0,0,0.3)',
-                border: '1px solid rgba(255,255,255,0.06)',
-                marginBottom: 14,
+                marginBottom: 20,
+                background: hasThreats
+                  ? 'linear-gradient(135deg, rgba(38,16,19,0.96) 0%, rgba(26,12,14,0.98) 100%)'
+                  : 'linear-gradient(135deg, rgba(20,24,33,0.95) 0%, rgba(15,18,25,0.98) 100%)',
+                border: hasThreats
+                  ? '1px solid rgba(239, 68, 68, 0.45)'
+                  : '1px solid rgba(var(--a1r), 0.22)',
+                boxShadow: hasThreats
+                  ? '0 8px 30px rgba(239, 68, 68, 0.22)'
+                  : '0 8px 28px rgba(0,0,0,0.4)',
+                position: 'relative',
+                overflow: 'hidden',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: 'var(--text)' }}>
-                <CheckCircle2 size={13} style={{ color: 'var(--ok)', flexShrink: 0 }} />
-                <span>Protection Defender & Heuristique : <b>Nominale</b></span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: 'var(--text)' }}>
-                <CheckCircle2 size={13} style={{ color: 'var(--ok)', flexShrink: 0 }} />
-                <span>Stockage : <b>Disque C: et volumes sains</b></span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: 'var(--text)' }}>
-                <CheckCircle2 size={13} style={{ color: 'var(--ok)', flexShrink: 0 }} />
-                <span>Graphismes : <b>GPU prêt pour le Gaming</b></span>
-              </div>
-            </div>
+              {/* Subtle accent corner glow */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: -40,
+                  right: -40,
+                  width: 140,
+                  height: 140,
+                  borderRadius: '50%',
+                  background: hasThreats
+                    ? 'radial-gradient(circle, rgba(239, 68, 68, 0.25) 0%, transparent 70%)'
+                    : 'radial-gradient(circle, rgba(var(--a1r), 0.14) 0%, transparent 70%)',
+                  pointerEvents: 'none',
+                }}
+              />
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-              <span style={{ fontSize: 11, color: 'var(--dim)' }}>
-                Dernière actualisation à {brief?.lastCheck || 'l\'instant'}
-              </span>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-sm" onClick={() => onTabChange('security')}>
-                  <Search size={13} />
-                  Lancer une analyse rapide
-                </button>
-                <button className="btn btn-ghost btn-sm" onClick={() => onTabChange('performance')}>
-                  Centre de maintenance
-                </button>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 8,
+                      background: hasThreats ? 'rgba(239, 68, 68, 0.2)' : 'rgba(var(--a1r), 0.15)',
+                      border: hasThreats ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid rgba(var(--a1r), 0.3)',
+                      display: 'grid',
+                      placeItems: 'center',
+                      color: hasThreats ? '#ef4444' : 'var(--a1)',
+                    }}
+                  >
+                    {hasThreats ? <AlertTriangle size={16} /> : <Sparkles size={16} />}
+                  </div>
+                  <div>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: hasThreats ? '#fca5a5' : 'var(--text)', letterSpacing: '-0.01em' }}>
+                      {hasThreats ? 'Alerte Sécurité — Action Requise' : 'Brief Système Quotidien'}
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--dim)', marginLeft: 8 }}>
+                      {hasThreats ? 'Menaces isolées par le moteur multi-moteur' : 'Assistant IA Local & Télémétrie en direct'}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {hasThreats ? (
+                    <span className="chip" style={{ fontSize: 11.5, background: 'rgba(239,68,68,0.2)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.4)', fontWeight: 700, padding: '3px 10px' }}>
+                      <AlertTriangle size={13} />
+                      {brief?.threatsCount} anomalie(s) critique(s)
+                    </span>
+                  ) : (
+                    <span className="chip" style={{ fontSize: 11.5, background: 'rgba(104,184,148,0.12)', color: 'var(--ok)', fontWeight: 600, padding: '3px 10px' }}>
+                      <CheckCircle2 size={13} />
+                      Indice Système : {secScore}/100
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ marginTop: 6 }}>
+                <h3 style={{ fontSize: 15.5, fontWeight: 700, color: hasThreats ? '#ef4444' : '#f8fafc', marginBottom: 8, letterSpacing: '-0.01em' }}>
+                  {hasThreats
+                    ? `${brief?.threatsCount} composant(s) hostile(s) détecté(s) nécessitant une remédiation`
+                    : (brief?.headline || 'Votre système est parfaitement opérationnel et sécurisé')}
+                </h3>
+                <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, marginBottom: 14, maxWidth: 900 }}>
+                  {hasThreats
+                    ? 'Des anomalies suspectes ont été isolées par Windows Defender ou le moteur heuristique Vanguard. Une remédiation immédiate neutralisera et éradiquera ces fichiers.'
+                    : (brief?.conversationalNowBrief || brief?.summary || 'Bonjour ! Toutes les couches de protection Microsoft Defender et sentinelles sont actives sans anomalie.')}
+                </p>
+
+                {/* Quick telemetry indicators */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gap: 10,
+                    padding: '10px 14px',
+                    borderRadius: 'var(--r-sm)',
+                    background: 'rgba(0,0,0,0.3)',
+                    border: hasThreats ? '1px solid rgba(239,68,68,0.25)' : '1px solid rgba(255,255,255,0.06)',
+                    marginBottom: 14,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: 'var(--text)' }}>
+                    {hasThreats ? (
+                      <AlertTriangle size={13} style={{ color: '#ef4444', flexShrink: 0 }} />
+                    ) : (
+                      <CheckCircle2 size={13} style={{ color: 'var(--ok)', flexShrink: 0 }} />
+                    )}
+                    <span>Protection Defender & Heuristique : <b>{hasThreats ? 'Remédiation requise' : 'Nominale'}</b></span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: 'var(--text)' }}>
+                    <CheckCircle2 size={13} style={{ color: 'var(--ok)', flexShrink: 0 }} />
+                    <span>Stockage : <b>Disque C: et volumes sains</b></span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: 'var(--text)' }}>
+                    <CheckCircle2 size={13} style={{ color: 'var(--ok)', flexShrink: 0 }} />
+                    <span>Graphismes : <b>GPU prêt pour le Gaming</b></span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                  <span style={{ fontSize: 11, color: 'var(--dim)' }}>
+                    Dernière actualisation à {brief?.lastCheck || 'l\'instant'}
+                  </span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {hasThreats ? (
+                      <button
+                        className="btn btn-sm"
+                        style={{
+                          background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                          color: '#fff',
+                          border: 'none',
+                          fontWeight: 700,
+                          boxShadow: '0 4px 14px rgba(239,68,68,0.4)',
+                        }}
+                        onClick={() => onTabChange('security')}
+                      >
+                        <Sparkles size={13} />
+                        Lancer la remédiation immédiate ({brief?.threatsCount})
+                      </button>
+                    ) : (
+                      <button className="btn btn-sm" onClick={() => onTabChange('security')}>
+                        <Search size={13} />
+                        Lancer une analyse rapide
+                      </button>
+                    )}
+                    <button className="btn btn-ghost btn-sm" onClick={() => onTabChange('performance')}>
+                      Centre de maintenance
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
+          );
+        })()}
 
         {/* Protection & Attention Row */}
         <div className="grid g21">
           {/* Protection Overview Card */}
           <div className="card card-p-lg card-hero">
             <div className="overview">
-              <div className={`overview-icon${secScore < 70 ? ' bad' : secScore < 90 ? ' warn' : ''}`}>
+              <div className={`overview-icon${(brief?.threatsCount ?? 0) > 0 ? ' bad' : secScore < 70 ? ' bad' : secScore < 90 ? ' warn' : ''}`}>
                 <Shield size={24} />
               </div>
               <div className="overview-copy">
                 <div className="lbl" style={{ marginBottom: 4 }}>État de la protection</div>
-                <h2>{secScore >= 90 ? 'Système sous protection active' : secScore >= 70 ? 'Protection partielle' : 'Action requise'}</h2>
+                <h2>
+                  {(brief?.threatsCount ?? 0) > 0
+                    ? `${brief?.threatsCount} anomalie(s) identifiée(s) — Action requise`
+                    : secScore >= 90
+                    ? 'Système sous protection active'
+                    : secScore >= 70
+                    ? 'Protection partielle'
+                    : 'Action requise'}
+                </h2>
                 <p>
-                  {secScore >= 90
+                  {(brief?.threatsCount ?? 0) > 0
+                    ? 'Des menaces ou fichiers suspects ont été isolés sur votre système. Une remédiation est prête.'
+                    : secScore >= 90
                     ? 'Microsoft Defender, sentinelle YARA et pare-feu opérationnels. Zéro charge suspecte.'
                     : (brief?.actionRequiredReasons && brief.actionRequiredReasons.length > 0)
                     ? brief.actionRequiredReasons.join(' • ')
                     : 'Un ou plusieurs paramètres de sécurité nécessitent une vérification.'}
                 </p>
                 <div className="overview-actions">
-                  <button className="btn" onClick={() => onTabChange('security')}>
-                    <Search size={14} />
-                    Contrôler la sécurité
-                  </button>
+                  {(brief?.threatsCount ?? 0) > 0 ? (
+                    <button
+                      className="btn"
+                      style={{ background: '#ef4444', color: '#fff', border: 'none', fontWeight: 600 }}
+                      onClick={() => onTabChange('security')}
+                    >
+                      <Sparkles size={14} />
+                      Appliquer la remédiation
+                    </button>
+                  ) : (
+                    <button className="btn" onClick={() => onTabChange('security')}>
+                      <Search size={14} />
+                      Contrôler la sécurité
+                    </button>
+                  )}
                   <button className="btn btn-ghost" onClick={() => onTabChange('network')}>
                     Tester la latence
                   </button>

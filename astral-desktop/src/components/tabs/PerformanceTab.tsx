@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Zap,
   HardDrive,
@@ -6,6 +6,7 @@ import {
   Trash2,
   CheckCircle2,
   RefreshCw,
+  RotateCw,
   Search,
   Layers,
   Database,
@@ -154,8 +155,29 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
       ? Math.round((metrics.ramUsed / metrics.ramTotal) * 100)
       : 0;
 
+  const maintTerminalRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (maintTerminalRef.current) {
+      maintTerminalRef.current.scrollTop = maintTerminalRef.current.scrollHeight;
+    }
+  }, [maintLogs]);
+
   useEffect(() => {
     loadData();
+
+    const cleanupMaint = api?.on?.('perf:maintenance-progress', (d: any) => {
+      if (typeof d.percent === 'number') setCleanProgress(d.percent);
+      if (d.message) {
+        setCleanMsg(d.message);
+        const nowStr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        setMaintLogs(prev => [...prev.slice(-35), `[${nowStr}] ${d.message}`]);
+      }
+    });
+
+    return () => {
+      cleanupMaint?.();
+    };
   }, []);
 
   const loadData = () => {
@@ -1307,8 +1329,8 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
               </div>
 
               {/* Modal Body: 2 Columns */}
-              <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', flex: 1, minHeight: 0 }}>
-                {/* Left Panel: Status & Diagnostics */}
+              <div style={{ display: 'grid', gridTemplateColumns: '290px 1fr', flex: 1, minHeight: 0 }}>
+                {/* Left Panel: Status, Gauge & Metrics */}
                 <div style={{
                   padding: 20,
                   borderRight: '1px solid rgba(255,255,255,0.06)',
@@ -1320,12 +1342,20 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                   <div>
                     <div style={{ textAlign: 'center', marginBottom: 20 }}>
                       <Ring
-                        size={120}
-                        val={Math.min(1, cleanItems.filter(i => i.selected).reduce((s, i) => s + i.bytes, 0) / 10e9)}
-                        label={<div style={{ fontSize: 16, fontWeight: 800, color: '#38bdf8' }}>{selectedTotal}</div>}
+                        size={125}
+                        val={maintaining ? Math.max(0.15, cleanProgress / 100) : cleanProgress === 100 ? 1 : Math.min(1, cleanItems.filter(i => i.selected).reduce((s, i) => s + i.bytes, 0) / 10e9)}
+                        label={
+                          maintaining ? (
+                            <div style={{ fontSize: 24, fontWeight: 800, color: '#38bdf8' }}>{Math.max(15, cleanProgress)}%</div>
+                          ) : cleanProgress === 100 ? (
+                            <CheckCircle2 size={40} style={{ color: 'var(--ok)' }} />
+                          ) : (
+                            <div style={{ fontSize: 16, fontWeight: 800, color: '#38bdf8' }}>{selectedTotal}</div>
+                          )
+                        }
                       />
-                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, fontWeight: 600 }}>
-                        ESPACE RÉCUPÉRABLE
+                      <div style={{ fontSize: 11, color: maintaining ? '#38bdf8' : cleanProgress === 100 ? 'var(--ok)' : 'var(--muted)', marginTop: 8, fontWeight: 700 }}>
+                        {maintaining ? (cleanMsg || 'PURGE EN COURS…') : cleanProgress === 100 ? 'SYSTÈME PURGÉ ET OPTIMISÉ' : 'ESPACE RÉCUPÉRABLE'}
                       </div>
                     </div>
 
@@ -1350,8 +1380,8 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                     marginTop: 16,
                     padding: '10px 12px',
                     borderRadius: 8,
-                    background: 'rgba(56, 189, 248, 0.06)',
-                    border: '1px solid rgba(56, 189, 248, 0.2)',
+                    background: maintaining ? 'rgba(56, 189, 248, 0.12)' : 'rgba(56, 189, 248, 0.06)',
+                    border: '1px solid rgba(56, 189, 248, 0.25)',
                     fontSize: 11,
                     color: '#93c5fd',
                     lineHeight: 1.4,
@@ -1360,130 +1390,244 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                   </div>
                 </div>
 
-                {/* Right Panel: Modes & Item Checklist */}
-                <div style={{ padding: 20, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                  {/* Mode Selector */}
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-                    {(['Rapide', 'Approfondi', 'Personnalisé'] as const).map(mode => {
-                      const isActive = maintenanceMode === mode;
-                      return (
+                {/* Right Panel: Modes & Checklist OR Live Terminal */}
+                {(maintaining || cleanProgress === 100) ? (
+                  <div style={{ padding: 20, display: 'flex', flexDirection: 'column', minHeight: 0, justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <div>
+                          <b style={{ fontSize: 13, color: 'var(--text)' }}>Journal d'optimisation & purge en direct</b>
+                          <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--muted)' }}>
+                            {cleanMsg || 'Traitement des fichiers temporaires et des caches système…'}
+                          </p>
+                        </div>
+                        <span style={{
+                          fontSize: 10.5,
+                          padding: '3px 8px',
+                          borderRadius: 4,
+                          background: maintaining ? 'rgba(56, 189, 248, 0.15)' : 'rgba(74, 222, 128, 0.15)',
+                          color: maintaining ? '#38bdf8' : 'var(--ok)',
+                          fontWeight: 700,
+                        }}>
+                          {maintaining ? 'EN COURS…' : 'TERMINÉ'}
+                        </span>
+                      </div>
+
+                      {/* Live Terminal Log */}
+                      <div
+                        className="custom-scroll"
+                        ref={maintTerminalRef}
+                        style={{
+                          background: 'rgba(0,0,0,0.45)',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: 8,
+                          padding: 14,
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                          color: '#cbd5e1',
+                          height: 240,
+                          overflowY: 'auto',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 5,
+                        }}
+                      >
+                        {maintLogs.map((log, i) => (
+                          <div key={i} style={{ color: log.includes('[OK]') ? '#4ade80' : log.includes('Erreur') ? '#ef4444' : '#94a3b8' }}>
+                            {log}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Footer for Running / Completed State */}
+                    <div style={{
+                      marginTop: 14,
+                      paddingTop: 14,
+                      borderTop: '1px solid rgba(255,255,255,0.06)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                    }}>
+                      <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+                        {maintaining ? (
+                          <span>Opération en cours d'exécution par l'orchestrateur Astral…</span>
+                        ) : (
+                          <span style={{ color: 'var(--ok)', fontWeight: 600 }}>Toutes les opérations ont été appliquées avec succès.</span>
+                        )}
+                      </div>
+
+                      {maintaining ? (
                         <button
-                          key={mode}
+                          className="btn"
+                          disabled
+                          style={{
+                            padding: '10px 22px',
+                            background: 'rgba(56, 189, 248, 0.15)',
+                            color: '#38bdf8',
+                            border: '1px solid rgba(56, 189, 248, 0.4)',
+                            cursor: 'wait',
+                            fontSize: 12.5,
+                            fontWeight: 700,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                          }}
+                        >
+                          <RotateCw size={15} className="spin" />
+                          <span>Maintenance en cours…</span>
+                        </button>
+                      ) : (
+                        <button
+                          className="btn"
                           onClick={() => {
-                            setMaintenanceMode(mode);
-                            if (mode === 'Rapide') {
-                              setCleanItems(prev => prev.map(item => ({
-                                ...item,
-                                selected: item.id === 'userTemp' || item.id === 'winTemp' || item.id === 'winLogs' || item.id === 'recycleBin'
-                              })));
-                            } else if (mode === 'Approfondi') {
-                              setCleanItems(prev => prev.map(item => ({ ...item, selected: true })));
-                            }
+                            setShowMaintenanceModal(false);
+                            setCleanProgress(-1);
                           }}
                           style={{
-                            flex: 1,
-                            padding: '8px 12px',
-                            borderRadius: 8,
-                            fontSize: 12,
-                            fontWeight: isActive ? 700 : 500,
-                            background: isActive ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255,255,255,0.03)',
-                            border: isActive ? '1px solid rgba(56, 189, 248, 0.45)' : '1px solid rgba(255,255,255,0.06)',
-                            color: isActive ? '#38bdf8' : 'var(--muted)',
+                            padding: '10px 22px',
+                            background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+                            color: '#fff',
+                            border: 'none',
+                            fontSize: 12.5,
+                            fontWeight: 700,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            boxShadow: '0 4px 14px rgba(34,197,94,0.35)',
+                          }}
+                        >
+                          <CheckCircle2 size={15} />
+                          <span>Terminer</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ padding: 20, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                    {/* Mode Selector */}
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                      {(['Rapide', 'Approfondi', 'Personnalisé'] as const).map(mode => {
+                        const isActive = maintenanceMode === mode;
+                        return (
+                          <button
+                            key={mode}
+                            onClick={() => {
+                              setMaintenanceMode(mode);
+                              if (mode === 'Rapide') {
+                                setCleanItems(prev => prev.map(item => ({
+                                  ...item,
+                                  selected: item.id === 'userTemp' || item.id === 'winTemp' || item.id === 'winLogs' || item.id === 'recycleBin'
+                                })));
+                              } else if (mode === 'Approfondi') {
+                                setCleanItems(prev => prev.map(item => ({ ...item, selected: true })));
+                              }
+                            }}
+                            style={{
+                              flex: 1,
+                              padding: '8px 12px',
+                              borderRadius: 8,
+                              fontSize: 12,
+                              fontWeight: isActive ? 700 : 500,
+                              background: isActive ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255,255,255,0.03)',
+                              border: isActive ? '1px solid rgba(56, 189, 248, 0.45)' : '1px solid rgba(255,255,255,0.06)',
+                              color: isActive ? '#38bdf8' : 'var(--muted)',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            {mode} {mode === 'Rapide' && '⚡'} {mode === 'Approfondi' && '🛡'} {mode === 'Personnalisé' && '⚙'}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Mode Description */}
+                    <div style={{
+                      fontSize: 11.5,
+                      color: 'var(--muted)',
+                      marginBottom: 10,
+                      lineHeight: 1.4,
+                    }}>
+                      {maintenanceMode === 'Rapide' && 'Purge instantanée des fichiers temporaires %TEMP%, corbeille et résidus système. Idéal au quotidien.'}
+                      {maintenanceMode === 'Approfondi' && 'Nettoyage complet incluant le cache Windows Update, les shaders DirectX GPU et les traces système.'}
+                      {maintenanceMode === 'Personnalisé' && 'Sélectionnez manuellement chaque catégorie à nettoyer selon vos besoins.'}
+                    </div>
+
+                    {/* Items List */}
+                    <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, paddingRight: 4, maxHeight: 250 }}>
+                      {cleanItems.map((item, idx) => (
+                        <div
+                          key={item.id || idx}
+                          onClick={() => toggleItem(idx)}
+                          style={{
+                            padding: '9px 12px',
+                            borderRadius: 7,
+                            background: item.selected ? 'rgba(56, 189, 248, 0.06)' : 'rgba(255,255,255,0.015)',
+                            border: `1px solid ${item.selected ? 'rgba(56, 189, 248, 0.3)' : 'rgba(255,255,255,0.05)'}`,
                             cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 10,
                             transition: 'all 0.15s ease',
                           }}
                         >
-                          {mode} {mode === 'Rapide' && '⚡'} {mode === 'Approfondi' && '🛡'} {mode === 'Personnalisé' && '⚙'}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Mode Description */}
-                  <div style={{
-                    fontSize: 11.5,
-                    color: 'var(--muted)',
-                    marginBottom: 10,
-                    lineHeight: 1.4,
-                  }}>
-                    {maintenanceMode === 'Rapide' && 'Purge instantanée des fichiers temporaires %TEMP%, corbeille et résidus système. Idéal au quotidien.'}
-                    {maintenanceMode === 'Approfondi' && 'Nettoyage complet incluant le cache Windows Update, les shaders DirectX GPU et les traces système.'}
-                    {maintenanceMode === 'Personnalisé' && 'Sélectionnez manuellement chaque catégorie à nettoyer selon vos besoins.'}
-                  </div>
-
-                  {/* Items List */}
-                  <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, paddingRight: 4, maxHeight: 250 }}>
-                    {cleanItems.map((item, idx) => (
-                      <div
-                        key={item.id || idx}
-                        onClick={() => toggleItem(idx)}
-                        style={{
-                          padding: '9px 12px',
-                          borderRadius: 7,
-                          background: item.selected ? 'rgba(56, 189, 248, 0.06)' : 'rgba(255,255,255,0.015)',
-                          border: `1px solid ${item.selected ? 'rgba(56, 189, 248, 0.3)' : 'rgba(255,255,255,0.05)'}`,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: 10,
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <div style={{
-                            width: 17,
-                            height: 17,
-                            borderRadius: 4,
-                            background: item.selected ? 'var(--a1)' : 'transparent',
-                            border: `1.5px solid ${item.selected ? 'var(--a1)' : 'rgba(255,255,255,0.3)'}`,
-                            display: 'grid',
-                            placeItems: 'center',
-                            color: '#090d16',
-                            flexShrink: 0,
-                          }}>
-                            {item.selected && <Check size={12} strokeWidth={3} />}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div style={{
+                              width: 17,
+                              height: 17,
+                              borderRadius: 4,
+                              background: item.selected ? 'var(--a1)' : 'transparent',
+                              border: `1.5px solid ${item.selected ? 'var(--a1)' : 'rgba(255,255,255,0.3)'}`,
+                              display: 'grid',
+                              placeItems: 'center',
+                              color: '#090d16',
+                              flexShrink: 0,
+                            }}>
+                              {item.selected && <Check size={12} strokeWidth={3} />}
+                            </div>
+                            <div>
+                              <b style={{ fontSize: 12, color: item.selected ? '#fff' : 'var(--text)' }}>{item.label}</b>
+                              {item.desc && <p style={{ margin: '2px 0 0', fontSize: 10.5, color: 'var(--muted)' }}>{item.desc}</p>}
+                            </div>
                           </div>
-                          <div>
-                            <b style={{ fontSize: 12, color: item.selected ? '#fff' : 'var(--text)' }}>{item.label}</b>
-                            {item.desc && <p style={{ margin: '2px 0 0', fontSize: 10.5, color: 'var(--muted)' }}>{item.desc}</p>}
-                          </div>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: item.selected ? '#38bdf8' : 'var(--muted)', whiteSpace: 'nowrap' }}>
+                            {item.size}
+                          </span>
                         </div>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: item.selected ? '#38bdf8' : 'var(--muted)', whiteSpace: 'nowrap' }}>
-                          {item.size}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Footer & Action Button */}
-                  <div style={{
-                    marginTop: 14,
-                    paddingTop: 14,
-                    borderTop: '1px solid rgba(255,255,255,0.06)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 12,
-                  }}>
-                    <div>
-                      <span style={{ fontSize: 11, color: 'var(--muted)' }}>Total sélectionné :</span>
-                      <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--a1)' }}>{selectedTotal}</div>
+                      ))}
                     </div>
-                    <button
-                      className="btn"
-                      onClick={() => {
-                        runMaintenance();
-                        setShowMaintenanceModal(false);
-                      }}
-                      disabled={maintaining || cleanItems.filter(i => i.selected).length === 0}
-                      style={{ padding: '10px 22px', fontSize: 12.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}
-                    >
-                      <Zap size={15} />
-                      <span>Lancer la maintenance ({selectedTotal})</span>
-                    </button>
+
+                    {/* Footer & Action Button */}
+                    <div style={{
+                      marginTop: 14,
+                      paddingTop: 14,
+                      borderTop: '1px solid rgba(255,255,255,0.06)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                    }}>
+                      <div>
+                        <span style={{ fontSize: 11, color: 'var(--muted)' }}>Total sélectionné :</span>
+                        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--a1)' }}>{selectedTotal}</div>
+                      </div>
+                      <button
+                        className="btn"
+                        onClick={() => {
+                          runMaintenance();
+                        }}
+                        disabled={maintaining || cleanItems.filter(i => i.selected).length === 0}
+                        style={{ padding: '10px 22px', fontSize: 12.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}
+                      >
+                        <Zap size={15} />
+                        <span>Lancer la maintenance ({selectedTotal})</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
           </div>

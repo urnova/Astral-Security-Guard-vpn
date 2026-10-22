@@ -191,9 +191,9 @@ function createMainWindow() {
   });
 
   // Setup all IPC modules
-  setupSecurityIPC(mainWin);
-  setupVpnIPC(mainWin, (opts) => updateTrayState(opts));
-  setupPerformanceIPC(mainWin);
+  setupSecurityIPC(mainWin, notifyUser);
+  setupVpnIPC(mainWin, (opts) => updateTrayState(opts), notifyUser);
+  setupPerformanceIPC(mainWin, notifyUser);
   setupNetworkIPC(mainWin);
   setupGamingIPC(mainWin, () => overlayWin);
   setupRollbackIPC(mainWin);

@@ -132,6 +132,7 @@ let activeVpnNodeName = '';
 let activeVpnIp = '';
 let activeVpnVirtualIp = '';
 let trayUpdateCallback: ((opts: { vpnConnected: boolean; vpnNodeName?: string }) => void) | null = null;
+let notifyVpnCallback: ((title: string, body: string, opts?: any) => void) | null = null;
 let autoFailoverConfig = {
   enabled: false,
   preference: 'latency' as 'latency' | 'proximity' | 'country',
@@ -192,6 +193,9 @@ export async function performVpnConnect(serverId: string, win?: BrowserWindow): 
       if (trayUpdateCallback) {
         trayUpdateCallback({ vpnConnected: true, vpnNodeName: serverName });
       }
+      if (notifyVpnCallback) {
+        notifyVpnCallback('Astral VPN Connecté', `Tunnel actif vers ${serverName}. Adresse IP protégée.`, { type: 'vpn' });
+      }
       if (win && !win.isDestroyed()) {
         win.webContents.send('vpn-event', { type: 'connected', serverName });
         win.webContents.send('vpn:state-changed', { connected: true, serverName, publicIp: activeVpnIp });
@@ -233,6 +237,9 @@ export async function performVpnDisconnect(win?: BrowserWindow): Promise<any> {
   if (trayUpdateCallback) {
     trayUpdateCallback({ vpnConnected: false, vpnNodeName: '' });
   }
+  if (notifyVpnCallback) {
+    notifyVpnCallback('Astral VPN Déconnecté', 'Le tunnel chiffré est désormais fermé.', { type: 'vpn' });
+  }
 
   if (win && !win.isDestroyed()) {
     win.webContents.send('vpn-event', { type: 'disconnected' });
@@ -242,9 +249,16 @@ export async function performVpnDisconnect(win?: BrowserWindow): Promise<any> {
   return { success: true, status: 'disconnected' };
 }
 
-export function setupVpnIPC(win: BrowserWindow, onTrayUpdate?: (opts: { vpnConnected: boolean; vpnNodeName?: string }) => void) {
+export function setupVpnIPC(
+  win: BrowserWindow,
+  onTrayUpdate?: (opts: { vpnConnected: boolean; vpnNodeName?: string }) => void,
+  onNotify?: (title: string, body: string, opts?: any) => void
+) {
   if (onTrayUpdate) {
     trayUpdateCallback = onTrayUpdate;
+  }
+  if (onNotify) {
+    notifyVpnCallback = onNotify;
   }
 
   // Purge any stale firewall rules on startup
