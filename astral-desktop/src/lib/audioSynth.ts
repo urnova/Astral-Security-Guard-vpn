@@ -10,11 +10,20 @@ export type SoundEffectType =
   | 'lag_alert'
   | 'sos_resolved'
   | 'update_ready'
-  | 'scan_complete';
+  | 'scan_complete'
+  | 'scan_start'
+  | 'notification';
 
 let audioCtx: AudioContext | null = null;
-let soundVolume = 0.6; // 0.0 to 1.0
+let soundVolume = 0.7; // 0.0 to 1.0
 let soundMuted = false;
+
+export function unlockAudio() {
+  const ctx = getAudioContext();
+  if (ctx && ctx.state === 'suspended') {
+    ctx.resume().catch(() => {});
+  }
+}
 
 function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
@@ -158,6 +167,38 @@ export function playSound(type: SoundEffectType) {
       gain2.connect(masterGain);
       osc2.start(now + 0.12);
       osc2.stop(now + 0.4);
+      break;
+    }
+
+    case 'scan_start': {
+      // Modern subtle radar ping (659Hz -> 880Hz)
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(659.25, now);
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
+      gain.gain.setValueAtTime(0.35, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      osc.connect(gain);
+      gain.connect(masterGain);
+      osc.start(now);
+      osc.stop(now + 0.12);
+      break;
+    }
+
+    case 'notification': {
+      // Pleasant clean notification chime
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, now);
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.14);
+      gain.gain.setValueAtTime(0.4, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      osc.connect(gain);
+      gain.connect(masterGain);
+      osc.start(now);
+      osc.stop(now + 0.22);
       break;
     }
   }

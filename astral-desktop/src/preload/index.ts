@@ -144,6 +144,8 @@ const api = {
   disableStartup: (name: string, location?: string) => ipcRenderer.invoke('perf:disable-startup', name, location),
   killProcess: (pid: number) => ipcRenderer.invoke('perf:kill-process', pid),
   getDiskHealth: () => ipcRenderer.invoke('perf:get-disk-health'),
+  scanDiskJunk: (driveLetter: string) => ipcRenderer.invoke('perf:scan-disk-junk', driveLetter),
+  cleanDiskJunk: (driveLetter: string) => ipcRenderer.invoke('perf:clean-disk-junk', driveLetter),
 
   // Network
   speedtest: () => ipcRenderer.invoke('network:speedtest'),
@@ -159,6 +161,7 @@ const api = {
   wifiInterference: () => ipcRenderer.invoke('network:wifi-interference'),
   getWifiDiag: () => ipcRenderer.invoke('network:get-wifi-diag'),
   optimizeNetwork: () => ipcRenderer.invoke('network:optimize'),
+  getTcpStackStatus: () => ipcRenderer.invoke('network:get-stack-status'),
   dnsBenchmark: () => ipcRenderer.invoke('network:dns-benchmark'),
 
   // Doctor & Anti-Lag (Fix 1002 Ping & Keyboard)
@@ -235,6 +238,7 @@ const api = {
   openScannedFolder: (scanId: string) =>
     ipcRenderer.invoke('download-scanner:open-folder', { scanId }),
   getScannerHistory: () => ipcRenderer.invoke('download-scanner:get-history'),
+  createEicarTestFile: () => ipcRenderer.invoke('download-scanner:create-test-file'),
 
   // User Profile
   getProfile: () => ipcRenderer.invoke('profile:get'),

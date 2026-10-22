@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   Sparkles,
   Sliders,
+  X,
 } from 'lucide-react';
 import SlideDrawer from '../common/SlideDrawer';
 import { useSystem } from '../../context/SystemContext';
@@ -133,8 +134,17 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
   const [hardware, setHardware] = useState<HardwareInfo | null>(null);
   const [showBiosGuide, setShowBiosGuide] = useState(false);
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
+  const [maintenanceMode, setMaintenanceMode] = useState<'Rapide' | 'Approfondi' | 'Personnalisé'>('Rapide');
   const [scheduledEnabled, setScheduledEnabled] = useState(true);
   const [scheduledFreq, setScheduledFreq] = useState<'Quotidienne' | 'Hebdomadaire' | 'Au démarrage' | 'À l\'inactivité'>('Hebdomadaire');
+
+  // Per-Disk Optimization State
+  const [showDiskOptModal, setShowDiskOptModal] = useState(false);
+  const [selectedDiskForOpt, setSelectedDiskForOpt] = useState<PhysicalDisk | null>(null);
+  const [diskJunkScanResult, setDiskJunkScanResult] = useState<any | null>(null);
+  const [diskJunkScanning, setDiskJunkScanning] = useState(false);
+  const [diskJunkCleaning, setDiskJunkCleaning] = useState(false);
+  const [diskJunkNotice, setDiskJunkNotice] = useState('');
 
   const cpu = Math.round(metrics?.cpuPercent ?? 0);
   const ram =
@@ -169,23 +179,30 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
       }
     }).catch(() => fallbackCleanItems());
 
-    // Load Startup Apps
-    api.getStartupApps?.().then((apps: any[]) => {
-      if (Array.isArray(apps) && apps.length > 0) {
-        setStartupApps(
-          apps.map(a => ({
-            name: a.name || a.Name,
-            rawName: a.rawName,
-            command: a.command || a.Command,
-            location: a.location || a.Location,
-            publisher: a.publisher || 'Éditeur vérifié',
-            impact: a.impact || 'm',
-            impactLabel: a.impactLabel || (a.impact === 'h' ? 'ÉLEVÉ' : a.impact === 'l' ? 'FAIBLE' : 'MOYEN'),
-            enabled: a.enabled !== false,
-          }))
-        );
-      }
-    }).catch(() => {});
+    // Load Startup Apps with fallback to getStartup
+    const fetchStartup = async () => {
+      try {
+        let apps = await api.getStartupApps?.();
+        if (!Array.isArray(apps) || apps.length === 0) {
+          apps = await api.getStartup?.();
+        }
+        if (Array.isArray(apps) && apps.length > 0) {
+          setStartupApps(
+            apps.map(a => ({
+              name: a.name || a.Name,
+              rawName: a.rawName,
+              command: a.command || a.Command,
+              location: a.location || a.Location,
+              publisher: a.publisher || 'Éditeur vérifié',
+              impact: a.impact || 'm',
+              impactLabel: a.impactLabel || (a.impact === 'h' ? 'ÉLEVÉ' : a.impact === 'l' ? 'FAIBLE' : 'MOYEN'),
+              enabled: a.enabled !== false,
+            }))
+          );
+        }
+      } catch {}
+    };
+    fetchStartup();
 
     // Load Disks & S.M.A.R.T. (Ordered strictly by Windows Disk Number 0..N)
     setLoadingDisks(true);
@@ -303,6 +320,42 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
     }
     setMaintaining(false);
     setTimeout(() => setNotice(''), 8000);
+  };
+
+  const openDiskOptimizer = async (disk: PhysicalDisk) => {
+    setSelectedDiskForOpt(disk);
+    setShowDiskOptModal(true);
+    setDiskJunkScanning(true);
+    setDiskJunkScanResult(null);
+    setDiskJunkNotice('');
+    const letter = disk.driveLetters ? disk.driveLetters.split(',')[0].trim().replace(':', '') : (disk.isSystemDisk ? 'C' : 'C');
+    try {
+      const res = await api?.scanDiskJunk?.(letter);
+      setDiskJunkScanResult(res);
+    } catch {
+      setDiskJunkNotice('Erreur lors de l\'analyse du volume.');
+    } finally {
+      setDiskJunkScanning(false);
+    }
+  };
+
+  const cleanDiskJunk = async () => {
+    if (!selectedDiskForOpt || diskJunkCleaning) return;
+    setDiskJunkCleaning(true);
+    const letter = selectedDiskForOpt.driveLetters ? selectedDiskForOpt.driveLetters.split(',')[0].trim().replace(':', '') : (selectedDiskForOpt.isSystemDisk ? 'C' : 'C');
+    try {
+      const res = await api?.cleanDiskJunk?.(letter);
+      if (res?.success) {
+        setDiskJunkNotice(res.message || 'Optimisation réussie ! Espace libéré avec succès.');
+        loadData();
+      } else {
+        setDiskJunkNotice(res?.error || 'Erreur lors du nettoyage du volume.');
+      }
+    } catch (err: any) {
+      setDiskJunkNotice(`Erreur : ${err.message}`);
+    } finally {
+      setDiskJunkCleaning(false);
+    }
   };
 
   const toggleStartup = async (i: number, val: boolean) => {
@@ -858,6 +911,29 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                         {d.isSystemDisk ? 'Système Windows (NTFS)' : isUsb ? 'Périphérique USB' : 'Stockage Interne'}
                       </span>
                     </div>
+
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'flex-end' }}>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => openDiskOptimizer(d)}
+                        style={{
+                          fontSize: 11,
+                          padding: '4px 10px',
+                          borderRadius: 6,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          color: '#38bdf8',
+                          borderColor: 'rgba(56, 189, 248, 0.25)',
+                          background: 'rgba(56, 189, 248, 0.06)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Sparkles size={12} style={{ color: '#38bdf8' }} />
+                        <span>Optimiser le stockage</span>
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -865,120 +941,80 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
           )}
         </div>
 
-        {/* 2-Column Section: Cleanup & Startup */}
+        {/* 2-Column Section: Maintenance Status & Startup Programs */}
         <div className="grid g2 mt" style={{ marginTop: 24, gap: 20 }}>
-          {/* Left: Detailed Storage Cleanup */}
-          <div className="card card-p-lg" style={{ display: 'flex', flexDirection: 'column', padding: 22 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <div className="lbl" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-                <Trash2 size={15} style={{ color: 'var(--a1)' }} />
-                Nettoyage approfondi · <span style={{ color: 'var(--text)', fontWeight: 700 }}>{selectedTotal}</span>
+          {/* Left: Centre d'Entretien Système & Espace Récupérable */}
+          <div className="card card-p-lg" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: 22 }}>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <div className="lbl" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                  <Trash2 size={15} style={{ color: 'var(--a1)' }} />
+                  Centre de Maintenance & Nettoyage
+                </div>
+                <span className="chip" style={{ fontSize: 11, fontWeight: 700, color: 'var(--a1)', borderColor: 'rgba(56, 189, 248, 0.3)' }}>
+                  {selectedTotal} récupérables
+                </span>
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => toggleAllCleanup(true)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    fontSize: 11,
-                    color: 'var(--a1)',
-                    cursor: 'pointer',
-                    padding: 0,
-                  }}
-                >
-                  Tout cocher
-                </button>
-                <span style={{ color: 'var(--border)' }}>·</span>
-                <button
-                  type="button"
-                  onClick={() => toggleAllCleanup(false)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    fontSize: 11,
-                    color: 'var(--muted)',
-                    cursor: 'pointer',
-                    padding: 0,
-                  }}
-                >
-                  Tout décocher
-                </button>
+
+              <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16, lineHeight: 1.5 }}>
+                Purge ciblée des caches orphelins, vidage de corbeille, rapports d'erreurs et optimisation de la mémoire sans altérer vos fichiers personnels ni vos configurations de jeux.
+              </p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16 }}>
+                <div style={{ padding: 12, borderRadius: 8, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600 }}>DISQUE SYSTÈME (C:)</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginTop: 4 }}>
+                    {primaryDisk ? `${(primaryDisk.free / 1e9).toFixed(0)} Go libres` : 'Lecture…'}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: '#38bdf8', marginTop: 2 }}>{Math.round(primaryDisk?.usedPct || 0)}% occupé</div>
+                </div>
+
+                <div style={{ padding: 12, borderRadius: 8, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600 }}>MÉMOIRE VIVE (RAM)</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginTop: 4 }}>
+                    {ram}% utilisée
+                  </div>
+                  <div style={{ fontSize: 10.5, color: '#22c55e', marginTop: 2 }}>Cache système optimisé</div>
+                </div>
+              </div>
+
+              <div style={{
+                padding: '10px 14px',
+                borderRadius: 8,
+                background: 'rgba(34, 197, 94, 0.06)',
+                border: '1px solid rgba(34, 197, 94, 0.2)',
+                fontSize: 11.5,
+                color: '#86efac',
+                lineHeight: 1.45,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginBottom: 16,
+              }}>
+                <ShieldCheck size={16} style={{ color: '#22c55e', flexShrink: 0 }} />
+                <span><b>Protection Garantie :</b> Seuls les caches résiduels et fichiers temporaires orphelins sont purgés. Vos documents, photos et jeux restent 100% intacts.</span>
               </div>
             </div>
 
-            <p style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 14, lineHeight: 1.4 }}>
-              Suppression des résidus temporaires en toute sécurité sans impacter vos documents ou logiciels.
-            </p>
-
-            <div className="list custom-scroll" style={{ flex: 1, maxHeight: 380, overflowY: 'auto', paddingRight: 6 }}>
-              {cleanItems.map((item, i) => (
-                <div
-                  className="row"
-                  key={i}
-                  style={{
-                    cursor: 'pointer',
-                    padding: '11px 12px',
-                    borderRadius: 8,
-                    marginBottom: 6,
-                    background: item.selected ? 'rgba(56, 189, 248, 0.04)' : 'rgba(255,255,255,0.015)',
-                    border: item.selected ? '1px solid rgba(56, 189, 248, 0.2)' : '1px solid rgba(255,255,255,0.04)',
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 12,
-                    transition: 'all 0.15s ease',
-                  }}
-                  onClick={() => toggleItem(i)}
-                >
-                  <div
-                    className={`ico${item.selected ? ' acc' : ''}`}
-                    style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 4,
-                      background: item.selected ? 'var(--a2)' : 'transparent',
-                      border: item.selected ? 'none' : '1px solid rgba(255,255,255,.3)',
-                      cursor: 'pointer',
-                      display: 'grid',
-                      placeItems: 'center',
-                      flexShrink: 0,
-                      marginTop: 2,
-                    }}
-                  >
-                    {item.selected && <Check size={12} style={{ color: '#fff' }} />}
-                  </div>
-
-                  <div className="rt" style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <b style={{ fontSize: 12.5, color: 'var(--text)' }}>{item.label}</b>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: item.selected ? 'var(--a1)' : 'var(--muted)' }}>
-                        {item.size}
-                      </span>
-                    </div>
-                    {item.desc && (
-                      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '3px 0 0 0', lineHeight: 1.35 }}>
-                        {item.desc}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ))}
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 10 }}>
+              <button
+                className="btn"
+                onClick={() => setShowMaintenanceModal(true)}
+                style={{
+                  flex: 1,
+                  padding: '11px 18px',
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                }}
+              >
+                <Zap size={15} />
+                <span>Ouvrir le Centre de Maintenance ({selectedTotal})</span>
+              </button>
             </div>
-
-            {cleanProgress >= 0 && (
-              <div style={{ marginTop: 18, padding: 14, background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 6 }}>
-                  <span>Progression</span>
-                  <b>{cleanProgress}%</b>
-                </div>
-                <div className="bar" style={{ height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 3, overflow: 'hidden' }}>
-                  <i style={{ width: `${cleanProgress}%`, transition: 'width .35s ease', background: 'var(--a1)', display: 'block', height: '100%' }} />
-                </div>
-                <div className="mut sm" style={{ marginTop: 8, fontSize: 11, color: 'var(--text)' }}>
-                  {cleanMsg}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Right: Startup Programs */}
@@ -1195,121 +1231,438 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
           </div>
         </SlideDrawer>
 
-        {/* ── SlideDrawer Centre de Maintenance & Nettoyage Système ── */}
-        <SlideDrawer
-          isOpen={showMaintenanceModal}
-          onClose={() => setShowMaintenanceModal(false)}
-          title="Centre de Maintenance & Nettoyage Système"
-          subtitle="Sélection personnalisée des caches et purge sécurisée sans toucher aux données personnelles"
-          width={580}
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{
-              background: 'rgba(56,189,248,0.06)',
-              border: '1px solid rgba(56,189,248,0.25)',
-              borderRadius: 8,
-              padding: '12px 14px',
-              fontSize: 12,
-              color: '#cbd5e1',
-              lineHeight: 1.5,
-            }}>
-              🔒 <b>Sécurité garantie :</b> Seuls les fichiers temporaires orphelins, caches graphiques et résidus Windows sont ciblés. Vos documents, photos, jeux et paramètres personnels restent intacts.
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>
-                Éléments sélectionnables ({cleanItems.filter(i => i.selected).length}/{cleanItems.length})
-              </span>
-              <div style={{ display: 'flex', gap: 10 }}>
+        {/* ── Modal Vanguard : Centre de Maintenance & Nettoyage Système ── */}
+        {showMaintenanceModal && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 10000,
+              background: 'rgba(0, 0, 0, 0.75)',
+              backdropFilter: 'blur(10px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 20,
+              animation: 'fadeIn .2s var(--ease) both',
+            }}
+          >
+            <div
+              style={{
+                width: '100%',
+                maxWidth: 840,
+                background: '#090d16',
+                border: '1px solid var(--border)',
+                borderRadius: 14,
+                boxShadow: '0 24px 64px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.06)',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                maxHeight: '90vh',
+              }}
+            >
+              {/* Modal Header */}
+              <div style={{
+                padding: '18px 22px',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'rgba(255,255,255,0.02)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 8,
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    border: '1px solid rgba(56, 189, 248, 0.35)',
+                    display: 'grid',
+                    placeItems: 'center',
+                    color: '#38bdf8',
+                  }}>
+                    <Zap size={18} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+                      Centre de Maintenance & Nettoyage Système
+                    </h3>
+                    <p style={{ margin: '2px 0 0', fontSize: 11.5, color: 'var(--muted)' }}>
+                      Optimisation globale, purge des caches et restauration de la fluidité Windows
+                    </p>
+                  </div>
+                </div>
                 <button
-                  className="btn-ghost"
-                  onClick={() => toggleAllCleanup(true)}
-                  style={{ fontSize: 11, padding: '4px 10px' }}
+                  onClick={() => setShowMaintenanceModal(false)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--muted)',
+                    cursor: 'pointer',
+                    padding: 4,
+                  }}
                 >
-                  Tout cocher
-                </button>
-                <button
-                  className="btn-ghost"
-                  onClick={() => toggleAllCleanup(false)}
-                  style={{ fontSize: 11, padding: '4px 10px' }}
-                >
-                  Tout décocher
+                  <X size={18} />
                 </button>
               </div>
-            </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 340, overflowY: 'auto' }}>
-              {cleanItems.map((item, idx) => (
-                <div
-                  key={item.id || idx}
-                  onClick={() => toggleItem(idx)}
-                  style={{
-                    padding: '10px 14px',
+              {/* Modal Body: 2 Columns */}
+              <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', flex: 1, minHeight: 0 }}>
+                {/* Left Panel: Status & Diagnostics */}
+                <div style={{
+                  padding: 20,
+                  borderRight: '1px solid rgba(255,255,255,0.06)',
+                  background: 'rgba(0,0,0,0.2)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                }}>
+                  <div>
+                    <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                      <Ring
+                        size={120}
+                        val={Math.min(1, cleanItems.filter(i => i.selected).reduce((s, i) => s + i.bytes, 0) / 10e9)}
+                        label={<div style={{ fontSize: 16, fontWeight: 800, color: '#38bdf8' }}>{selectedTotal}</div>}
+                      />
+                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, fontWeight: 600 }}>
+                        ESPACE RÉCUPÉRABLE
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>DISQUE C:</div>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>
+                          {primaryDisk ? `${(primaryDisk.free / 1e9).toFixed(0)} Go libres` : '—'}
+                        </div>
+                        <div style={{ fontSize: 10.5, color: '#38bdf8' }}>{primaryDisk?.health || 'Sain (SMART OK)'}</div>
+                      </div>
+
+                      <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>MÉMOIRE VIVE (RAM)</div>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>{ram}% utilisée</div>
+                        <div style={{ fontSize: 10.5, color: '#22c55e' }}>Cache travail Windows</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{
+                    marginTop: 16,
+                    padding: '10px 12px',
                     borderRadius: 8,
-                    background: item.selected ? 'rgba(var(--a1r), 0.08)' : 'rgba(255,255,255,0.02)',
-                    border: `1px solid ${item.selected ? 'var(--a1)' : 'rgba(255,255,255,0.06)'}`,
-                    cursor: 'pointer',
+                    background: 'rgba(56, 189, 248, 0.06)',
+                    border: '1px solid rgba(56, 189, 248, 0.2)',
+                    fontSize: 11,
+                    color: '#93c5fd',
+                    lineHeight: 1.4,
+                  }}>
+                    🛡 <b>Sécurité :</b> Fichiers personnels préservés. Seuls les caches temporaires orphelins sont supprimés.
+                  </div>
+                </div>
+
+                {/* Right Panel: Modes & Item Checklist */}
+                <div style={{ padding: 20, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                  {/* Mode Selector */}
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                    {(['Rapide', 'Approfondi', 'Personnalisé'] as const).map(mode => {
+                      const isActive = maintenanceMode === mode;
+                      return (
+                        <button
+                          key={mode}
+                          onClick={() => {
+                            setMaintenanceMode(mode);
+                            if (mode === 'Rapide') {
+                              setCleanItems(prev => prev.map(item => ({
+                                ...item,
+                                selected: item.id === 'userTemp' || item.id === 'winTemp' || item.id === 'winLogs' || item.id === 'recycleBin'
+                              })));
+                            } else if (mode === 'Approfondi') {
+                              setCleanItems(prev => prev.map(item => ({ ...item, selected: true })));
+                            }
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '8px 12px',
+                            borderRadius: 8,
+                            fontSize: 12,
+                            fontWeight: isActive ? 700 : 500,
+                            background: isActive ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255,255,255,0.03)',
+                            border: isActive ? '1px solid rgba(56, 189, 248, 0.45)' : '1px solid rgba(255,255,255,0.06)',
+                            color: isActive ? '#38bdf8' : 'var(--muted)',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          {mode} {mode === 'Rapide' && '⚡'} {mode === 'Approfondi' && '🛡'} {mode === 'Personnalisé' && '⚙'}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Mode Description */}
+                  <div style={{
+                    fontSize: 11.5,
+                    color: 'var(--muted)',
+                    marginBottom: 10,
+                    lineHeight: 1.4,
+                  }}>
+                    {maintenanceMode === 'Rapide' && 'Purge instantanée des fichiers temporaires %TEMP%, corbeille et résidus système. Idéal au quotidien.'}
+                    {maintenanceMode === 'Approfondi' && 'Nettoyage complet incluant le cache Windows Update, les shaders DirectX GPU et les traces système.'}
+                    {maintenanceMode === 'Personnalisé' && 'Sélectionnez manuellement chaque catégorie à nettoyer selon vos besoins.'}
+                  </div>
+
+                  {/* Items List */}
+                  <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, paddingRight: 4, maxHeight: 250 }}>
+                    {cleanItems.map((item, idx) => (
+                      <div
+                        key={item.id || idx}
+                        onClick={() => toggleItem(idx)}
+                        style={{
+                          padding: '9px 12px',
+                          borderRadius: 7,
+                          background: item.selected ? 'rgba(56, 189, 248, 0.06)' : 'rgba(255,255,255,0.015)',
+                          border: `1px solid ${item.selected ? 'rgba(56, 189, 248, 0.3)' : 'rgba(255,255,255,0.05)'}`,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 10,
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{
+                            width: 17,
+                            height: 17,
+                            borderRadius: 4,
+                            background: item.selected ? 'var(--a1)' : 'transparent',
+                            border: `1.5px solid ${item.selected ? 'var(--a1)' : 'rgba(255,255,255,0.3)'}`,
+                            display: 'grid',
+                            placeItems: 'center',
+                            color: '#090d16',
+                            flexShrink: 0,
+                          }}>
+                            {item.selected && <Check size={12} strokeWidth={3} />}
+                          </div>
+                          <div>
+                            <b style={{ fontSize: 12, color: item.selected ? '#fff' : 'var(--text)' }}>{item.label}</b>
+                            {item.desc && <p style={{ margin: '2px 0 0', fontSize: 10.5, color: 'var(--muted)' }}>{item.desc}</p>}
+                          </div>
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: item.selected ? '#38bdf8' : 'var(--muted)', whiteSpace: 'nowrap' }}>
+                          {item.size}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Footer & Action Button */}
+                  <div style={{
+                    marginTop: 14,
+                    paddingTop: 14,
+                    borderTop: '1px solid rgba(255,255,255,0.06)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     gap: 12,
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 4,
-                      background: item.selected ? 'var(--a1)' : 'transparent',
-                      border: `1.5px solid ${item.selected ? 'var(--a1)' : 'rgba(255,255,255,0.3)'}`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: '#090d16',
-                      flexShrink: 0,
-                    }}>
-                      {item.selected && <Check size={13} strokeWidth={3} />}
-                    </div>
+                  }}>
                     <div>
-                      <b style={{ fontSize: 12.5, color: item.selected ? '#fff' : 'var(--text)' }}>{item.label}</b>
-                      {item.desc && <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--muted)' }}>{item.desc}</p>}
+                      <span style={{ fontSize: 11, color: 'var(--muted)' }}>Total sélectionné :</span>
+                      <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--a1)' }}>{selectedTotal}</div>
                     </div>
+                    <button
+                      className="btn"
+                      onClick={() => {
+                        runMaintenance();
+                        setShowMaintenanceModal(false);
+                      }}
+                      disabled={maintaining || cleanItems.filter(i => i.selected).length === 0}
+                      style={{ padding: '10px 22px', fontSize: 12.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}
+                    >
+                      <Zap size={15} />
+                      <span>Lancer la maintenance ({selectedTotal})</span>
+                    </button>
                   </div>
-                  <span style={{ fontSize: 11.5, fontWeight: 700, color: '#38bdf8', whiteSpace: 'nowrap' }}>
-                    {item.size}
-                  </span>
                 </div>
-              ))}
-            </div>
-
-            <div style={{
-              borderTop: '1px solid rgba(255,255,255,0.08)',
-              paddingTop: 16,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 14,
-            }}>
-              <div>
-                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Espace disque récupérable :</div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--a1)' }}>{selectedTotal}</div>
               </div>
-              <button
-                className="btn"
-                onClick={() => {
-                  runMaintenance();
-                  setShowMaintenanceModal(false);
-                }}
-                disabled={maintaining || cleanItems.filter(i => i.selected).length === 0}
-                style={{ padding: '10px 24px', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}
-              >
-                <Zap size={15} />
-                <span>Lancer le nettoyage sécurisé</span>
-              </button>
             </div>
           </div>
-        </SlideDrawer>
+        )}
+
+        {/* ── Modal Vanguard : Optimisation de Stockage par Disque ── */}
+        {showDiskOptModal && selectedDiskForOpt && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 10000,
+              background: 'rgba(0, 0, 0, 0.75)',
+              backdropFilter: 'blur(10px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 20,
+              animation: 'fadeIn .2s var(--ease) both',
+            }}
+          >
+            <div
+              style={{
+                width: '100%',
+                maxWidth: 680,
+                background: '#090d16',
+                border: '1px solid var(--border)',
+                borderRadius: 14,
+                boxShadow: '0 24px 64px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.06)',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <div style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'rgba(255,255,255,0.02)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    border: '1px solid rgba(56, 189, 248, 0.35)',
+                    display: 'grid',
+                    placeItems: 'center',
+                    color: '#38bdf8',
+                  }}>
+                    <HardDrive size={16} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 14.5, fontWeight: 700, color: 'var(--text)' }}>
+                      Optimisation de Stockage · {selectedDiskForOpt.driveLetters || 'Disque'} ({selectedDiskForOpt.model || selectedDiskForOpt.FriendlyName || 'Disque physique'})
+                    </h3>
+                    <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--muted)' }}>
+                      Détection intelligente des fichiers temporaires, caches orphelins et résidus
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowDiskOptModal(false)}
+                  style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: 4 }}
+                >
+                  <X size={17} />
+                </button>
+              </div>
+
+              <div style={{ padding: 20 }}>
+                {diskJunkScanning ? (
+                  <div style={{ textAlign: 'center', padding: '30px 0' }}>
+                    <span className="spinner spinner-sm" style={{ marginRight: 8 }} />
+                    <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>Analyse intelligente des caches du lecteur {selectedDiskForOpt.driveLetters}...</span>
+                  </div>
+                ) : (
+                  <div>
+                    {/* Recommendation Box */}
+                    <div style={{
+                      padding: '12px 14px',
+                      borderRadius: 8,
+                      background: 'rgba(56, 189, 248, 0.08)',
+                      border: '1px solid rgba(56, 189, 248, 0.25)',
+                      fontSize: 12,
+                      color: '#cbd5e1',
+                      lineHeight: 1.5,
+                      marginBottom: 16,
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 10,
+                    }}>
+                      <Sparkles size={16} style={{ color: '#38bdf8', flexShrink: 0, marginTop: 2 }} />
+                      <div>
+                        {diskJunkScanResult?.aiRecommendation || 'Analyse terminée. Sélectionnez les caches à purger en toute sécurité.'}
+                      </div>
+                    </div>
+
+                    {/* Breakdown List */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+                      {(diskJunkScanResult?.categories || []).map((cat: any) => (
+                        <div
+                          key={cat.id}
+                          style={{
+                            padding: '10px 14px',
+                            borderRadius: 8,
+                            background: 'rgba(255,255,255,0.02)',
+                            border: '1px solid rgba(255,255,255,0.06)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                          }}
+                        >
+                          <div>
+                            <b style={{ fontSize: 12, color: 'var(--text)' }}>{cat.label}</b>
+                            <p style={{ margin: '2px 0 0', fontSize: 10.5, color: 'var(--muted)' }}>{cat.desc}</p>
+                          </div>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: '#38bdf8' }}>{cat.sizeDisplay}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {diskJunkNotice && (
+                      <div style={{
+                        padding: '10px 14px',
+                        borderRadius: 8,
+                        background: 'rgba(34, 197, 94, 0.1)',
+                        border: '1px solid rgba(34, 197, 94, 0.3)',
+                        fontSize: 12,
+                        color: '#4ade80',
+                        marginBottom: 16,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                      }}>
+                        <CheckCircle2 size={15} />
+                        <span>{diskJunkNotice}</span>
+                      </div>
+                    )}
+
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      borderTop: '1px solid rgba(255,255,255,0.06)',
+                      paddingTop: 14,
+                    }}>
+                      <div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>Espace récupérable sur ce lecteur :</div>
+                        <div style={{ fontSize: 17, fontWeight: 800, color: '#38bdf8' }}>
+                          {diskJunkScanResult?.totalFormatted || '0 Mo'}
+                        </div>
+                      </div>
+                      <button
+                        className="btn"
+                        onClick={cleanDiskJunk}
+                        disabled={diskJunkCleaning || !diskJunkScanResult?.totalMB}
+                        style={{ padding: '10px 20px', fontSize: 12.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}
+                      >
+                        {diskJunkCleaning ? (
+                          <>
+                            <span className="spinner spinner-sm" /> Nettoyage en cours…
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 size={14} />
+                            <span>Nettoyer et optimiser ({diskJunkScanResult?.totalFormatted || '0 Mo'})</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

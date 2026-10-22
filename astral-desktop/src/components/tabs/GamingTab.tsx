@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Gamepad2, Power, Monitor, Wifi, Cpu, Eye, Zap, SlidersHorizontal,
-  Clock, ExternalLink, Info, X, ShieldCheck, Play, Trash2, HelpCircle, Check
+  Clock, ExternalLink, Info, X, ShieldCheck, Play, Trash2, HelpCircle, Check, Sparkles
 } from 'lucide-react';
-import { SlideDrawer } from '../common/SlideDrawer';
 
 const api = (window as any).vanguard;
 
@@ -1010,57 +1009,288 @@ export default function GamingTab({
 
       </div>
 
-      {/* ── Slide-Over Drawer: Profils de Performance & Vérité Terrain ── */}
-      <SlideDrawer
-        isOpen={showProfileDetails}
-        onClose={() => setShowProfileDetails(false)}
-        title="Profils de Performance & Vérité Terrain"
-        subtitle="Ajustements système mesurables et 100% réversibles"
-        width={560}
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.55, margin: 0 }}>
-            Chaque profil applique des ajustements système réversibles mesurables. À la fermeture du jeu ou à la désactivation, <b>tous les paramètres d'origine (priorités, plan d'énergie, réseau) sont automatiquement restaurés</b> sans altérer Windows.
-          </p>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ padding: 14, borderRadius: 10, background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.25)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <b style={{ color: '#38bdf8', fontSize: 13.5 }}>⚡ Profil Compétitif (Esports & Latence Minimale)</b>
-                <span className="chip" style={{ fontSize: 10, color: '#38bdf8', borderColor: 'rgba(56,189,248,0.3)' }}>Latence min</span>
+      {/* ── Centered Vanguard Modal: Profils de Session & Vérité Terrain ── */}
+      {showProfileDetails && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(5, 8, 16, 0.78)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 20
+        }}>
+          <div style={{
+            background: 'linear-gradient(135deg, #0d131f 0%, #080c14 100%)',
+            border: '1px solid rgba(56, 189, 248, 0.25)',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.75), 0 0 35px rgba(56, 189, 248, 0.12)',
+            borderRadius: 16,
+            width: '100%',
+            maxWidth: 820,
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            animation: 'fadeIn 0.2s ease-out'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'rgba(255, 255, 255, 0.02)'
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 18, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700 }}>
+                  <Gamepad2 size={20} style={{ color: '#38bdf8' }} />
+                  Profils de Session E-Sport & Ajustements Système
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#94a3b8' }}>
+                  Ajustements mesurables et 100% réversibles. Windows retrouve ses fréquences et priorités d'origine à la sortie.
+                </p>
               </div>
-              <ul style={{ margin: '8px 0 0 16px', padding: 0, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
-                <li><b>Priorité processeur :</b> <code>AboveNormal</code> pour le processus de jeu au premier plan.</li>
-                <li><b>Plan d'alimentation :</b> Bascule temporaire sur <code>Performances Élevées</code> (suppression du core parking).</li>
-                <li><b>Réseau :</b> Priorité de trafic UDP, bufferbloat Wi-Fi réduit et latence de rendu ultra-faible.</li>
-              </ul>
+              <button
+                onClick={() => setShowProfileDetails(false)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: 8,
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  padding: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <X size={18} />
+              </button>
             </div>
 
-            <div style={{ padding: 14, borderRadius: 10, background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.25)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <b style={{ color: '#22c55e', fontSize: 13.5 }}>⚖ Profil Équilibré (Standard & Polyvalent)</b>
-                <span className="chip" style={{ fontSize: 10, color: '#22c55e', borderColor: 'rgba(34,197,94,0.3)' }}>Recommandé</span>
+            {/* Modal Body */}
+            <div style={{ padding: 24, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {/* Notice Banner */}
+              <div style={{
+                padding: '12px 16px',
+                borderRadius: 10,
+                background: 'rgba(56, 189, 248, 0.06)',
+                border: '1px solid rgba(56, 189, 248, 0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12
+              }}>
+                <Sparkles size={18} style={{ color: '#38bdf8', flexShrink: 0 }} />
+                <p style={{ margin: 0, fontSize: 12.5, color: '#cbd5e1', lineHeight: 1.5 }}>
+                  Contrairement aux "boosters" destructeurs, Vanguard n'altère aucun composant critique du registre Windows. À la fermeture du jeu ou à la désactivation, <b>tous les paramètres d'origine sont restaurés instantanément</b>.
+                </p>
               </div>
-              <ul style={{ margin: '8px 0 0 16px', padding: 0, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
-                <li><b>Priorité processeur :</b> Dynamique et respectueuse des températures CPU/GPU.</li>
-                <li><b>Streaming & multitâche :</b> Compatibilité totale avec OBS Studio, Discord et enregistreurs.</li>
-                <li><b>Protection réseau :</b> Purgation des files de saturation réseau sans monopolisation.</li>
-              </ul>
+
+              {/* 3 Profile Cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
+                {/* 1. Compétitif */}
+                <div
+                  onClick={() => setProfile('Compétitif')}
+                  style={{
+                    background: profile === 'Compétitif' ? 'rgba(56, 189, 248, 0.08)' : 'rgba(255, 255, 255, 0.02)',
+                    border: profile === 'Compétitif' ? '2px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.08)',
+                    boxShadow: profile === 'Compétitif' ? '0 0 20px rgba(56, 189, 248, 0.2)' : 'none',
+                    borderRadius: 12,
+                    padding: 16,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    transition: 'all 0.2s ease',
+                    position: 'relative'
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <b style={{ color: '#38bdf8', fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Zap size={16} /> Compétitif
+                      </b>
+                      <span className="chip" style={{ fontSize: 9.5, color: '#38bdf8', borderColor: 'rgba(56,189,248,0.3)', padding: '2px 8px' }}>
+                        Latence Min
+                      </span>
+                    </div>
+                    <p style={{ fontSize: 11.5, color: 'var(--muted)', margin: '0 0 12px', lineHeight: 1.45 }}>
+                      Priorité CPU <code>AboveNormal</code>, plan <code>Performances Élevées</code> (zéro core parking) et priorisation UDP pour esport.
+                    </p>
+                    <ul style={{ margin: '0 0 12px 16px', padding: 0, fontSize: 11, color: '#cbd5e1', lineHeight: 1.6 }}>
+                      <li>Priorité processeur temps réel</li>
+                      <li>Suppression du bufferbloat Wi-Fi</li>
+                      <li>Latence de rendu minimale</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 10 }}>
+                      Recommandé : <span style={{ color: '#e2e8f0' }}>Valorant, CS2, Fortnite, Warzone</span>
+                    </div>
+                    <button
+                      className="btn"
+                      onClick={(e) => { e.stopPropagation(); setProfile('Compétitif'); }}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        background: profile === 'Compétitif' ? '#38bdf8' : 'rgba(56, 189, 248, 0.12)',
+                        color: profile === 'Compétitif' ? '#090d16' : '#38bdf8',
+                        border: 'none',
+                        borderRadius: 6
+                      }}
+                    >
+                      {profile === 'Compétitif' ? '✓ Profil Sélectionné' : 'Sélectionner Compétitif'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Équilibré */}
+                <div
+                  onClick={() => setProfile('Équilibré')}
+                  style={{
+                    background: profile === 'Équilibré' ? 'rgba(34, 197, 94, 0.08)' : 'rgba(255, 255, 255, 0.02)',
+                    border: profile === 'Équilibré' ? '2px solid #22c55e' : '1px solid rgba(255, 255, 255, 0.08)',
+                    boxShadow: profile === 'Équilibré' ? '0 0 20px rgba(34, 197, 94, 0.2)' : 'none',
+                    borderRadius: 12,
+                    padding: 16,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    transition: 'all 0.2s ease',
+                    position: 'relative'
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <b style={{ color: '#22c55e', fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <ShieldCheck size={16} /> Équilibré
+                      </b>
+                      <span className="chip" style={{ fontSize: 9.5, color: '#22c55e', borderColor: 'rgba(34,197,94,0.3)', padding: '2px 8px' }}>
+                        Recommandé
+                      </span>
+                    </div>
+                    <p style={{ fontSize: 11.5, color: 'var(--muted)', margin: '0 0 12px', lineHeight: 1.45 }}>
+                      Parfait compromis entre fluidité maximale, thermiques contrôlés et stabilité complète pour streaming et multitâche.
+                    </p>
+                    <ul style={{ margin: '0 0 12px 16px', padding: 0, fontSize: 11, color: '#cbd5e1', lineHeight: 1.6 }}>
+                      <li>Fréquences processeur stables</li>
+                      <li>Zéro coupure OBS Studio & Discord</li>
+                      <li>Purgation douce de la mémoire</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 10 }}>
+                      Recommandé : <span style={{ color: '#e2e8f0' }}>MMO, RPG, Co-op, Multitâche</span>
+                    </div>
+                    <button
+                      className="btn"
+                      onClick={(e) => { e.stopPropagation(); setProfile('Équilibré'); }}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        background: profile === 'Équilibré' ? '#22c55e' : 'rgba(34, 197, 94, 0.12)',
+                        color: profile === 'Équilibré' ? '#090d16' : '#22c55e',
+                        border: 'none',
+                        borderRadius: 6
+                      }}
+                    >
+                      {profile === 'Équilibré' ? '✓ Profil Sélectionné' : 'Sélectionner Équilibré'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. Qualité */}
+                <div
+                  onClick={() => setProfile('Qualité')}
+                  style={{
+                    background: profile === 'Qualité' ? 'rgba(167, 139, 250, 0.08)' : 'rgba(255, 255, 255, 0.02)',
+                    border: profile === 'Qualité' ? '2px solid #a78bfa' : '1px solid rgba(255, 255, 255, 0.08)',
+                    boxShadow: profile === 'Qualité' ? '0 0 20px rgba(167, 139, 250, 0.2)' : 'none',
+                    borderRadius: 12,
+                    padding: 16,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    transition: 'all 0.2s ease',
+                    position: 'relative'
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <b style={{ color: '#a78bfa', fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Monitor size={16} /> Qualité AAA
+                      </b>
+                      <span className="chip" style={{ fontSize: 9.5, color: '#a78bfa', borderColor: 'rgba(167,139,250,0.3)', padding: '2px 8px' }}>
+                        1440p / 4K
+                      </span>
+                    </div>
+                    <p style={{ fontSize: 11.5, color: 'var(--muted)', margin: '0 0 12px', lineHeight: 1.45 }}>
+                      Priorité au pipeline DirectX 12 / Vulkan, pré-allocation des shaders et stabilisation de frametime pour grand écran.
+                    </p>
+                    <ul style={{ margin: '0 0 12px 16px', padding: 0, fontSize: 11, color: '#cbd5e1', lineHeight: 1.6 }}>
+                      <li>Allocation VRAM maximale</li>
+                      <li>Suppression du micro-stuttering</li>
+                      <li>Frametime cinématique stable</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 10 }}>
+                      Recommandé : <span style={{ color: '#e2e8f0' }}>Cyberpunk 2077, Alan Wake 2, Starfield</span>
+                    </div>
+                    <button
+                      className="btn"
+                      onClick={(e) => { e.stopPropagation(); setProfile('Qualité'); }}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        background: profile === 'Qualité' ? '#a78bfa' : 'rgba(167, 139, 250, 0.12)',
+                        color: profile === 'Qualité' ? '#090d16' : '#a78bfa',
+                        border: 'none',
+                        borderRadius: 6
+                      }}
+                    >
+                      {profile === 'Qualité' ? '✓ Profil Sélectionné' : 'Sélectionner Qualité'}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div style={{ padding: 14, borderRadius: 10, background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.25)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <b style={{ color: '#a78bfa', fontSize: 13.5 }}>🎨 Profil Qualité (Titres AAA & Immersion Visuelle)</b>
-                <span className="chip" style={{ fontSize: 10, color: '#a78bfa', borderColor: 'rgba(167,139,250,0.3)' }}>Fidélité max</span>
-              </div>
-              <ul style={{ margin: '8px 0 0 16px', padding: 0, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
-                <li><b>Allocation GPU :</b> Priorité aux threads de compilation de shaders DirectX 12 / Vulkan.</li>
-                <li><b>Stabilité de trame :</b> Évite les chutes de framerate lors du streaming de textures lourdes.</li>
-              </ul>
+            {/* Modal Footer */}
+            <div style={{
+              padding: '16px 24px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: 'rgba(255, 255, 255, 0.01)'
+            }}>
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+                Profil actuellement configuré : <b style={{ color: '#f8fafc' }}>{profile}</b>
+              </span>
+              <button
+                className="btn"
+                onClick={() => setShowProfileDetails(false)}
+                style={{ padding: '8px 22px', fontSize: 13, fontWeight: 700, background: '#38bdf8', color: '#090d16', border: 'none', borderRadius: 8 }}
+              >
+                Appliquer & Fermer
+              </button>
             </div>
           </div>
         </div>
-      </SlideDrawer>
+      )}
     </div>
   );
 }

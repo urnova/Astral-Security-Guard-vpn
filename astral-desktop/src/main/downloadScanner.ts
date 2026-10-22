@@ -204,6 +204,9 @@ function getMpCmdRunPath(): string {
 // In-memory cache to prevent duplicate scans
 const scannedCache = new Map<string, { result: ScanResult; timestamp: number }>();
 
+// Cooldown map for recently scanned files to strictly prevent double notifications (25s window)
+const recentScannedFiles = new Map<string, number>();
+
 // Active native watchers map
 const activeWatchers = new Map<string, fs.FSWatcher>();
 
@@ -467,6 +470,7 @@ async function handleFileEvent(folderPath: string, filename: string) {
   if (!filename) return;
 
   const filePath = path.join(folderPath, filename);
+  const normPath = path.resolve(filePath).toLowerCase();
   const ext = path.extname(filename).toLowerCase();
   const lowerName = filename.toLowerCase();
 
@@ -484,6 +488,13 @@ async function handleFileEvent(folderPath: string, filename: string) {
     return;
   }
 
+  // 2. Strict Deduplication: if this exact file was scanned within the last 25 seconds, drop immediately
+  const lastScannedAt = recentScannedFiles.get(normPath);
+  if (lastScannedAt && Date.now() - lastScannedAt < 25000) {
+    logger.info(`[DownloadScanner] Scan ignoré (déjà scanné il y a ${Math.round((Date.now() - lastScannedAt) / 1000)}s) : ${filename}`);
+    return;
+  }
+
   // Rate limiter ceiling to avoid notification avalanches during installer extractions
   const now = Date.now();
   if (now - lastScanReset > 10000) {
@@ -496,24 +507,30 @@ async function handleFileEvent(folderPath: string, filename: string) {
   }
   recentScanCount++;
 
-  // 2. Ignore configured ignored extensions (.txt, .jpg, etc.)
+  // 3. Ignore configured ignored extensions (.txt, .jpg, etc.)
   const ignored = currentConfig.ignoredExtensions.map((e) => e.toLowerCase().trim());
   if (ignored.includes(ext)) {
     return;
   }
 
-  // Prevent multiple simultaneous queues for the same file
-  if (pendingStabilization.has(filePath)) return;
-  pendingStabilization.add(filePath);
+  // Prevent multiple simultaneous queues for the same file (keyed on normalized path)
+  if (pendingStabilization.has(normPath)) return;
+  pendingStabilization.add(normPath);
 
   try {
-    // 3. Wait for file write stabilization
+    // 4. Wait for file write stabilization
     const stabilized = await waitForFileStabilization(filePath);
     if (!stabilized || !fs.existsSync(filePath)) {
       return;
     }
 
-    // 4. Check cache by path + mtime + size
+    // Double check dedup post stabilization
+    const postStabilizeLastScanned = recentScannedFiles.get(normPath);
+    if (postStabilizeLastScanned && Date.now() - postStabilizeLastScanned < 25000) {
+      return;
+    }
+
+    // 5. Check cache by path + mtime + size
     let stat: fs.Stats;
     try {
       stat = fs.statSync(filePath);
@@ -522,14 +539,24 @@ async function handleFileEvent(folderPath: string, filename: string) {
       return;
     }
 
-    const cacheKey = `${filePath}:${stat.mtimeMs}:${stat.size}`;
+    const cacheKey = `${normPath}:${stat.mtimeMs}:${stat.size}`;
     const cached = scannedCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < 24 * 3600 * 1000) {
       logger.info(`[DownloadScanner] File ${filename} already verified recently, skipping.`);
       return;
     }
 
-    // 5. Open Avast-style scan window showing "Analyse en cours..." before execution
+    // 6. Notify renderer of scan start
+    if (activeMainWindow && !activeMainWindow.isDestroyed()) {
+      activeMainWindow.webContents.send('download-scanner:scan-start', {
+        filePath,
+        fileName: filename,
+        sizeBytes: stat.size,
+        ext,
+      });
+    }
+
+    // 7. Open Avast-style scan window showing "Analyse en cours..." before execution
     if (currentConfig.discreteMode !== 'notification') {
       try {
         showAvastStyleDownloadScan({
@@ -537,17 +564,27 @@ async function handleFileEvent(folderPath: string, filename: string) {
           filePath,
           status: 'scanning',
           discreteMode: currentConfig.discreteMode || 'window',
+          soundEnabled: currentConfig.soundEnabled,
         });
       } catch (err: any) {
         logger.warn('[DownloadScanner] Error showing scanning popup:', err.message);
       }
     }
 
-    // 6. Execute targeted scan
+    // 8. Execute targeted scan
     const result = await scanSingleFile(filePath);
 
-    // Save in cache
+    // Save in cache and record dedup timestamp
     scannedCache.set(cacheKey, { result, timestamp: Date.now() });
+    recentScannedFiles.set(normPath, Date.now());
+
+    // Prune stale dedup entries if map grows
+    if (recentScannedFiles.size > 100) {
+      const cutoff = Date.now() - 60000;
+      for (const [k, v] of recentScannedFiles.entries()) {
+        if (v < cutoff) recentScannedFiles.delete(k);
+      }
+    }
 
     // Show Avast-style desktop popup window with final status (Fichier sain / Menace)
     if (currentConfig.discreteMode === 'notification') {
@@ -556,6 +593,7 @@ async function handleFileEvent(folderPath: string, filename: string) {
           title: 'Menace téléchargement bloquée',
           message: `Fichier malveillant neutralisé : ${result.threatName || filename}`,
           type: 'threat',
+          soundEnabled: currentConfig.soundEnabled,
         });
       }
     } else {
@@ -567,13 +605,14 @@ async function handleFileEvent(folderPath: string, filename: string) {
           threatName: result.threatName,
           isUnsigned: result.isUnsigned,
           discreteMode: currentConfig.discreteMode || 'window',
+          soundEnabled: currentConfig.soundEnabled,
         });
       } catch (err: any) {
         logger.warn('[DownloadScanner] Error showing Avast-style download popup:', err.message);
       }
     }
 
-    // 7. Send scan result to renderer
+    // 9. Send scan result to renderer
     if (activeMainWindow && !activeMainWindow.isDestroyed()) {
       const shouldDisplayModal =
         result.status === 'threat' ||
@@ -597,7 +636,11 @@ async function handleFileEvent(folderPath: string, filename: string) {
       }
     }
   } finally {
-    pendingStabilization.delete(filePath);
+    // Retain in pendingStabilization for 5000ms so post-scan ADS removal or
+    // browser handle closure cannot trigger a secondary redundant scan
+    setTimeout(() => {
+      pendingStabilization.delete(normPath);
+    }, 5000);
   }
 }
 
@@ -837,5 +880,25 @@ export function setupDownloadScannerIPC(win: BrowserWindow) {
   // ── Rolling Scan History ──────────────────────────────────────────────────
   ipcMain.handle('download-scanner:get-history', () => {
     return { success: true, history: recentScans };
+  });
+
+  // ── Action: Create EICAR Benign Test Threat File in Downloads ───────────────
+  ipcMain.handle('download-scanner:create-test-file', async () => {
+    try {
+      const downloadsDir = getDefaultDownloadsDir();
+      if (!fs.existsSync(downloadsDir)) {
+        fs.mkdirSync(downloadsDir, { recursive: true });
+      }
+      const testFileName = `Vanguard-EICAR-Test-${Date.now().toString().slice(-4)}.com`;
+      const targetPath = path.join(downloadsDir, testFileName);
+      // Standard 68-byte EICAR Anti-Virus Test File (100% benign, recognized by all antivirus engines)
+      const eicarContent = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
+      fs.writeFileSync(targetPath, eicarContent, 'utf-8');
+      logger.info(`[DownloadScanner] Test EICAR créé avec succès dans : ${targetPath}`);
+      return { success: true, filePath: targetPath, fileName: testFileName };
+    } catch (err: any) {
+      logger.error('[DownloadScanner] Erreur création fichier EICAR test:', err.message);
+      return { success: false, error: err.message };
+    }
   });
 }

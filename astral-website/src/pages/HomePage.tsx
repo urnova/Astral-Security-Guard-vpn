@@ -15,7 +15,8 @@ import {
   Activity,
   Lock,
   FileText,
-  AlertCircle
+  AlertCircle,
+  ShieldAlert
 } from 'lucide-react';
 
 const REPO_OWNER = 'urnova';
@@ -895,6 +896,14 @@ export default function HomePage() {
             <a href="#preview" className="hover:text-white transition-colors">Modules</a>
             <a href="#specs" className="hover:text-white transition-colors">Spécifications</a>
             <a href="#faq" className="hover:text-white transition-colors">FAQ</a>
+            <span className="text-slate-600 hidden sm:inline">|</span>
+            <Link
+              to="/test-sentinel"
+              className="hover:text-red-400 text-red-400/90 transition-colors flex items-center gap-1 font-semibold"
+            >
+              <ShieldAlert size={12} />
+              <span>Laboratoire de Test (EICAR)</span>
+            </Link>
             <span className="text-slate-600 hidden sm:inline">|</span>
             <Link
               to="/confidentialite"

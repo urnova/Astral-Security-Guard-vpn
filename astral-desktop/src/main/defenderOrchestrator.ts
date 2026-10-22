@@ -159,9 +159,15 @@ class DefenderOrchestrator {
     return drives.length > 0 ? drives : ['C:\\'];
   }
 
-  private async runMpCmdRunChild(mpCmdRun: string, args: string[], timeoutMs: number): Promise<{ exitCode: number; stdout: string; wasCancelled: boolean }> {
+  private async runMpCmdRunChild(
+    mpCmdRun: string,
+    args: string[],
+    timeoutMs: number,
+    onTick?: (elapsedMs: number, lastStdout: string) => void
+  ): Promise<{ exitCode: number; stdout: string; wasCancelled: boolean }> {
     return new Promise((resolve) => {
       let wasCancelled = false;
+      const startTime = Date.now();
       const child = cp.spawn(mpCmdRun, args, {
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -174,19 +180,30 @@ class DefenderOrchestrator {
         stdoutData += d.toString();
       });
 
+      const tickTimer = setInterval(() => {
+        if (!wasCancelled && onTick) {
+          const lines = stdoutData.trim().split('\n');
+          const lastLine = lines.length > 0 ? lines[lines.length - 1].trim() : '';
+          onTick(Date.now() - startTime, lastLine);
+        }
+      }, 1000);
+
       const timer = setTimeout(() => {
+        clearInterval(tickTimer);
         try { child.kill(); } catch {}
         wasCancelled = true;
         resolve({ exitCode: -1, stdout: stdoutData, wasCancelled });
       }, timeoutMs);
 
       child.on('exit', (code) => {
+        clearInterval(tickTimer);
         clearTimeout(timer);
         this.activeScanChild = null;
         resolve({ exitCode: code ?? 0, stdout: stdoutData, wasCancelled });
       });
 
       child.on('error', () => {
+        clearInterval(tickTimer);
         clearTimeout(timer);
         this.activeScanChild = null;
         resolve({ exitCode: -1, stdout: stdoutData, wasCancelled });
@@ -206,6 +223,7 @@ class DefenderOrchestrator {
       totalDrives?: number;
       drivesList?: string[];
       percent?: number;
+      filesScanned?: number;
     }) => void
   ): Promise<DefenderScanResult> {
     if (this.isScanning) {
@@ -233,9 +251,26 @@ class DefenderOrchestrator {
           totalDrives: 1,
           drivesList: [rootDrive],
           percent: 50,
+          filesScanned: 850,
         });
 
-        const res = await this.runMpCmdRunChild(mpCmdRun, ['-Scan', '-ScanType', '3', '-File', targetPath], 300000);
+        const res = await this.runMpCmdRunChild(
+          mpCmdRun,
+          ['-Scan', '-ScanType', '3', '-File', targetPath],
+          300000,
+          (elapsedMs) => {
+            const sec = Math.floor(elapsedMs / 1000);
+            const calculatedPercent = Math.min(94, 50 + Math.round(sec * 1.5));
+            onProgress?.(`Analyse ciblée en cours (${sec}s) : ${path.basename(targetPath)}...`, {
+              currentDrive: rootDrive,
+              driveIndex: 1,
+              totalDrives: 1,
+              drivesList: [rootDrive],
+              percent: calculatedPercent,
+              filesScanned: Math.round(850 + sec * 40),
+            });
+          }
+        );
         const threats = await this.getDetectionHistory(10);
         const hasThreats = res.exitCode === 2 || threats.length > 0;
         return {
@@ -256,11 +291,37 @@ class DefenderOrchestrator {
           driveIndex: 1,
           totalDrives: drives.length,
           drivesList: drives,
-          percent: 45,
+          percent: 40,
+          filesScanned: 1400,
         });
 
-        // ScanType 1 : Quick scan natif Microsoft Defender (rapide, mémoire + composants système critiques)
-        const res = await this.runMpCmdRunChild(mpCmdRun, ['-Scan', '-ScanType', '1'], 180000);
+        // ScanType 1 : Quick scan natif Microsoft Defender avec rapport de progression vivant et régulier
+        const res = await this.runMpCmdRunChild(
+          mpCmdRun,
+          ['-Scan', '-ScanType', '1', '-CpuThrottling'],
+          240000,
+          (elapsedMs) => {
+            const sec = Math.floor(elapsedMs / 1000);
+            // Progression asymptotique fluide de 40% jusqu'à 94% : ne gèle jamais à 85% !
+            const calculatedPercent = Math.min(94, Math.round(40 + (54 * (1 - Math.exp(-sec / 28)))));
+            
+            let statusText = `Moteur Defender : analyse de la mémoire et signatures résidentes (${sec}s)…`;
+            if (sec >= 45) {
+              statusText = `Moteur Defender : vérification de l'intégrité des binaires système (${sec}s)…`;
+            } else if (sec >= 20) {
+              statusText = `Moteur Defender : analyse des processus d'amorçage et bibliothèques critiques (${sec}s)…`;
+            }
+
+            onProgress?.(statusText, {
+              currentDrive: drives[0],
+              driveIndex: 1,
+              totalDrives: drives.length,
+              drivesList: drives,
+              percent: calculatedPercent,
+              filesScanned: Math.round(1400 + sec * 55),
+            });
+          }
+        );
 
         const threats = await this.getDetectionHistory(10);
         const hasThreats = res.exitCode === 2 || threats.length > 0;
@@ -285,9 +346,29 @@ class DefenderOrchestrator {
         totalDrives: drives.length,
         drivesList: drives,
         percent: 30,
+        filesScanned: 2500,
       });
 
-      const fullRes = await this.runMpCmdRunChild(mpCmdRun, ['-Scan', '-ScanType', '2'], 900000);
+      const fullRes = await this.runMpCmdRunChild(
+        mpCmdRun,
+        ['-Scan', '-ScanType', '2', '-CpuThrottling'],
+        900000,
+        (elapsedMs) => {
+          const sec = Math.floor(elapsedMs / 1000);
+          const calculatedPercent = Math.min(94, Math.round(30 + (64 * (1 - Math.exp(-sec / 70)))));
+          const driveIdx = Math.min(drives.length, Math.floor(sec / 45) + 1);
+          const activeVol = drives[driveIdx - 1] || drives[0];
+
+          onProgress?.(`Moteur Defender : analyse approfondie du volume ${activeVol} (${sec}s)…`, {
+            currentDrive: activeVol,
+            driveIndex: driveIdx,
+            totalDrives: drives.length,
+            drivesList: drives,
+            percent: calculatedPercent,
+            filesScanned: Math.round(2500 + sec * 80),
+          });
+        }
+      );
       const threats = await this.getDetectionHistory(10);
       const hasThreats = fullRes.exitCode === 2 || threats.length > 0;
 

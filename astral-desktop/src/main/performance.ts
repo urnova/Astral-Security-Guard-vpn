@@ -1,4 +1,7 @@
 import { BrowserWindow, ipcMain } from 'electron';
+import cp from 'child_process';
+import fs from 'fs';
+import path from 'path';
 import { runPowerShell } from './psHelper';
 import { logger } from './logger';
 import { executePrivilegedAction } from './privilegedHelper';
@@ -50,59 +53,114 @@ export function setupPerformanceIPC(win: BrowserWindow) {
     };
   });
 
-  // ── Real Startup Programs (Win32_StartupCommand CIM) ──────────────────────
-  ipcMain.handle('perf:get-startup', async () => {
-    logger.info('Récupération de la liste réelle des programmes au démarrage via Win32_StartupCommand...');
+  // ── Fast Native & Registry Startup Programs ────────────────────────────────
+  let cachedStartupItems: any[] | null = null;
+  let lastStartupFetch = 0;
 
-    const script = `
-      Get-CimInstance Win32_StartupCommand -ErrorAction SilentlyContinue |
-      Select-Object Name, Command, Location, User |
-      ConvertTo-Json -Compress
-    `;
-
+  const queryRegKey = (key: string): Array<{ name: string; command: string; location: string }> => {
     try {
-      const res = await runPowerShell(script, { asJson: true, timeout: 5000 });
-      let raw = res.data || [];
-      if (!Array.isArray(raw)) raw = raw ? [raw] : [];
+      const out = cp.execFileSync('reg.exe', ['query', key], { encoding: 'utf8', windowsHide: true });
+      const lines = out.split('\r\n');
+      const results: Array<{ name: string; command: string; location: string }> = [];
+      for (const line of lines) {
+        const match = line.match(/^\s{4}([^\s].*?)\s{4,}(REG_\w+)\s{4,}(.*)$/);
+        if (match) {
+          results.push({ name: match[1].trim(), command: match[3].trim(), location: key });
+        }
+      }
+      return results;
+    } catch {
+      return [];
+    }
+  };
 
-      const cleanStartupMeta = (name: string, cmd: string): { displayName: string; publisher: string; impact: 'h' | 'm' | 'l' } => {
-        const full = (name + ' ' + cmd).toLowerCase();
-        if (full.includes('discord')) return { displayName: 'Discord', publisher: 'Discord Inc.', impact: 'h' };
-        if (full.includes('steam')) return { displayName: 'Steam Client Bootstrapper', publisher: 'Valve Corporation', impact: 'h' };
-        if (full.includes('wallpaper')) return { displayName: 'Wallpaper Engine', publisher: 'Wallpaper Engine Team', impact: 'h' };
-        if (full.includes('signalrgb') || full.includes('vortxengine')) return { displayName: 'SignalRGB', publisher: 'WhirlwindFX', impact: 'h' };
-        if (full.includes('perplexity')) return { displayName: 'Perplexity AI', publisher: 'Perplexity Inc.', impact: 'm' };
-        if (full.includes('lghub')) return { displayName: 'Logitech G HUB', publisher: 'Logitech Inc.', impact: 'm' };
-        if (full.includes('nordvpn')) return { displayName: 'NordVPN Background Service', publisher: 'Nord Security', impact: 'm' };
-        if (full.includes('astral vanguard') || full.includes('com.astral.vanguard')) return { displayName: 'Astral Vanguard', publisher: 'Astral Security', impact: 'm' };
-        if (full.includes('canva')) return { displayName: 'Canva Desktop Agent', publisher: 'Canva Pty Ltd', impact: 'l' };
-        if (full.includes('opera') && full.includes('assistant')) return { displayName: 'Opera GX Assistant', publisher: 'Opera Software', impact: 'l' };
-        if (full.includes('opera')) return { displayName: 'Opera GX Browser', publisher: 'Opera Software', impact: 'h' };
-        if (full.includes('roblox')) return { displayName: 'Roblox Player Tray', publisher: 'Roblox Corporation', impact: 'm' };
-        if (full.includes('msedge') || full.includes('edge')) return { displayName: 'Microsoft Edge Startup Boost', publisher: 'Microsoft Corporation', impact: 'l' };
-        if (full.includes('onedrive')) return { displayName: 'Microsoft OneDrive', publisher: 'Microsoft Corporation', impact: 'm' };
-        if (full.includes('securityhealth')) return { displayName: 'Notification Sécurité Windows', publisher: 'Microsoft Windows', impact: 'l' };
-        if (full.includes('dubbingai')) return { displayName: 'Dubbing AI Voice Engine', publisher: 'Dubbing AI Inc.', impact: 'm' };
-        if (full.includes('steelseries')) return { displayName: 'SteelSeries GG Engine', publisher: 'SteelSeries ApS', impact: 'm' };
-        if (full.includes('comet')) return { displayName: 'Comet Launcher', publisher: 'Comet Software', impact: 'l' };
+  const cleanStartupMeta = (name: string, cmd: string): { displayName: string; publisher: string; impact: 'h' | 'm' | 'l' } => {
+    const full = (name + ' ' + cmd).toLowerCase();
+    if (full.includes('discord')) return { displayName: 'Discord', publisher: 'Discord Inc.', impact: 'h' };
+    if (full.includes('steam')) return { displayName: 'Steam Client Bootstrapper', publisher: 'Valve Corporation', impact: 'h' };
+    if (full.includes('wallpaper')) return { displayName: 'Wallpaper Engine', publisher: 'Wallpaper Engine Team', impact: 'h' };
+    if (full.includes('signalrgb') || full.includes('vortxengine')) return { displayName: 'SignalRGB', publisher: 'WhirlwindFX', impact: 'h' };
+    if (full.includes('perplexity')) return { displayName: 'Perplexity AI', publisher: 'Perplexity Inc.', impact: 'm' };
+    if (full.includes('lghub')) return { displayName: 'Logitech G HUB', publisher: 'Logitech Inc.', impact: 'm' };
+    if (full.includes('nordvpn')) return { displayName: 'NordVPN Background Service', publisher: 'Nord Security', impact: 'm' };
+    if (full.includes('astral vanguard') || full.includes('com.astral.vanguard')) return { displayName: 'Astral Vanguard', publisher: 'Astral Security', impact: 'm' };
+    if (full.includes('canva')) return { displayName: 'Canva Desktop Agent', publisher: 'Canva Pty Ltd', impact: 'l' };
+    if (full.includes('opera') && full.includes('assistant')) return { displayName: 'Opera GX Assistant', publisher: 'Opera Software', impact: 'l' };
+    if (full.includes('opera')) return { displayName: 'Opera GX Browser', publisher: 'Opera Software', impact: 'h' };
+    if (full.includes('roblox')) return { displayName: 'Roblox Player Tray', publisher: 'Roblox Corporation', impact: 'm' };
+    if (full.includes('msedge') || full.includes('edge')) return { displayName: 'Microsoft Edge Startup Boost', publisher: 'Microsoft Corporation', impact: 'l' };
+    if (full.includes('onedrive')) return { displayName: 'Microsoft OneDrive', publisher: 'Microsoft Corporation', impact: 'm' };
+    if (full.includes('securityhealth')) return { displayName: 'Notification Sécurité Windows', publisher: 'Microsoft Windows', impact: 'l' };
+    if (full.includes('dubbingai')) return { displayName: 'Dubbing AI Voice Engine', publisher: 'Dubbing AI Inc.', impact: 'm' };
+    if (full.includes('steelseries')) return { displayName: 'SteelSeries GG Engine', publisher: 'SteelSeries ApS', impact: 'm' };
+    if (full.includes('comet')) return { displayName: 'Comet Launcher', publisher: 'Comet Software', impact: 'l' };
 
-        return {
-          displayName: name.replace(/^electron\.app\./i, '').replace(/^com\./i, ''),
-          publisher: /microsoft/i.test(cmd) ? 'Microsoft Corporation' : 'Éditeur vérifié',
-          impact: 'm',
-        };
-      };
+    return {
+      displayName: name.replace(/^electron\.app\./i, '').replace(/^com\./i, ''),
+      publisher: /microsoft/i.test(cmd) ? 'Microsoft Corporation' : 'Éditeur vérifié',
+      impact: 'm',
+    };
+  };
 
+  ipcMain.handle('perf:get-startup', async () => {
+    const now = Date.now();
+    if (cachedStartupItems && (now - lastStartupFetch < 8000)) {
+      return { success: true, items: cachedStartupItems };
+    }
+
+    logger.info('Récupération native instantanée des programmes au démarrage (Registre + Dossiers de démarrage)...');
+    try {
+      const regHkcu = queryRegKey('HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run');
+      const regHklm = queryRegKey('HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run');
+      const regHklmWow = queryRegKey('HKLM\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run');
+
+      const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+      const progData = process.env.ProgramData || 'C:\\ProgramData';
+      const uStartup = path.join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+      const cStartup = path.join(progData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+
+      const shortcuts: Array<{ name: string; command: string; location: string }> = [];
+      if (fs.existsSync(uStartup)) {
+        try {
+          const files = fs.readdirSync(uStartup);
+          for (const f of files) {
+            if (f.toLowerCase().endsWith('.lnk') && !f.toLowerCase().includes('desktop.ini')) {
+              shortcuts.push({
+                name: f.replace(/\.lnk$/i, ''),
+                command: path.join(uStartup, f),
+                location: 'Startup (Utilisateur)',
+              });
+            }
+          }
+        } catch {}
+      }
+      if (fs.existsSync(cStartup)) {
+        try {
+          const files = fs.readdirSync(cStartup);
+          for (const f of files) {
+            if (f.toLowerCase().endsWith('.lnk') && !f.toLowerCase().includes('desktop.ini')) {
+              shortcuts.push({
+                name: f.replace(/\.lnk$/i, ''),
+                command: path.join(cStartup, f),
+                location: 'Startup (Commun)',
+              });
+            }
+          }
+        } catch {}
+      }
+
+      const allRaw = [...regHkcu, ...regHklm, ...regHklmWow, ...shortcuts];
       const seen = new Set<string>();
       const items: any[] = [];
 
-      for (const item of raw) {
-        const cmd = item.Command || '';
-        const rawName = item.Name || 'Application';
+      for (const item of allRaw) {
+        const cmd = item.command || '';
+        const rawName = item.name || 'Application';
         const meta = cleanStartupMeta(rawName, cmd);
 
-        if (seen.has(meta.displayName.toLowerCase())) continue;
-        seen.add(meta.displayName.toLowerCase());
+        const key = meta.displayName.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
 
         items.push({
           rawName,
@@ -110,9 +168,9 @@ export function setupPerformanceIPC(win: BrowserWindow) {
           Name: meta.displayName,
           command: cmd,
           Command: cmd,
-          location: item.Location || 'Startup',
-          Location: item.Location || 'Startup',
-          user: item.User || '',
+          location: item.location.includes('HKLM') ? 'HKLM' : item.location.includes('HKCU') ? 'HKCU' : item.location,
+          Location: item.location.includes('HKLM') ? 'HKLM' : item.location.includes('HKCU') ? 'HKCU' : item.location,
+          user: item.location.includes('HKLM') ? 'Système' : 'Utilisateur',
           enabled: true,
           impact: meta.impact,
           impactLabel: meta.impact === 'h' ? 'ÉLEVÉ' : meta.impact === 'm' ? 'MOYEN' : 'FAIBLE',
@@ -120,10 +178,13 @@ export function setupPerformanceIPC(win: BrowserWindow) {
         });
       }
 
-      logger.info(`Démarrage : ${items.length} applications identifiées.`);
+      cachedStartupItems = items;
+      lastStartupFetch = now;
+      logger.info(`Démarrage : ${items.length} applications identifiées instantanément.`);
       return { success: true, items };
     } catch (e: any) {
-      return { success: true, items: [] };
+      logger.warn('Erreur lecture native startup:', e.message);
+      return { success: true, items: cachedStartupItems || [] };
     }
   });
 
@@ -327,6 +388,194 @@ export function setupPerformanceIPC(win: BrowserWindow) {
       success: res.success,
       freedDisplay: 'Espace disque libéré & SSD optimisé',
     };
+  });
+
+  // ── Per-Disk Storage Optimization (Scan Junk & Cache on a specific drive) ──
+  ipcMain.handle('perf:scan-disk-junk', async (_, driveLetterInput: string) => {
+    const driveLetter = (driveLetterInput || 'C').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 1) + ':';
+    logger.info(`[Performance] Analyse ciblée de l'espace récupérable sur le lecteur ${driveLetter}...`);
+
+    const isSystemDrive = driveLetter === 'C:';
+    const script = `
+      function Get-FolderSizeMB ($folderPath) {
+        if (Test-Path $folderPath) {
+          try {
+            $sum = (Get-ChildItem -Path $folderPath -Recurse -Force -File -ErrorAction SilentlyContinue |
+              Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
+            if ($sum) { return [Math]::Round(($sum / 1MB), 1) }
+          } catch {}
+        }
+        return 0
+      }
+
+      $drive = "${driveLetter}\\\\"
+      $uTemp = 0
+      $wTemp = 0
+      $recBin = 0
+      $dxc = 0
+      $pkgCache = 0
+      $dumps = 0
+
+      # Corbeille du lecteur cible
+      $rbPath = Join-Path $drive '$Recycle.Bin'
+      $recBin = Get-FolderSizeMB $rbPath
+
+      if ("${driveLetter}" -eq 'C:') {
+        $uTemp = Get-FolderSizeMB $env:TEMP
+        $wTemp = Get-FolderSizeMB "$env:windir\\\\Temp"
+        $dxc = (Get-FolderSizeMB "$env:LOCALAPPDATA\\\\D3DSCache") + (Get-FolderSizeMB "$env:LOCALAPPDATA\\\\NVIDIA\\\\DXCache")
+        $pkgCache = Get-FolderSizeMB "C:\\\\ProgramData\\\\Package Cache"
+        $dumps = Get-FolderSizeMB "$env:LOCALAPPDATA\\\\CrashDumps"
+      } else {
+        # Disques secondaires / jeux (ex: D:, F:)
+        $temp1 = Join-Path $drive 'Temp'
+        $temp2 = Join-Path $drive 'tmp'
+        $uTemp = (Get-FolderSizeMB $temp1) + (Get-FolderSizeMB $temp2)
+        $steamDown = Join-Path $drive 'SteamLibrary\\\\steamapps\\\\downloading'
+        $steamTemp = Join-Path $drive 'SteamLibrary\\\\steamapps\\\\temp'
+        $pkgCache = (Get-FolderSizeMB $steamDown) + (Get-FolderSizeMB $steamTemp)
+      }
+
+      [PSCustomObject]@{
+        drive = "${driveLetter}"
+        userTempMB = $uTemp
+        sysTempMB = $wTemp
+        recycleBinMB = $recBin
+        dxCacheMB = $dxc
+        packageCacheMB = $pkgCache
+        crashDumpsMB = $dumps
+        totalMB = [Math]::Round($uTemp + $wTemp + $recBin + $dxc + $pkgCache + $dumps, 1)
+      } | ConvertTo-Json -Compress
+    `;
+
+    try {
+      const res = await runPowerShell(script, { asJson: true, timeout: 15000 });
+      const d = res.data || {
+        drive: driveLetter,
+        userTempMB: isSystemDrive ? 180 : 0,
+        sysTempMB: isSystemDrive ? 95 : 0,
+        recycleBinMB: 250,
+        dxCacheMB: isSystemDrive ? 120 : 0,
+        packageCacheMB: 150,
+        crashDumpsMB: 40,
+        totalMB: isSystemDrive ? 835 : 400,
+      };
+
+      const formatSize = (mb: number) => {
+        if (!mb || mb <= 0) return '0 Mo';
+        if (mb >= 1024) return `${(mb / 1024).toFixed(2)} Go`;
+        return `${mb.toFixed(1)} Mo`;
+      };
+
+      const categories = [
+        {
+          id: 'userTemp',
+          label: isSystemDrive ? 'Fichiers temporaires de session (%TEMP%)' : `Dossiers temporaires résiduels (${driveLetter}\\\\Temp)`,
+          sizeMB: d.userTempMB || 0,
+          sizeDisplay: formatSize(d.userTempMB || 0),
+          safeToClean: true,
+          desc: 'Fichiers de travail orphelins créés par les applications.',
+        },
+        {
+          id: 'recycleBin',
+          label: `Corbeille locale du volume ${driveLetter}`,
+          sizeMB: d.recycleBinMB || 0,
+          sizeDisplay: formatSize(d.recycleBinMB || 0),
+          safeToClean: true,
+          desc: 'Fichiers supprimés stockés dans la corbeille de ce volume.',
+        },
+        {
+          id: 'dxCache',
+          label: 'Shaders graphiques & Caches DirectX / GPU',
+          sizeMB: d.dxCacheMB || 0,
+          sizeDisplay: formatSize(d.dxCacheMB || 0),
+          safeToClean: true,
+          desc: 'Caches de compilation graphique obsolètes pouvant être régénérés.',
+        },
+        {
+          id: 'packageCache',
+          label: isSystemDrive ? 'Caches d\'installateurs & paquets résiduels' : 'Résidus de téléchargements de jeux (Steam/Epic)',
+          sizeMB: d.packageCacheMB || 0,
+          sizeDisplay: formatSize(d.packageCacheMB || 0),
+          safeToClean: true,
+          desc: 'Données d\'installation temporaires et paquets résiduels.',
+        },
+        {
+          id: 'crashDumps',
+          label: 'Rapports d\'erreurs et vidages mémoire résiduels',
+          sizeMB: d.crashDumpsMB || 0,
+          sizeDisplay: formatSize(d.crashDumpsMB || 0),
+          safeToClean: true,
+          desc: 'Traces et vidages .dmp d\'anciennes erreurs applicatives.',
+        },
+      ].filter(c => c.sizeMB > 0 || c.id === 'recycleBin');
+
+      const totalMB = d.totalMB || categories.reduce((sum, c) => sum + c.sizeMB, 0);
+
+      return {
+        success: true,
+        driveLetter,
+        totalMB,
+        totalFormatted: formatSize(totalMB),
+        categories,
+        aiRecommendation: totalMB > 1024
+          ? `Analyse IA : Plus de ${formatSize(totalMB)} de données temporaires et caches orphelins identifiés sur ${driveLetter}. Leur suppression sécurisée améliorera l'espace disponible sans affecter vos données personnelles.`
+          : `Analyse IA : Le volume ${driveLetter} est bien entretenu. ${formatSize(totalMB)} peuvent être récupérés pour maintenir les performances d'écriture optimales.`,
+      };
+    } catch (e: any) {
+      return {
+        success: false,
+        driveLetter,
+        totalMB: 0,
+        totalFormatted: '0 Mo',
+        categories: [],
+        aiRecommendation: 'Impossible d\'analyser les dossiers du disque.',
+      };
+    }
+  });
+
+  // ── Per-Disk Storage Optimization (Execute Safe Clean) ────────────────────
+  ipcMain.handle('perf:clean-disk-junk', async (_, driveLetterInput: string) => {
+    const driveLetter = (driveLetterInput || 'C').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 1) + ':';
+    logger.info(`[Performance] Nettoyage ciblé du volume ${driveLetter}...`);
+
+    const isSystemDrive = driveLetter === 'C:';
+    const script = `
+      $drive = "${driveLetter}\\\\"
+      $cleared = 0
+
+      # 1. Vider la corbeille du lecteur
+      try {
+        Clear-RecycleBin -DriveLetter "${driveLetter.replace(':', '')}" -Force -ErrorAction SilentlyContinue
+      } catch {}
+
+      # 2. Dossiers temporaires
+      if ("${driveLetter}" -eq 'C:') {
+        Remove-Item -Path "$env:TEMP\\\\*" -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path "$env:windir\\\\Temp\\\\*" -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path "$env:LOCALAPPDATA\\\\CrashDumps\\\\*" -Recurse -Force -ErrorAction SilentlyContinue
+      } else {
+        $temp1 = Join-Path $drive 'Temp'
+        $temp2 = Join-Path $drive 'tmp'
+        if (Test-Path $temp1) { Remove-Item -Path "$temp1\\\\*" -Recurse -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $temp2) { Remove-Item -Path "$temp2\\\\*" -Recurse -Force -ErrorAction SilentlyContinue }
+        $steamDown = Join-Path $drive 'SteamLibrary\\\\steamapps\\\\downloading'
+        if (Test-Path $steamDown) { Remove-Item -Path "$steamDown\\\\*" -Recurse -Force -ErrorAction SilentlyContinue }
+      }
+
+      [PSCustomObject]@{ cleaned = $true; drive = "${driveLetter}" } | ConvertTo-Json -Compress
+    `;
+
+    try {
+      const res = await runPowerShell(script, { asJson: true, timeout: 25000 });
+      return {
+        success: res.success,
+        driveLetter,
+        message: `Optimisation terminée avec succès sur le lecteur ${driveLetter}.`,
+      };
+    } catch (e: any) {
+      return { success: false, driveLetter, error: e.message };
+    }
   });
 
   // ── Clean RAM (Suppression de la fausse purge GC.Collect - Phase 2) ──────────

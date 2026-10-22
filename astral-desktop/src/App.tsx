@@ -14,6 +14,7 @@ import UpdateModal from './components/UpdateModal';
 import DownloadScanModal from './components/DownloadScanModal';
 import { ShieldAlert } from 'lucide-react';
 import { SystemProvider } from './context/SystemContext';
+import { playSound, unlockAudio, setMuted } from './lib/audioSynth';
 
 const api = (window as any).vanguard;
 
@@ -37,6 +38,9 @@ export default function App() {
         if (p.firstName !== undefined) setFirstName(p.firstName);
         if (p.lastName  !== undefined) setLastName(p.lastName);
         if (p.theme) setTheme(p.theme);
+        if (typeof p.soundEnabled === 'boolean') {
+          setMuted(!p.soundEnabled);
+        }
         if (typeof p.onboardingCompleted === 'boolean') {
           setShowOnboarding(!p.onboardingCompleted);
         }
@@ -45,6 +49,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // Unlock Web Audio API on first user interaction
+    const unlockHandler = () => {
+      unlockAudio();
+      window.removeEventListener('pointerdown', unlockHandler);
+      window.removeEventListener('keydown', unlockHandler);
+    };
+    window.addEventListener('pointerdown', unlockHandler, { once: true });
+    window.addEventListener('keydown', unlockHandler, { once: true });
+
     if (!api) return;
 
     // Initial profile load
@@ -84,7 +97,31 @@ export default function App() {
       });
     });
 
+    // Sound effects for all system notifications & download events
+    const cleanupNotif = api.on('notification:trigger', (d: any) => {
+      if (!d) return;
+      const t = d.type || 'info';
+      if (t === 'threat') playSound('threat_blocked');
+      else if (t === 'gaming') playSound('game_detected');
+      else if (t === 'network' || t === 'ping' || t === 'lag') playSound('lag_alert');
+      else if (t === 'vpn' || t === 'success') playSound('sos_resolved');
+      else playSound('notification');
+    });
+
+    const cleanupScanStart = api.on('download-scanner:scan-start', () => {
+      playSound('scan_start');
+    });
+
+    const cleanupScanComplete = api.on('download-scanner:scan-complete', (d: any) => {
+      if (!d) return;
+      if (d.status === 'threat') playSound('threat_blocked');
+      else if (d.status === 'suspect') playSound('lag_alert');
+      else if (d.status === 'safe' && d.shouldDisplayModal) playSound('scan_complete');
+    });
+
     return () => {
+      window.removeEventListener('pointerdown', unlockHandler);
+      window.removeEventListener('keydown', unlockHandler);
       cleanupAdmin?.();
       cleanupStart?.();
       cleanupStop?.();
@@ -93,6 +130,9 @@ export default function App() {
       cleanupNav?.();
       cleanupScanTrigger?.();
       cleanupGamingToggle?.();
+      cleanupNotif?.();
+      cleanupScanStart?.();
+      cleanupScanComplete?.();
     };
   }, [refreshProfile]);
 

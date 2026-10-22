@@ -45,6 +45,9 @@ if (!gotSingleInstanceLock) {
 // Set Application User Model ID for Windows toast notifications & taskbar grouping
 app.setAppUserModelId('com.astral.vanguardcore');
 
+// Permit Web Audio autoplay in transparent popups and background windows without requiring user gestures
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
 process.env.DIST = path.join(__dirname, '../..');
 process.env.PUBLIC = app.isPackaged
   ? process.env.DIST

@@ -137,7 +137,7 @@ export default function SettingsTab({
   const [betaChannel, setBetaChannel]       = useState(true);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateStatus, setUpdateStatus]     = useState('');
-  const [currentVersion, setCurrentVersion] = useState('0.1.1');
+  const [currentVersion, setCurrentVersion] = useState('0.1.3');
   const [updateInfo, setUpdateInfo]         = useState<{ version?: string; hasUpdate?: boolean } | null>(null);
 
   const playTestNotificationSound = () => {
@@ -185,6 +185,8 @@ export default function SettingsTab({
       if (p) {
         if (p.firstName) setFirstName(p.firstName);
         if (p.lastName) setLastName(p.lastName);
+        if (typeof p.soundEnabled === 'boolean') setSoundEnabled(p.soundEnabled);
+        if (typeof p.notificationsEnabled === 'boolean') setNotifEnabled(p.notificationsEnabled);
       }
     }).catch(() => {});
 
@@ -866,6 +868,85 @@ export default function SettingsTab({
                   ))}
                 </div>
               </div>
+
+              {/* Banc d'essai sentinelle & EICAR test */}
+              <div style={{
+                background: 'rgba(239, 68, 68, 0.05)',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
+                borderRadius: 'var(--r-md)',
+                padding: 16,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 8,
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#ef4444',
+                      flexShrink: 0
+                    }}>
+                      <FlaskConical size={18} />
+                    </div>
+                    <div>
+                      <b style={{ fontSize: 13, color: 'var(--text)' }}>Banc d'essai : Tester la Sentinelle & l'Alerte Sonore</b>
+                      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '2px 0 0', lineHeight: 1.4 }}>
+                        Générez un fichier de test inoffensif conforme au standard international <b>EICAR</b> (68 octets sans danger).
+                        La sentinelle l'interceptera immédiatement et déclenchera la bannière rouge et l'alarme sonore.
+                      </p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    <button
+                      className="btn"
+                      onClick={async () => {
+                        try {
+                          showToast('🧪 Génération du fichier de test EICAR dans Téléchargements...');
+                          const res = await api?.createEicarTestFile?.();
+                          if (res?.success) {
+                            showToast('✓ Fichier EICAR créé ! Interception par Vanguard en cours...');
+                          } else {
+                            showToast(`Erreur : ${res?.error || 'Échec de génération'}`);
+                          }
+                        } catch (e: any) {
+                          showToast(`Erreur : ${e.message}`);
+                        }
+                      }}
+                      style={{
+                        fontSize: 11,
+                        padding: '7px 14px',
+                        background: 'rgba(239, 68, 68, 0.15)',
+                        borderColor: 'rgba(239, 68, 68, 0.4)',
+                        color: '#f87171',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <FlaskConical size={13} style={{ marginRight: 6 }} />
+                      Tester la Sentinelle (EICAR)
+                    </button>
+                    <button
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        api?.openExternal?.('https://astral-security-guard-vpn.vercel.app/test-sentinel');
+                      }}
+                      style={{
+                        fontSize: 11,
+                        padding: '7px 12px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                      title="Ouvrir le laboratoire de test web dans le navigateur"
+                    >
+                      <ExternalLink size={13} />
+                      <span>Test Web</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1027,7 +1108,12 @@ export default function SettingsTab({
                   </div>
                   <div
                     className={`sw ${notifEnabled ? 'on' : ''}`}
-                    onClick={() => setNotifEnabled(!notifEnabled)}
+                    onClick={async () => {
+                      const next = !notifEnabled;
+                      setNotifEnabled(next);
+                      await api?.saveUserProfile?.({ notificationsEnabled: next });
+                      showToast(next ? 'Notifications système activées' : 'Notifications système désactivées');
+                    }}
                     role="switch"
                     aria-checked={notifEnabled}
                     tabIndex={0}
@@ -1041,7 +1127,12 @@ export default function SettingsTab({
                   </div>
                   <div
                     className={`sw ${soundEnabled ? 'on' : ''}`}
-                    onClick={() => setSoundEnabled(!soundEnabled)}
+                    onClick={async () => {
+                      const next = !soundEnabled;
+                      setSoundEnabled(next);
+                      await api?.saveUserProfile?.({ soundEnabled: next });
+                      showToast(next ? 'Effets sonores activés' : 'Effets sonores désactivés');
+                    }}
                     role="switch"
                     aria-checked={soundEnabled}
                     tabIndex={0}

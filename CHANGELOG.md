@@ -10,6 +10,27 @@ Ce journal consigne de manière chronologique et détaillée toutes les modifica
 * **`framer-motion-ui` & `opera-gx-aesthetic`** : Conception de l'interface en mode sombre profond, accents néon adaptatifs, micro-interactions, skeleton loaders et compteurs animés fluides.
 * **`native-audio-synth`** : Moteur sonore Web Audio API synthétisant des carillons discrets pour chaque type d'alerte sans dépendance de fichiers audio externes.
 
+## [0.1.3] - Bêta Pré-Release (2026-10-22)
+
+### 🛡️ Sentinelle des Téléchargements : Éradication des Notifications en Double
+- **Correction du cycle de notification doublé** :
+  - Identification de la cause racine : lors du renommage post-téléchargement et de la suppression du flux ADS `Zone.Identifier` après validation d'un fichier sain, Windows et Chromium déclenchaient un second événement de modification du fichier avec un timestamp `mtime` distinct, contournant le cache et provoquant une seconde séquence « Vérification en cours » → « Vérification terminée ».
+  - Intégration d'un registre de déduplication strict `recentScannedFiles` avec fenêtre d'exclusion de 25 secondes indexé sur le chemin canonique normalisé.
+  - Maintien différé du verrou de stabilisation (`pendingStabilization`) pendant 5000 ms après la fin du scan pour bloquer tout rebond d'événements de fermeture ou de métadonnées.
+
+### 🔊 Effets Sonores des Notifications & Synthèse Web Audio
+- **Rétablissement et garantie du retour audio sur toutes les alertes** :
+  - Déverrouillage actif de la politique d'autoplay Chromium (`--autoplay-policy=no-user-gesture-required`) au niveau du processus principal et déverrouillage automatique du `AudioContext` dès la première interaction utilisateur.
+  - Connexion directe de la synthèse procédurale `audioSynth.ts` dans le composant principal `App.tsx` pour écouter et sonoriser tous les événements `notification:trigger`, `download-scanner:scan-start` et `download-scanner:scan-complete`.
+  - Ajout des effets sonores distincts : impulsion radar (`scan_start`), confirmation sécurisée (`scan_complete`), carillon d'information générale (`notification`), et alarme de menace (`threat_blocked`).
+  - Persistance effective des préférences audio (`soundEnabled` et `soundVolume`) dans le profil utilisateur et l'interface des paramètres.
+
+### 🧪 Banc d'Essai Sentinelle & Fichier de Test Inoffensif (EICAR)
+- **Outil de validation de la détection de menaces** :
+  - Implémentation du gestionnaire IPC `download-scanner:create-test-file` générant instantanément dans `%USERPROFILE%\Downloads` un fichier de test inoffensif conforme au standard international **EICAR** (68 octets, sans aucun code malveillant).
+  - Ajout d'une carte interactive de test dans l'onglet *Paramètres* de l'application permettant de vérifier en 1 clic la sentinelle, la bannière rouge et l'alarme sonore.
+  - Déploiement d'une page laboratoire dédiée `/test-sentinel` sur le site officiel avec téléchargement direct et générateur d'exécutable de test pour tester la sentinelle depuis n'importe quel navigateur web.
+
 ## [0.1.2] - Bêta Pré-Release (2026-10-22)
 
 ### ⚡ Éradication des Fenêtres PowerShell Parasites & Performance d'Analyse

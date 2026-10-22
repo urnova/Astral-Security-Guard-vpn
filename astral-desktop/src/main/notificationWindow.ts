@@ -448,6 +448,7 @@ export function showAvastStyleDownloadScan({
   threatName,
   isUnsigned = false,
   discreteMode = 'window',
+  soundEnabled = true,
 }: {
   fileName: string;
   filePath: string;
@@ -455,6 +456,7 @@ export function showAvastStyleDownloadScan({
   threatName?: string;
   isUnsigned?: boolean;
   discreteMode?: 'window' | 'mini' | 'notification';
+  soundEnabled?: boolean;
 }) {
   const isScanning = status === 'scanning';
   const isThreat = status === 'threat';
@@ -708,42 +710,56 @@ export function showAvastStyleDownloadScan({
         </div>
 
         <script>
-          ${!isScanning ? `
+          ${soundEnabled ? `
           try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
             if (ctx.state === 'suspended') ctx.resume();
             const now = ctx.currentTime;
+            const isScanning = ${isScanning};
             const isThreat = ${isThreat};
             const isSuspect = ${isSuspect};
 
-            if (isThreat) {
+            if (isScanning) {
+              // High-tech subtle radar blip for download detection
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(659.25, now);
+              osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
+              gain.gain.setValueAtTime(0.045, now);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+              osc.connect(gain); gain.connect(ctx.destination);
+              osc.start(now); osc.stop(now + 0.1);
+            } else if (isThreat) {
+              // Threat warning alarm
               const osc = ctx.createOscillator();
               const gain = ctx.createGain();
               osc.type = 'sawtooth';
               osc.frequency.setValueAtTime(880, now);
               osc.frequency.exponentialRampToValueAtTime(440, now + 0.22);
-              gain.gain.setValueAtTime(0.07, now);
+              gain.gain.setValueAtTime(0.08, now);
               gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
               osc.connect(gain); gain.connect(ctx.destination);
               osc.start(now); osc.stop(now + 0.26);
             } else if (isSuspect) {
+              // Caution tone
               const osc = ctx.createOscillator();
               const gain = ctx.createGain();
               osc.type = 'triangle';
               osc.frequency.setValueAtTime(659.25, now);
               osc.frequency.exponentialRampToValueAtTime(554.37, now + 0.16);
-              gain.gain.setValueAtTime(0.05, now);
+              gain.gain.setValueAtTime(0.06, now);
               gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
               osc.connect(gain); gain.connect(ctx.destination);
               osc.start(now); osc.stop(now + 0.2);
             } else {
-              // Fichier sain chime
+              // Clean file positive chime
               const osc = ctx.createOscillator();
               const gain = ctx.createGain();
               osc.type = 'sine';
               osc.frequency.setValueAtTime(587.33, now);
               osc.frequency.exponentialRampToValueAtTime(880, now + 0.14);
-              gain.gain.setValueAtTime(0.04, now);
+              gain.gain.setValueAtTime(0.05, now);
               gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
               osc.connect(gain); gain.connect(ctx.destination);
               osc.start(now); osc.stop(now + 0.18);

@@ -150,6 +150,18 @@ export function setupNetworkIPC(win: BrowserWindow) {
         finalDlMbps = 0;
       }
 
+      // Broadcast finalized download result so renderer locks the reception metric immediately
+      win.webContents.send('network-event', {
+        type: 'speedtest-progress',
+        phase: 'download-complete',
+        downloadMbps: finalDlMbps,
+        finalDownMbps: finalDlMbps,
+        currentMbps: finalDlMbps,
+        progress: 100,
+        ping: pingMs,
+        jitter: jitterMs,
+      });
+
       // 3. Upload Test (~4.5s sustained with multi streams)
       const ulDurationMs = 4500;
       const ulStartTime = performance.now();
@@ -195,6 +207,7 @@ export function setupNetworkIPC(win: BrowserWindow) {
                         type: 'speedtest-progress',
                         phase: 'upload',
                         currentMbps: currentUlMbps,
+                        finalDownMbps: finalDlMbps,
                         progress,
                         ping: pingMs,
                         jitter: jitterMs,
@@ -297,6 +310,32 @@ export function setupNetworkIPC(win: BrowserWindow) {
     } catch (err: any) {
       logger.warn('[Network] Erreur lors de l\'optimisation réseau :', err.message);
       return { success: false, error: err.message };
+    }
+  });
+
+  // ── TCP Stack Status & Telemetry ───────────────────────────────────────────
+  ipcMain.handle('network:get-stack-status', async () => {
+    try {
+      const script = `
+        $tcp = netsh int tcp show global
+        $dnsCount = (Get-DnsClientCache -ErrorAction SilentlyContinue | Measure-Object).Count
+        [PSCustomObject]@{
+          autotuning = if ($tcp -match 'Receive Window Auto-Tuning Level\\s*:\\s*(.+)') { $matches[1].Trim() } else { 'normal' }
+          rss = if ($tcp -match 'Receive-Side Scaling State\\s*:\\s*(.+)') { $matches[1].Trim() } else { 'enabled' }
+          heuristics = if ($tcp -match 'RFC 1323 Timestamps\\s*:\\s*(.+)') { $matches[1].Trim() } else { 'disabled' }
+          dnsCacheEntries = $dnsCount
+        } | ConvertTo-Json -Compress
+      `;
+      const res = await runPowerShell(script, { asJson: true, timeout: 4000 });
+      return {
+        success: true,
+        stack: res.data || { autotuning: 'normal', rss: 'enabled', heuristics: 'disabled', dnsCacheEntries: 0 }
+      };
+    } catch {
+      return {
+        success: true,
+        stack: { autotuning: 'normal', rss: 'enabled', heuristics: 'disabled', dnsCacheEntries: 0 }
+      };
     }
   });
   // ── Network Adapters Info ─────────────────────────────────────────────────

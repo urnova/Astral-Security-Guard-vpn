@@ -197,17 +197,24 @@ export function setupSecurityIPC(win: BrowserWindow) {
     });
 
     let currentProgress = 35;
+    const scanPhase2Start = Date.now();
     const progressInterval = setInterval(() => {
-      if (currentProgress < 85) {
-        currentProgress += Math.min(6, Math.max(1, Math.round((85 - currentProgress) / 4)));
+      if (currentProgress < 94) {
+        if (currentProgress < 85) {
+          currentProgress += Math.min(4, Math.max(1, Math.round((85 - currentProgress) / 5)));
+        } else {
+          // Beyond 85%, smoothly crawl towards 94% without ever blocking
+          currentProgress = Math.min(94, currentProgress + 1);
+        }
+        const elapsedSec = Math.floor((Date.now() - scanPhase2Start) / 1000);
         win.webContents.send('security:scan-event', {
           type: 'scan-progress',
           scanType: mode,
           percent: currentProgress,
           progress: currentProgress,
           phase: 'Phase 2/3 · Moteur Microsoft Defender',
-          currentFile: `Contrôle des binaires système et répertoires (${currentProgress}%)…`,
-          filesScanned: Math.round(currentProgress * 85),
+          currentFile: `Contrôle continu des binaires système et signatures (${elapsedSec}s)…`,
+          filesScanned: Math.round(1400 + currentProgress * 45),
         });
       }
     }, 1200);
@@ -217,12 +224,14 @@ export function setupSecurityIPC(win: BrowserWindow) {
         mode,
         customPath,
         (msg, meta) => {
-          if (meta?.percent) currentProgress = meta.percent;
+          if (meta?.percent && meta.percent > currentProgress) {
+            currentProgress = meta.percent;
+          }
           win.webContents.send('security:scan-event', {
             type: 'scan-progress',
             scanType: mode,
-            percent: meta?.percent || currentProgress,
-            progress: meta?.percent || currentProgress,
+            percent: currentProgress,
+            progress: currentProgress,
             phase: meta?.currentDrive
               ? `Phase 2/3 · Moteur Defender · Volume ${meta.currentDrive} (${meta.driveIndex}/${meta.totalDrives})`
               : 'Phase 2/3 · Moteur Microsoft Defender',
@@ -231,7 +240,7 @@ export function setupSecurityIPC(win: BrowserWindow) {
             driveIndex: meta?.driveIndex,
             totalDrives: meta?.totalDrives,
             drivesList: meta?.drivesList,
-            filesScanned: Math.round(currentProgress * 85),
+            filesScanned: meta?.filesScanned || Math.round(1400 + currentProgress * 45),
           });
         }
       );
