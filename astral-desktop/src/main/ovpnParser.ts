@@ -58,6 +58,12 @@ const ALLOWED_DIRECTIVES = new Set([
   'auth-nocache',
   'tls-client',
   'block-outside-dns',
+  'redirect-gateway',
+  'dhcp-option',
+  'route',
+  'route-delay',
+  'route-metric',
+  'ip-win32',
 ]);
 
 // Directives d'exécution et de scripts strictement DANGEREUSES et INTERDITES
@@ -80,7 +86,6 @@ const DANGEROUS_DIRECTIVES = new Set([
   'socks-proxy',
   'http-proxy',
   'http-proxy-option',
-  'dhcp-option',
   'setenv',
   'cd',
   'chroot',
@@ -248,6 +253,18 @@ export class StrictOvpnParser {
     const hasRemoteCertTls = sanitizedLines.some((l) => l.startsWith('remote-cert-tls'));
     if (!hasRemoteCertTls) {
       sanitizedLines.unshift('remote-cert-tls server');
+    }
+
+    // 8. Imposition de la redirection complète du trafic par le tunnel (évite toute fuite vers la box FAI)
+    const hasRedirectGateway = sanitizedLines.some((l) => l.startsWith('redirect-gateway'));
+    if (!hasRedirectGateway) {
+      sanitizedLines.unshift('redirect-gateway def1 bypass-dhcp');
+    }
+
+    // 9. Blocage des fuites DNS hors tunnel Windows
+    const hasBlockOutsideDns = sanitizedLines.some((l) => l.startsWith('block-outside-dns'));
+    if (!hasBlockOutsideDns) {
+      sanitizedLines.push('block-outside-dns');
     }
 
     // Garantir le flag client

@@ -151,16 +151,16 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
     api?.getNetworkDiagnostics?.().then((d: any) => {
       if (!d) return;
       setNetInfo({
-        interfaceName: d.interface || d.adapterName || 'Intel(R) Ethernet Connection (2) I219-V',
-        ip:            d.localIp || '192.168.1.42',
+        interfaceName: d.interface || d.adapterName || 'Interface active',
+        ip:            d.localIp || '—',
         externalIp:    d.externalIp,
-        gateway:       d.gateway || '192.168.1.1',
-        dns:           d.dns || d.dnsServer || 'Google Public DNS (8.8.8.8)',
-        isp:           d.isp || d.provider || 'Orange Fibre FTTH',
+        gateway:       d.gateway || '—',
+        dns:           d.friendlyDns || d.dns || d.dnsServer || '—',
+        isp:           d.isp || d.provider || 'Connexion locale',
         macAddress:    d.macAddress || '—',
         wifiSsid:      d.ssid || d.wifiName,
         wifiSignal:    d.signalStrength,
-        type:          d.connectionType || d.type || 'Ethernet 1 Gbps Full-Duplex',
+        type:          d.connectionType || d.type || 'Connexion réseau',
       });
 
       if (d.dns?.includes('8.8.8.8')) setSelectedDns('Google 8.8.8.8');
@@ -226,32 +226,27 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
     if (optimizing) return;
     setOptimizing(true);
     setOptStep(1);
-    setOptLogs(['[1/4] Purgation intégrale du cache DNS Windows (ipconfig /flushdns)...']);
+    setOptLogs(['[1/3] Exécution de la purge DNS Windows (ipconfig /flushdns)...']);
 
-    setTimeout(() => {
+    try {
       setOptStep(2);
-      setOptLogs(prev => [...prev, '[2/4] Calibrage de la pile TCP/IP : Fenêtre Autotuning réglée sur Normal (1 Gbps+)...']);
-    }, 1200);
-
-    setTimeout(() => {
+      setOptLogs(prev => [...prev, '[2/3] Calibrage autotuning pile TCP/IP et RSS multi-cœur...']);
+      const res = await api?.optimizeNetwork?.();
       setOptStep(3);
-      setOptLogs(prev => [...prev, '[3/4] Activation du Receive Side Scaling (RSS) multi-cœur pour répartir les paquets...']);
-    }, 2400);
-
-    setTimeout(async () => {
-      setOptStep(4);
-      setOptLogs(prev => [...prev, '[4/4] Optimisation de la file UDP anti-bufferbloat & vérification de la latence...']);
-      try {
-        await api?.optimizeNetwork?.();
-      } catch {}
-      setOptStep(5);
-      setOptLogs(prev => [
-        ...prev,
-        '✓ Accélération réseau terminée avec succès : latence stabilisée et débit optimisé.'
-      ]);
-      setOptimizing(false);
+      if (res?.success) {
+        setOptLogs(prev => [
+          ...prev,
+          `✓ ${res.message || 'Optimisation réseau réussie : pile TCP/IP calibrée et cache DNS purgé.'}`,
+        ]);
+      } else {
+        setOptLogs(prev => [...prev, `⚠️ ${res?.error || 'Optimisation partielle effectuée.'}`]);
+      }
       loadDiagnostics();
-    }, 3800);
+    } catch (err: any) {
+      setOptLogs(prev => [...prev, `⚠️ Erreur : ${err.message}`]);
+    } finally {
+      setOptimizing(false);
+    }
   };
 
   const gaugeRadius = 125;
@@ -634,13 +629,13 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
 
             <div className="list">
               {[
-                { label: 'Interface physique', val: netInfo?.interfaceName || 'Intel(R) Ethernet Connection (2) I219-V' },
-                { label: 'Adresse IP locale',  val: netInfo?.ip || '192.168.1.42' },
+                { label: 'Interface physique', val: netInfo?.interfaceName || 'Détection en cours…' },
+                { label: 'Adresse IP locale',  val: netInfo?.ip || '—' },
                 { label: 'Adresse IP publique',val: netInfo?.externalIp || 'Connecté (IP publique protégée)' },
-                { label: 'Passerelle par défaut',val: netInfo?.gateway || '192.168.1.1' },
-                { label: 'Serveur DNS configuré',val: netInfo?.dns || 'Google Public DNS (8.8.8.8)' },
-                { label: 'Fournisseur d\'accès (FAI)',val: netInfo?.isp || 'Orange Fibre FTTH' },
-                { label: 'Liaison matérielle', val: netInfo?.type || 'Ethernet 1 Gbps Full-Duplex' },
+                { label: 'Passerelle par défaut',val: netInfo?.gateway || '—' },
+                { label: 'Serveur DNS configuré',val: netInfo?.dns || '—' },
+                { label: 'Fournisseur d\'accès (FAI)',val: netInfo?.isp || 'Détection en cours…' },
+                { label: 'Liaison matérielle', val: netInfo?.type || '—' },
                 { label: 'Adresse MAC',        val: netInfo?.macAddress || '—' },
               ].map(({ label, val }) => (
                 <div className="row" key={label} style={{ padding: '7px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>

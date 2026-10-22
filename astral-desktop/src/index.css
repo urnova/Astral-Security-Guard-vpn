@@ -5,6 +5,8 @@
 @import '@fontsource/inter/700.css';
 @import '@fontsource/jetbrains-mono/400.css';
 @import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/space-grotesk/500.css';
+@import '@fontsource/space-grotesk/700.css';
 
 /* ── Tailwind v4 ─────────────────────────────────────────────────────────── */
 @import 'tailwindcss';
@@ -21,6 +23,8 @@
 :root,
 [data-theme='vanguard-dark'] {
   --ease:        cubic-bezier(.2,.7,.2,1);
+  --transition: 180ms cubic-bezier(.2,.7,.2,1);
+  --transition-slow: 320ms cubic-bezier(.2,.7,.2,1);
   --ok:          #68b894;
   --warn:        #d6ad68;
   --bad:         #df8585;
@@ -1305,6 +1309,28 @@ button.win-btn.close:hover,
   border: 1px solid rgba(223,133,133,.20);
   border-radius: var(--r-sm);
   font-size: 12px; color: var(--bad);
+}
+.state-unavailable {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: var(--r-sm);
+  font-size: 12px; color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+:focus-visible, button:focus-visible, input:focus-visible {
+  outline: 2px solid var(--a1);
+  outline-offset: 2px;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

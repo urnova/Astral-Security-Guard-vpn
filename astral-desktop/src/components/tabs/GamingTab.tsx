@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Gamepad2, Power, Monitor, Wifi, Cpu, Eye, Zap, SlidersHorizontal,
-  Clock, ExternalLink, Info, X, ShieldCheck, Play, Trash2, HelpCircle
+  Clock, ExternalLink, Info, X, ShieldCheck, Play, Trash2, HelpCircle, Check
 } from 'lucide-react';
 import { SlideDrawer } from '../common/SlideDrawer';
 
@@ -479,11 +479,15 @@ export default function GamingTab({
             </div>
           </div>
 
-          {/* Interactive Profile Tabs */}
+          {/* Sleek Segmented Profile Selector */}
           <div style={{
+            background: 'rgba(0,0,0,0.35)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 12,
+            padding: 8,
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-            gap: 14,
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: 8,
           }}>
             {PROFILES.map(p => {
               const meta = PROFILE_META[p];
@@ -493,41 +497,63 @@ export default function GamingTab({
                   key={p}
                   onClick={() => setProfile(p)}
                   style={{
-                    background: isSelected ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.3)',
-                    border: `1.5px solid ${isSelected ? meta.color : 'rgba(255,255,255,0.08)'}`,
-                    borderRadius: 10,
-                    padding: 16,
+                    background: isSelected ? 'rgba(255,255,255,0.06)' : 'transparent',
+                    border: `1px solid ${isSelected ? meta.color : 'transparent'}`,
+                    borderRadius: 8,
+                    padding: '12px 16px',
                     cursor: 'pointer',
-                    transition: 'all .2s ease',
-                    position: 'relative',
-                    overflow: 'hidden',
+                    transition: 'all .15s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <b style={{ fontSize: 15, color: isSelected ? meta.color : 'var(--text)' }}>{meta.title}</b>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      padding: '2px 8px',
-                      borderRadius: 12,
-                      background: isSelected ? `${meta.color}25` : 'rgba(255,255,255,0.05)',
-                      color: isSelected ? meta.color : 'var(--muted)',
-                    }}>
-                      {isSelected ? 'SÉLECTIONNÉ' : 'CHOISIR'}
-                    </span>
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      background: isSelected ? meta.color : 'rgba(255,255,255,0.2)',
+                      boxShadow: isSelected ? `0 0 8px ${meta.color}` : 'none',
+                    }} />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: isSelected ? '#fff' : 'var(--text)' }}>
+                        {meta.title}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                        {meta.tagline}
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ fontSize: 11, color: isSelected ? 'var(--text)' : 'var(--muted)', fontWeight: 600, marginBottom: 8 }}>
-                    {meta.tagline}
-                  </div>
-                  <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 10px 0', lineHeight: 1.45 }}>
-                    {meta.desc}
-                  </p>
-                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 8, fontSize: 11, color: 'var(--muted)' }}>
-                    Recommandé pour : <span style={{ color: 'var(--text)', fontWeight: 600 }}>{meta.bestFor}</span>
-                  </div>
+                  {isSelected && (
+                    <Check size={14} style={{ color: meta.color, flexShrink: 0 }} />
+                  )}
                 </div>
               );
             })}
+          </div>
+
+          {/* Active Profile Info Banner */}
+          <div style={{
+            marginTop: 12,
+            padding: '10px 14px',
+            background: 'rgba(255,255,255,0.02)',
+            border: '1px solid rgba(255,255,255,0.05)',
+            borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 10,
+            fontSize: 11.5,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--muted)' }}>
+              <span>Action au lancement :</span>
+              <span style={{ color: 'var(--text)', fontWeight: 600 }}>{PROFILE_META[profile].desc.split('.')[0]}.</span>
+            </div>
+            <span style={{ color: PROFILE_META[profile].color, fontWeight: 700, fontSize: 10.5, letterSpacing: '0.04em' }}>
+              ✓ RÉVERSIBLE À 100%
+            </span>
           </div>
         </div>
 

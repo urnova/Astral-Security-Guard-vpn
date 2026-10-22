@@ -166,62 +166,56 @@ export async function performVpnConnect(serverId: string, win?: BrowserWindow): 
   logger.info(`[VPN] Connexion au relais sécurisé [${serverName}]...`);
 
   const hasOpenVpn = Boolean(communityVpnEngine.findOpenVpnBinary());
-  if (hasOpenVpn) {
-    try {
-      const res = await communityVpnEngine.connect(serverId, (st) => {
-        if (win && !win.isDestroyed()) {
-          win.webContents.send('vpn-event', { type: 'state-change', status: st });
-        }
-      });
-      if (res.success) {
-        activeVpnConnected = true;
-        activeVpnNodeName = serverName;
-        if (trayUpdateCallback) {
-          trayUpdateCallback({ vpnConnected: true, vpnNodeName: serverName });
-        }
-        if (win && !win.isDestroyed()) {
-          win.webContents.send('vpn-event', { type: 'connected', serverName });
-          win.webContents.send('vpn:state-changed', { connected: true, serverName });
-        }
-        return res;
+  if (!hasOpenVpn) {
+    logger.warn('[VPN] Tentative de connexion rejetée : binaire OpenVPN introuvable');
+    return {
+      success: false,
+      status: 'missing_driver',
+      message: 'Le moteur OpenVPN officiel est requis pour établir un tunnel chiffré réel et délocaliser votre adresse IP. Veuillez installer OpenVPN ou Wintun sur votre machine.',
+    };
+  }
+
+  try {
+    const res = await communityVpnEngine.connect(serverId, (st) => {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('vpn-event', { type: 'state-change', status: st });
       }
-    } catch (err: any) {
-      logger.warn('[VPN] Échec connect openvpn:', err.message);
+    });
+
+    if (res.success) {
+      activeVpnConnected = true;
+      activeVpnNodeName = serverName;
+      const st = communityVpnEngine.getStatus();
+      activeVpnIp = st.publicIp || serverId;
+      activeVpnVirtualIp = st.assignedIp || '';
+
+      if (trayUpdateCallback) {
+        trayUpdateCallback({ vpnConnected: true, vpnNodeName: serverName });
+      }
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('vpn-event', { type: 'connected', serverName });
+        win.webContents.send('vpn:state-changed', { connected: true, serverName, publicIp: activeVpnIp });
+      }
+      return res;
+    } else {
+      activeVpnConnected = false;
+      activeVpnNodeName = '';
+      return {
+        success: false,
+        status: 'error',
+        message: res.message || 'Impossible d\'établir la liaison avec le relais.',
+      };
     }
+  } catch (err: any) {
+    logger.error('[VPN] Exception connect openvpn:', err.message);
+    activeVpnConnected = false;
+    activeVpnNodeName = '';
+    return {
+      success: false,
+      status: 'error',
+      message: err.message || 'Erreur lors de la tentative de connexion au relais.',
+    };
   }
-
-  // Tunnel sécurisé Astral Vanguard : validation, Kill Switch pare-feu et routage direct
-  activeVpnConnected = true;
-  activeVpnNodeName = serverName;
-  activeVpnIp = '185.125.190.42';
-  activeVpnVirtualIp = '10.8.0.2';
-
-  const st = communityVpnEngine.getStatus();
-  if (st.killSwitchEnabled) {
-    await communityVpnEngine.setKillSwitch(true);
-  }
-
-  if (trayUpdateCallback) {
-    trayUpdateCallback({ vpnConnected: true, vpnNodeName: serverName });
-  }
-
-  if (win && !win.isDestroyed()) {
-    win.webContents.send('vpn-event', {
-      type: 'connected',
-      serverName,
-    });
-    win.webContents.send('vpn:state-changed', {
-      connected: true,
-      serverName,
-    });
-  }
-
-  return {
-    success: true,
-    status: 'connected',
-    serverName,
-    message: `Tunnel sécurisé connecté avec succès vers ${serverName}.`,
-  };
 }
 
 export async function performVpnDisconnect(win?: BrowserWindow): Promise<any> {
@@ -229,9 +223,12 @@ export async function performVpnDisconnect(win?: BrowserWindow): Promise<any> {
   try {
     await communityVpnEngine.disconnect();
   } catch {}
+  await cleanupAstralFirewallRules();
 
   activeVpnConnected = false;
   activeVpnNodeName = '';
+  activeVpnIp = '';
+  activeVpnVirtualIp = '';
 
   if (trayUpdateCallback) {
     trayUpdateCallback({ vpnConnected: false, vpnNodeName: '' });

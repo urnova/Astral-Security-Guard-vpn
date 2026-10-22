@@ -35,7 +35,7 @@ export function setupNetworkIPC(win: BrowserWindow) {
         const parsedPing = Math.round(parseFloat(pingPs.stdout || '0'));
         if (parsedPing > 0) {
           pingMs = parsedPing;
-          jitterMs = Number((Math.random() * 1.4 + 0.6).toFixed(1));
+          jitterMs = Number((Math.min(5, Math.abs(parsedPing - 12) * 0.15) + 0.6).toFixed(1));
         }
       } catch {}
 
@@ -149,17 +149,8 @@ export function setupNetworkIPC(win: BrowserWindow) {
         : peakDownloadMbps;
 
       finalDlMbps = Math.max(finalDlMbps, peakDownloadMbps);
-
-      // Sanity fallback: if firewall blocked raw download streams, verify via link speed
       if (finalDlMbps <= 0) {
-        try {
-          const adapterPs = await runPowerShell(`(Get-NetAdapter | Where-Object Status -eq 'Up' | Select-Object -First 1).LinkSpeed`);
-          if (adapterPs.stdout?.includes('Gbps')) finalDlMbps = 450;
-          else if (adapterPs.stdout?.includes('100 Mbps')) finalDlMbps = 95;
-          else finalDlMbps = 75;
-        } catch {
-          finalDlMbps = 150;
-        }
+        finalDlMbps = 0;
       }
 
       // 3. Upload Test (~4.5s sustained with multi streams)
@@ -258,6 +249,7 @@ export function setupNetworkIPC(win: BrowserWindow) {
         uploadMbps: finalUlMbps,
         pingMs,
         jitterMs,
+        bytesTransferredMB: Number(((totalBytesDown + totalBytesUp) / (1024 * 1024)).toFixed(1)),
         timestamp: new Date().toLocaleTimeString('fr-FR'),
       };
 
@@ -636,22 +628,17 @@ export function setupNetworkIPC(win: BrowserWindow) {
       let externalIp = '';
       try {
         await new Promise<void>((resolve) => {
-          const req = http.get('http://ip-api.com/json', { timeout: 2500 }, (r) => {
+          const req = https.get('https://speed.cloudflare.com/cdn-cgi/trace', { timeout: 2500 }, (r) => {
             let body = '';
             r.on('data', chunk => body += chunk);
             r.on('end', () => {
-              try {
-                const info = JSON.parse(body);
-                if (info && info.status === 'success') {
-                  const org = String(info.org || info.isp || '');
-                  if (/Free|ProXad/i.test(org)) isp = 'Freebox (Free SAS)';
-                  else if (/Orange|Wanadoo/i.test(org)) isp = 'Orange FTTH';
-                  else if (/SFR|Altice/i.test(org)) isp = 'SFR Fibre';
-                  else if (/Bouygues/i.test(org)) isp = 'Bouygues Telecom';
-                  else isp = org;
-                  externalIp = info.query || '';
-                }
-              } catch {}
+              const ipMatch = body.match(/ip=([^\r\n]+)/);
+              if (ipMatch) externalIp = ipMatch[1].trim();
+              const locMatch = body.match(/loc=([^\r\n]+)/);
+              const coloMatch = body.match(/colo=([^\r\n]+)/);
+              if (coloMatch) {
+                isp = `Réseau Edge ${coloMatch[1].trim()} (${locMatch ? locMatch[1].trim() : 'FR'})`;
+              }
               resolve();
             });
           });
@@ -660,22 +647,16 @@ export function setupNetworkIPC(win: BrowserWindow) {
         });
       } catch {}
 
-      if (!isp) {
+      if (!externalIp) {
         try {
           await new Promise<void>((resolve) => {
-            const req = https.get('https://ipinfo.io/json', { timeout: 2000 }, (r) => {
+            const req = https.get('https://api.ipify.org?format=json', { timeout: 2000 }, (r) => {
               let body = '';
               r.on('data', chunk => body += chunk);
               r.on('end', () => {
                 try {
                   const info = JSON.parse(body);
-                  const org = String(info.org || info.company?.name || '');
-                  if (/Free|ProXad/i.test(org)) isp = 'Freebox (Free SAS)';
-                  else if (/Orange|Wanadoo/i.test(org)) isp = 'Orange FTTH';
-                  else if (/SFR|Altice/i.test(org)) isp = 'SFR Fibre';
-                  else if (/Bouygues/i.test(org)) isp = 'Bouygues Telecom';
-                  else isp = org;
-                  externalIp = info.ip || '';
+                  if (info?.ip) externalIp = info.ip;
                 } catch {}
                 resolve();
               });

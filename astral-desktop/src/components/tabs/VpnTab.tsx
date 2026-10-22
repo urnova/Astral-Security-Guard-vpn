@@ -7,6 +7,7 @@ import {
 const api = (window as any).vanguard;
 
 interface VpnNode {
+  id?: string;
   name: string;
   speed: string;
   badge?: string;
@@ -211,6 +212,7 @@ export default function VpnTab() {
   const [upBytes, setUpBytes]             = useState<number>(0);
   const [query, setQuery]                 = useState('');
   const [error, setError]                 = useState('');
+  const [openVpnInstalled, setOpenVpnInstalled] = useState<boolean | null>(null);
   const [openCountry, setOpenCountry]     = useState<string | null>('FR');
   const [categoryFilter, setCategoryFilter] = useState<'Tous' | 'Streaming' | 'Gaming' | 'P2P'>('Tous');
 
@@ -274,6 +276,7 @@ export default function VpnTab() {
             c.latency = s.ping;
           }
           c.nodes.push({
+            id: s.id,
             name: `${name} · ${s.ip}`,
             speed: `${s.speedMbps || 450} Mbps`,
             badge: s.badges?.[0] || (s.ping && s.ping < 30 ? 'Meilleur ping' : 'Relais vérifié'),
@@ -298,6 +301,9 @@ export default function VpnTab() {
 
     // Get current VPN status
     api.vpnGetStatus?.().then((s: any) => {
+      if (s?.status && typeof s.status.openVpnInstalled === 'boolean') {
+        setOpenVpnInstalled(s.status.openVpnInstalled);
+      }
       if (s?.status?.connected || s?.connected) {
         setConnected(true);
         if (s.serverName) setSelectedNode(s.serverName);
@@ -384,7 +390,8 @@ export default function VpnTab() {
         }
 
         await api?.vpnSetProtocol?.('OpenVPN');
-        const res = await api?.vpnConnect?.(selectedNode);
+        const targetServerId = selectedNodeData?.id || selectedNodeData?.ip || selectedNode;
+        const res = await api?.vpnConnect?.(targetServerId);
         if (res && res.success === false) {
           setError(res.message || 'Impossible d\'établir le tunnel sécurisé OpenVPN.');
         } else {
@@ -411,9 +418,15 @@ export default function VpnTab() {
       try {
         await api?.vpnDisconnect?.();
         await new Promise(r => setTimeout(r, 500));
-        await api?.vpnConnect?.(node.name);
-        setConnected(true);
-        setConnectedSince(new Date());
+        const targetServerId = node.id || node.ip || node.name;
+        const res = await api?.vpnConnect?.(targetServerId);
+        if (res && res.success === false) {
+          setError(res.message || `Erreur lors de la bascule vers ${node.name}.`);
+          setConnected(false);
+        } else {
+          setConnected(true);
+          setConnectedSince(new Date());
+        }
       } catch (err: any) {
         setError(err.message || `Erreur lors de la bascule vers ${node.name}.`);
       } finally {
@@ -490,6 +503,29 @@ export default function VpnTab() {
             <AlertTriangle size={15} />
             <span>{error}</span>
             <button onClick={() => setError('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--bad)' }}><X size={14} /></button>
+          </div>
+        )}
+
+        {openVpnInstalled === false && (
+          <div style={{
+            marginBottom: 16,
+            padding: '12px 16px',
+            background: 'rgba(234,179,8,0.08)',
+            border: '1px solid rgba(234,179,8,0.3)',
+            borderRadius: 10,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            fontSize: 12,
+            color: '#fef08a',
+          }}>
+            <Info size={18} style={{ color: '#eab308', flexShrink: 0 }} />
+            <div style={{ flex: 1 }}>
+              <strong style={{ color: '#facc15' }}>Pilote OpenVPN / Wintun requis pour établir le tunnel physique :</strong>
+              <div style={{ marginTop: 2, color: 'rgba(255,255,255,0.8)' }}>
+                Pour router votre trafic et délocaliser votre adresse IP sans aucune fuite, installez OpenVPN officiel ou exécutez dans un terminal : <code style={{ background: 'rgba(0,0,0,0.4)', padding: '1px 6px', borderRadius: 4, color: '#38bdf8' }}>winget install OpenVPN.OpenVPN</code>
+              </div>
+            </div>
           </div>
         )}
 

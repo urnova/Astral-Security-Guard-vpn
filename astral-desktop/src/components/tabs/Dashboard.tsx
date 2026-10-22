@@ -43,6 +43,7 @@ interface DailyBrief {
   recommendations: string[];
   threatsCount: number;
   lastCheck: string;
+  actionRequiredReasons?: string[];
 }
 
 interface Props {
@@ -373,7 +374,9 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
                 <p>
                   {secScore >= 90
                     ? 'Microsoft Defender, sentinelle YARA et pare-feu opérationnels. Zéro charge suspecte.'
-                    : 'Certains paramètres nécessitent une intervention de votre part.'}
+                    : (brief?.actionRequiredReasons && brief.actionRequiredReasons.length > 0)
+                    ? brief.actionRequiredReasons.join(' • ')
+                    : 'Un ou plusieurs paramètres de sécurité nécessitent une vérification.'}
                 </p>
                 <div className="overview-actions">
                   <button className="btn" onClick={() => onTabChange('security')}>

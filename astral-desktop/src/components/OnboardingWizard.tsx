@@ -123,26 +123,28 @@ export default function OnboardingWizard({
         {/* Progress Bar Header */}
         <div style={{ padding: '16px 24px 14px', borderBottom: '1px solid var(--line)', background: 'var(--bg)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div
                 style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 'var(--r-xs)',
-                  background: 'var(--line)',
+                  width: 26,
+                  height: 26,
+                  borderRadius: 7,
+                  background: 'linear-gradient(135deg, rgba(var(--a1r), 0.25), rgba(var(--a1r), 0.05))',
+                  border: '1px solid var(--a1)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: 10,
-                  fontWeight: 700,
+                  fontSize: 11,
+                  fontWeight: 800,
                   color: 'var(--a1)',
+                  letterSpacing: '0.04em',
                 }}
               >
-                AV
+                VC
               </div>
-              <span style={{ fontSize: 12, fontWeight: 600 }}>Configuration initiale</span>
+              <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '-0.01em' }}>Vanguard Core · Assistant initial</span>
             </div>
-            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+            <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>
               Étape {step} sur {totalSteps}
             </span>
           </div>
@@ -152,7 +154,7 @@ export default function OnboardingWizard({
               style={{
                 height: '100%',
                 width: `${(step / totalSteps) * 100}%`,
-                background: 'var(--a1)',
+                background: 'linear-gradient(90deg, var(--a1), var(--a2))',
                 transition: 'width 0.3s var(--ease)',
               }}
             />
@@ -164,11 +166,32 @@ export default function OnboardingWizard({
           {/* Step 1: Profil */}
           {step === 1 && (
             <div className="stack" style={{ gap: 20 }}>
-              <div>
-                <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text)' }}>Bienvenue dans Vanguard Core</h2>
-                <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4, lineHeight: 1.6 }}>
-                  L'application PC de sauvetage et de protection de la suite Vanguard par Astral Security. Personnalisez votre profil local pour commencer.
-                </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div
+                  style={{
+                    width: 54,
+                    height: 54,
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, rgba(var(--a1r), 0.2), rgba(var(--a1r), 0.05))',
+                    border: '2px solid var(--a1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: 'var(--a1)',
+                    boxShadow: '0 0 16px rgba(var(--a1r), 0.2)',
+                    flexShrink: 0,
+                  }}
+                >
+                  {((firstName?.[0] || '') + (lastName?.[0] || '')).toUpperCase() || 'VC'}
+                </div>
+                <div>
+                  <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', margin: 0 }}>Bienvenue dans Vanguard Core</h2>
+                  <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4, lineHeight: 1.5 }}>
+                    L'application PC de sécurité et d'optimisation de la suite Vanguard par Astral Security. Personnalisez votre profil local autonome.
+                  </p>
+                </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>

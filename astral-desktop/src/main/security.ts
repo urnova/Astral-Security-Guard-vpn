@@ -221,14 +221,21 @@ export function setupSecurityIPC(win: BrowserWindow) {
       const result = await defenderOrchestrator.executeScan(
         mode,
         customPath,
-        (msg) => {
+        (msg, meta) => {
+          if (meta?.percent) currentProgress = meta.percent;
           win.webContents.send('security:scan-event', {
             type: 'scan-progress',
             scanType: mode,
-            percent: currentProgress,
-            progress: currentProgress,
-            phase: 'Phase 2/3 · Moteur Microsoft Defender',
+            percent: meta?.percent || currentProgress,
+            progress: meta?.percent || currentProgress,
+            phase: meta?.currentDrive
+              ? `Phase 2/3 · Moteur Defender · Volume ${meta.currentDrive} (${meta.driveIndex}/${meta.totalDrives})`
+              : 'Phase 2/3 · Moteur Microsoft Defender',
             currentFile: msg,
+            currentDrive: meta?.currentDrive,
+            driveIndex: meta?.driveIndex,
+            totalDrives: meta?.totalDrives,
+            drivesList: meta?.drivesList,
             filesScanned: Math.round(currentProgress * 85),
           });
         }
@@ -403,6 +410,11 @@ export function setupSecurityIPC(win: BrowserWindow) {
       if (memRatio > 0.92) score -= 5;
       score = Math.max(15, Math.min(100, score));
 
+      const actionReasons: string[] = [];
+      if (!isDefenderActive) actionReasons.push('Service antivirus Microsoft Defender arrêté');
+      if (!isRealTimeActive) actionReasons.push('Protection résidente en temps réel désactivée');
+      if (threatsCount > 0) actionReasons.push(`${threatsCount} élément(s) suspect(s) identifié(s) nécessitant une remédiation`);
+
       const bullets: string[] = [];
       if (isDefenderActive && isRealTimeActive) {
         bullets.push(`Protection Microsoft Defender active — Signatures v${sigVer} à jour.`);
@@ -436,14 +448,15 @@ export function setupSecurityIPC(win: BrowserWindow) {
         success: true,
         brief: {
           score,
-          riskLevel: threatsCount === 0 ? 'Sain' : 'Attention requise',
+          riskLevel: threatsCount === 0 && actionReasons.length === 0 ? 'Sain' : 'Attention requise',
           summary,
           headline,
           conversationalNowBrief,
+          actionRequiredReasons: actionReasons,
           bulletPoints: bullets,
-          recommendations: threatsCount === 0
+          recommendations: threatsCount === 0 && actionReasons.length === 0
             ? ['Maintenir la protection résidente active', 'Effectuer une analyse hebdomadaire']
-            : ['Lancer la remédiation sécurisée', 'Mettre en quarantaine les éléments hostiles'],
+            : ['Activer la protection en temps réel', 'Lancer la remédiation sécurisée'],
           threatsCount,
           lastCheck: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
         },

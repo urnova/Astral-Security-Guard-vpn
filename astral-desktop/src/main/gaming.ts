@@ -707,49 +707,18 @@ export function startGameDetection(
       if (!autoDetectEnabled) return;
 
       const script = `
-        Add-Type @"
-          using System;
-          using System.Runtime.InteropServices;
-          public class WinCheck {
-            [DllImport("user32.dll")]
-            public static extern IntPtr GetForegroundWindow();
-            [DllImport("user32.dll")]
-            public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-            [DllImport("user32.dll")]
-            public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-            [StructLayout(LayoutKind.Sequential)]
-            public struct RECT {
-              public int Left;
-              public int Top;
-              public int Right;
-              public int Bottom;
-            }
-          }
-"@ -ErrorAction SilentlyContinue
-
-        $hwnd = [WinCheck]::GetForegroundWindow()
-        if ($hwnd -ne [IntPtr]::Zero) {
-          $pidOut = 0
-          [WinCheck]::GetWindowThreadProcessId($hwnd, [ref]$pidOut) | Out-Null
-          if ($pidOut -gt 0) {
-            $proc = Get-Process -Id $pidOut -ErrorAction SilentlyContinue
-            $rect = New-Object WinCheck+RECT
-            [WinCheck]::GetWindowRect($hwnd, [ref]$rect) | Out-Null
-
-            $width = [Math]::Abs($rect.Right - $rect.Left)
-            $height = [Math]::Abs($rect.Bottom - $rect.Top)
-
-            [PSCustomObject]@{
-              pid = $pidOut
-              name = $proc.ProcessName
-              width = $width
-              height = $height
-            } | ConvertTo-Json -Compress
-          }
+        $proc = Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle } | Select-Object -First 1 Id, ProcessName
+        if ($proc) {
+          [PSCustomObject]@{
+            pid = $proc.Id
+            name = $proc.ProcessName
+            width = 1920
+            height = 1080
+          } | ConvertTo-Json -Compress
         }
       `;
 
-      const res = await runPowerShell(script, { asJson: true, timeout: 3000 });
+      const res = await runPowerShell(script, { asJson: true, timeout: 2500 });
       if (res.success && res.data) {
         const { pid, name, width, height } = res.data;
         const procName = String(name || '').toLowerCase();

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   Shield, Search, Play, RefreshCw, Clock, Bug, Lock,
   Globe, Folder, Plus, CheckCircle2, AlertTriangle, X, Sparkles,
-  Zap, ShieldAlert, ShieldCheck, Trash2, Edit2, RotateCw
+  Zap, ShieldAlert, ShieldCheck, Trash2, Edit2, RotateCw, HardDrive
 } from 'lucide-react';
 import SlideDrawer from '../common/SlideDrawer';
 
@@ -73,6 +73,10 @@ export default function SecurityTab() {
   const [showRemediationModal, setShowRemediationModal] = useState(false);
   const [remediating, setRemediating] = useState(false);
   const [aiReportText, setAiReportText] = useState('');
+  const [currentDrive, setCurrentDrive] = useState<string>('');
+  const [drivesList, setDrivesList]     = useState<string[]>([]);
+  const [driveIndex, setDriveIndex]     = useState<number>(0);
+  const [totalDrives, setTotalDrives]   = useState<number>(0);
 
   const timerRef = useRef<any>(null);
   const startRef = useRef(0);
@@ -119,6 +123,10 @@ export default function SecurityTab() {
         if (d.filesScanned) setScannedFiles(d.filesScanned);
         if (d.phase) setScanPhase(d.phase);
         if (d.currentFile) addLog({ text: d.currentFile });
+        if (d.currentDrive) setCurrentDrive(d.currentDrive);
+        if (d.drivesList && Array.isArray(d.drivesList)) setDrivesList(d.drivesList);
+        if (d.driveIndex) setDriveIndex(d.driveIndex);
+        if (d.totalDrives) setTotalDrives(d.totalDrives);
       } else if (d?.type === 'scan-complete') {
         finishScan(d?.threats ?? 0, d?.threatList || [], d?.aiReport || '');
       } else if (d?.type === 'scan-error') {
@@ -488,11 +496,42 @@ export default function SecurityTab() {
 
               {/* Status Display: Live log when scanning, Post-scan report when scanDone, Ready dashboard when idle */}
               {scanning ? (
-                <div className="log custom-scroll" ref={terminalRef} style={{ minHeight: 190, maxHeight: 220, overflowY: 'auto' }}>
-                  {logs.map((l, i) => (
-                    <div key={i} className={l.type || ''}>{l.text}</div>
-                  ))}
-                </div>
+                <>
+                  {drivesList.length > 0 && (
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                      {drivesList.map((drv, idx) => {
+                        const isDone = driveIndex > idx + 1;
+                        const isCurrent = currentDrive === drv || driveIndex === idx + 1;
+                        return (
+                          <div
+                            key={drv}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              padding: '4px 10px',
+                              borderRadius: 6,
+                              background: isCurrent ? 'rgba(56,189,248,0.15)' : isDone ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.03)',
+                              border: `1px solid ${isCurrent ? '#38bdf8' : isDone ? '#22c55e' : 'rgba(255,255,255,0.08)'}`,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              color: isCurrent ? '#38bdf8' : isDone ? '#22c55e' : 'var(--muted)',
+                            }}
+                          >
+                            <HardDrive size={12} />
+                            <span>Disque {drv}</span>
+                            <span style={{ fontSize: 9.5, opacity: 0.85 }}>{isDone ? '✓ Scanné' : isCurrent ? 'Analyse…' : 'En attente'}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div className="log custom-scroll" ref={terminalRef} style={{ minHeight: 180, maxHeight: 210, overflowY: 'auto' }}>
+                    {logs.map((l, i) => (
+                      <div key={i} className={l.type || ''}>{l.text}</div>
+                    ))}
+                  </div>
+                </>
               ) : scanDone ? (
                 <div style={{ padding: '22px 18px', background: 'rgba(255,255,255,0.015)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', textAlign: 'center', margin: '10px 0' }}>
                   <CheckCircle2 size={38} style={{ color: threats > 0 ? '#ef4444' : '#4ade80', margin: '0 auto 10px' }} />
@@ -520,7 +559,7 @@ export default function SecurityTab() {
                   <ShieldCheck size={38} style={{ color: '#4ade80', margin: '0 auto 10px' }} />
                   <b style={{ fontSize: 13, color: 'var(--text)', display: 'block' }}>Système prêt pour une analyse de sécurité</b>
                   <p style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, maxWidth: 380, margin: '6px auto 0', lineHeight: 1.55 }}>
-                    Astral Vanguard coordonne le moteur heuristique local, Microsoft Defender et l'analyse d'intégrité pour contrôler vos fichiers et la mémoire vive.
+                    Vanguard Core coordonne le moteur heuristique local, Microsoft Defender et l'analyse d'intégrité pour contrôler vos fichiers et la mémoire vive.
                   </p>
                   <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 14 }}>
                     <div style={{ textAlign: 'left', fontSize: 11, color: 'var(--dim)' }}>

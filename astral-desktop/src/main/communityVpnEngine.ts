@@ -358,10 +358,17 @@ class CommunityVpnEngine {
       };
     }
 
-    // Trouver le serveur dans le catalogue
-    const server = this.cachedServers.find((s) => s.id === serverId);
+    // Trouver le serveur dans le catalogue (par ID, par IP exacte ou par inclusion d'adresse IP)
+    const cleanId = serverId ? serverId.trim() : '';
+    const server = this.cachedServers.find(
+      (s) =>
+        s.id === cleanId ||
+        s.ip === cleanId ||
+        (cleanId && s.ip && cleanId.includes(s.ip)) ||
+        (cleanId && s.hostname && cleanId.includes(s.hostname))
+    );
     if (!server) {
-      return { success: false, message: 'Serveur introuvable dans le catalogue.' };
+      return { success: false, message: `Serveur introuvable dans le catalogue (${cleanId || 'aucun ID fourni'}).` };
     }
 
     // Valider et assainir la configuration OVPN

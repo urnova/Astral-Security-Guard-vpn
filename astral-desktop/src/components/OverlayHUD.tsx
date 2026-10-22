@@ -174,7 +174,10 @@ export default function OverlayHUD() {
         </div>
 
         {/* FPS */}
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+        <div
+          style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}
+          title={!presentmon.isCapturing ? "PresentMon non installé — FPS indisponibles" : `Capture active · 1% Low: ${presentmon.onePercentLowFps ?? '—'}`}
+        >
           <span style={{ fontSize: 9.5, fontWeight: 700, color: '#94a3b8' }}>FPS</span>
           <span
             style={{

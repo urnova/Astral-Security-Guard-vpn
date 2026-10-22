@@ -16,6 +16,7 @@ import {
   Calendar,
   ShieldCheck,
   Sparkles,
+  Sliders,
 } from 'lucide-react';
 import SlideDrawer from '../common/SlideDrawer';
 import { useSystem } from '../../context/SystemContext';
@@ -131,6 +132,7 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
   const [maintLogs, setMaintLogs] = useState<string[]>([]);
   const [hardware, setHardware] = useState<HardwareInfo | null>(null);
   const [showBiosGuide, setShowBiosGuide] = useState(false);
+  const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
   const [scheduledEnabled, setScheduledEnabled] = useState(true);
   const [scheduledFreq, setScheduledFreq] = useState<'Quotidienne' | 'Hebdomadaire' | 'Au démarrage' | 'À l\'inactivité'>('Hebdomadaire');
 
@@ -371,22 +373,32 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                 </div>
               </div>
             </div>
-            <button
-              className="btn"
-              onClick={runMaintenance}
-              disabled={maintaining}
-              style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}
-            >
-              {maintaining ? (
-                <>
-                  <span className="spinner spinner-sm" /> Nettoyage en cours…
-                </>
-              ) : (
-                <>
-                  <Zap size={15} /> Lancer la maintenance ({selectedTotal})
-                </>
-              )}
-            </button>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <button
+                className="btn-ghost"
+                onClick={() => setShowMaintenanceModal(true)}
+                style={{ padding: '10px 16px', fontSize: 12.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, borderRadius: 8 }}
+              >
+                <Sliders size={14} />
+                <span>Configurer ({cleanItems.filter(i => i.selected).length})</span>
+              </button>
+              <button
+                className="btn"
+                onClick={runMaintenance}
+                disabled={maintaining}
+                style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}
+              >
+                {maintaining ? (
+                  <>
+                    <span className="spinner spinner-sm" /> Nettoyage en cours…
+                  </>
+                ) : (
+                  <>
+                    <Zap size={15} /> Lancer la maintenance ({selectedTotal})
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Progress & Live Terminal */}
@@ -1178,6 +1190,122 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                 style={{ padding: '8px 20px', fontSize: 12 }}
               >
                 Fermer
+              </button>
+            </div>
+          </div>
+        </SlideDrawer>
+
+        {/* ── SlideDrawer Centre de Maintenance & Nettoyage Système ── */}
+        <SlideDrawer
+          isOpen={showMaintenanceModal}
+          onClose={() => setShowMaintenanceModal(false)}
+          title="Centre de Maintenance & Nettoyage Système"
+          subtitle="Sélection personnalisée des caches et purge sécurisée sans toucher aux données personnelles"
+          width={580}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{
+              background: 'rgba(56,189,248,0.06)',
+              border: '1px solid rgba(56,189,248,0.25)',
+              borderRadius: 8,
+              padding: '12px 14px',
+              fontSize: 12,
+              color: '#cbd5e1',
+              lineHeight: 1.5,
+            }}>
+              🔒 <b>Sécurité garantie :</b> Seuls les fichiers temporaires orphelins, caches graphiques et résidus Windows sont ciblés. Vos documents, photos, jeux et paramètres personnels restent intacts.
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>
+                Éléments sélectionnables ({cleanItems.filter(i => i.selected).length}/{cleanItems.length})
+              </span>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  className="btn-ghost"
+                  onClick={() => toggleAllCleanup(true)}
+                  style={{ fontSize: 11, padding: '4px 10px' }}
+                >
+                  Tout cocher
+                </button>
+                <button
+                  className="btn-ghost"
+                  onClick={() => toggleAllCleanup(false)}
+                  style={{ fontSize: 11, padding: '4px 10px' }}
+                >
+                  Tout décocher
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 340, overflowY: 'auto' }}>
+              {cleanItems.map((item, idx) => (
+                <div
+                  key={item.id || idx}
+                  onClick={() => toggleItem(idx)}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    background: item.selected ? 'rgba(var(--a1r), 0.08)' : 'rgba(255,255,255,0.02)',
+                    border: `1px solid ${item.selected ? 'var(--a1)' : 'rgba(255,255,255,0.06)'}`,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 4,
+                      background: item.selected ? 'var(--a1)' : 'transparent',
+                      border: `1.5px solid ${item.selected ? 'var(--a1)' : 'rgba(255,255,255,0.3)'}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#090d16',
+                      flexShrink: 0,
+                    }}>
+                      {item.selected && <Check size={13} strokeWidth={3} />}
+                    </div>
+                    <div>
+                      <b style={{ fontSize: 12.5, color: item.selected ? '#fff' : 'var(--text)' }}>{item.label}</b>
+                      {item.desc && <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--muted)' }}>{item.desc}</p>}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: '#38bdf8', whiteSpace: 'nowrap' }}>
+                    {item.size}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{
+              borderTop: '1px solid rgba(255,255,255,0.08)',
+              paddingTop: 16,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 14,
+            }}>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Espace disque récupérable :</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--a1)' }}>{selectedTotal}</div>
+              </div>
+              <button
+                className="btn"
+                onClick={() => {
+                  runMaintenance();
+                  setShowMaintenanceModal(false);
+                }}
+                disabled={maintaining || cleanItems.filter(i => i.selected).length === 0}
+                style={{ padding: '10px 24px', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}
+              >
+                <Zap size={15} />
+                <span>Lancer le nettoyage sécurisé</span>
               </button>
             </div>
           </div>

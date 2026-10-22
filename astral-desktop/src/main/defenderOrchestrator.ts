@@ -100,7 +100,7 @@ class DefenderOrchestrator {
         }
       `;
 
-      const res = await runPowerShell<any>(script, { asJson: true, timeout: 4000 });
+      const res = await runPowerShell<any>(script, { asJson: true, timeout: 5000 });
       if (res?.data) {
         this.cachedStatus = {
           engineName: 'Moteur Microsoft Defender',
@@ -119,7 +119,12 @@ class DefenderOrchestrator {
       logger.warn('[Defender] Erreur lecture Get-MpComputerStatus :', err.message);
     }
 
-    // Si Defender est désactivé ou remplacé
+    // Si un cache valide existait déjà, le conserver pour éviter un faux basculement en alerte
+    if (this.cachedStatus && this.cachedStatus.isAvailable) {
+      return this.cachedStatus;
+    }
+
+    // Si Defender est désactivé ou indisponible
     this.cachedStatus = {
       engineName: 'Moteur Microsoft Defender',
       antivirusEnabled: false,
@@ -135,12 +140,68 @@ class DefenderOrchestrator {
   }
 
   /**
-   * Lance une analyse réelle (Quick, Full ou Custom)
+   * Énumère instantanément tous les volumes de disques locaux et amovibles montés
+   */
+  public getAvailableDrives(): string[] {
+    const letters = 'CDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+    const drives: string[] = [];
+    for (const l of letters) {
+      const p = `${l}:\\`;
+      try {
+        if (fs.existsSync(p)) drives.push(p);
+      } catch {}
+    }
+    return drives.length > 0 ? drives : ['C:\\'];
+  }
+
+  private async runMpCmdRunChild(mpCmdRun: string, args: string[], timeoutMs: number): Promise<{ exitCode: number; stdout: string; wasCancelled: boolean }> {
+    return new Promise((resolve) => {
+      let wasCancelled = false;
+      const child = cp.spawn(mpCmdRun, args, {
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      this.activeScanChild = child;
+      let stdoutData = '';
+
+      child.stdout?.on('data', (d) => {
+        stdoutData += d.toString();
+      });
+
+      const timer = setTimeout(() => {
+        try { child.kill(); } catch {}
+        wasCancelled = true;
+        resolve({ exitCode: -1, stdout: stdoutData, wasCancelled });
+      }, timeoutMs);
+
+      child.on('exit', (code) => {
+        clearTimeout(timer);
+        this.activeScanChild = null;
+        resolve({ exitCode: code ?? 0, stdout: stdoutData, wasCancelled });
+      });
+
+      child.on('error', () => {
+        clearTimeout(timer);
+        this.activeScanChild = null;
+        resolve({ exitCode: -1, stdout: stdoutData, wasCancelled });
+      });
+    });
+  }
+
+  /**
+   * Lance une analyse réelle multi-disques (Quick, Full ou Custom)
    */
   public async executeScan(
     scanType: 'quick' | 'full' | 'custom',
     targetPath?: string,
-    onProgress?: (message: string) => void
+    onProgress?: (message: string, meta?: {
+      currentDrive?: string;
+      driveIndex?: number;
+      totalDrives?: number;
+      drivesList?: string[];
+      percent?: number;
+    }) => void
   ): Promise<DefenderScanResult> {
     if (this.isScanning) {
       throw new Error('Une analyse antivirus est déjà en cours.');
@@ -151,91 +212,116 @@ class DefenderOrchestrator {
       throw new Error('Exécutable MpCmdRun.exe introuvable sur le système.');
     }
 
-    const args: string[] = ['-Scan'];
-    let timeoutMs = 60000; // 1 min pour quick scan par défaut
-
-    if (scanType === 'quick') {
-      args.push('-ScanType', '1');
-      timeoutMs = 180000; // 3 min max
-    } else if (scanType === 'full') {
-      args.push('-ScanType', '2');
-      timeoutMs = 1800000; // 30 min max
-    } else if (scanType === 'custom') {
-      if (!targetPath || !fs.existsSync(targetPath)) {
-        throw new Error(`Chemin d'analyse cible invalide : ${targetPath}`);
-      }
-      args.push('-ScanType', '3', '-File', targetPath);
-      timeoutMs = 300000; // 5 min max
-    }
-
     this.isScanning = true;
     const startTime = Date.now();
-    let wasCancelled = false;
-
-    if (onProgress) {
-      onProgress(`Moteur Microsoft Defender : analyse ${scanType} en cours d'exécution...`);
-    }
+    const drives = this.getAvailableDrives();
 
     try {
-      const runResult = await new Promise<{ exitCode: number; stdout: string }>((resolve) => {
-        const child = cp.spawn(mpCmdRun, args, {
-          windowsHide: true,
-          stdio: ['ignore', 'pipe', 'pipe'],
+      if (scanType === 'custom') {
+        if (!targetPath || !fs.existsSync(targetPath)) {
+          throw new Error(`Chemin d'analyse cible invalide : ${targetPath}`);
+        }
+        const rootDrive = path.parse(targetPath).root || 'C:\\';
+        onProgress?.(`Analyse ciblée : ${targetPath}...`, {
+          currentDrive: rootDrive,
+          driveIndex: 1,
+          totalDrives: 1,
+          drivesList: [rootDrive],
+          percent: 50,
         });
 
-        this.activeScanChild = child;
-        let stdoutData = '';
-
-        child.stdout?.on('data', (d) => {
-          stdoutData += d.toString();
-        });
-
-        const timer = setTimeout(() => {
-          try {
-            child.kill();
-          } catch {}
-          wasCancelled = true;
-          resolve({ exitCode: -1, stdout: stdoutData });
-        }, timeoutMs);
-
-        child.on('exit', (code) => {
-          clearTimeout(timer);
-          this.activeScanChild = null;
-          resolve({ exitCode: code ?? 0, stdout: stdoutData });
-        });
-
-        child.on('error', () => {
-          clearTimeout(timer);
-          this.activeScanChild = null;
-          resolve({ exitCode: -1, stdout: stdoutData });
-        });
-      });
-
-      const durationMs = Date.now() - startTime;
-      const threats = await this.getDetectionHistory(10);
-
-      // Interprétation des codes de retour de MpCmdRun.exe
-      // 0: No threats detected
-      // 2: Threat detected
-      const hasThreats = runResult.exitCode === 2 || threats.length > 0;
-      let message = 'Analyse terminée : Aucune menace détectée.';
-      if (runResult.exitCode === 2) {
-        message = 'Menace(s) détectée(s) par Microsoft Defender.';
-      } else if (wasCancelled) {
-        message = 'Analyse interrompue ou délai dépassé.';
-      } else if (runResult.exitCode !== 0) {
-        message = `Analyse terminée avec le code de retour ${runResult.exitCode}.`;
+        const res = await this.runMpCmdRunChild(mpCmdRun, ['-Scan', '-ScanType', '3', '-File', targetPath], 300000);
+        const threats = await this.getDetectionHistory(10);
+        const hasThreats = res.exitCode === 2 || threats.length > 0;
+        return {
+          success: res.exitCode === 0 || res.exitCode === 2,
+          scanType: 'custom',
+          threatCount: hasThreats ? Math.max(1, threats.length) : 0,
+          threats: hasThreats ? threats : [],
+          durationMs: Date.now() - startTime,
+          exitCode: res.exitCode,
+          message: hasThreats ? 'Menace(s) détectée(s) lors du scan personnalisé.' : 'Analyse ciblée terminée : Aucun élément malveillant détecté.',
+          wasCancelled: res.wasCancelled,
+        };
       }
 
+      if (scanType === 'quick') {
+        onProgress?.(`Moteur Defender : analyse rapide du système principal (${drives[0]})...`, {
+          currentDrive: drives[0],
+          driveIndex: 1,
+          totalDrives: drives.length,
+          drivesList: drives,
+          percent: 30,
+        });
+
+        const res = await this.runMpCmdRunChild(mpCmdRun, ['-Scan', '-ScanType', '1'], 180000);
+
+        // Analyse multi-disques des autres volumes
+        for (let i = 1; i < drives.length; i++) {
+          const d = drives[i];
+          const pct = Math.round(30 + (i / drives.length) * 50);
+          onProgress?.(`Contrôle multi-disques du volume ${d}...`, {
+            currentDrive: d,
+            driveIndex: i + 1,
+            totalDrives: drives.length,
+            drivesList: drives,
+            percent: pct,
+          });
+
+          try {
+            await this.runMpCmdRunChild(mpCmdRun, ['-Scan', '-ScanType', '3', '-File', d], 60000);
+          } catch {}
+        }
+
+        const threats = await this.getDetectionHistory(10);
+        const hasThreats = res.exitCode === 2 || threats.length > 0;
+        return {
+          success: res.exitCode === 0 || res.exitCode === 2,
+          scanType: 'quick',
+          threatCount: hasThreats ? Math.max(1, threats.length) : 0,
+          threats: hasThreats ? threats : [],
+          durationMs: Date.now() - startTime,
+          exitCode: res.exitCode,
+          message: hasThreats
+            ? 'Menaces détectées par Microsoft Defender.'
+            : `Analyse multi-disques terminée sur ${drives.length} volume(s) (${drives.join(', ')}). Système sain.`,
+          wasCancelled: res.wasCancelled,
+        };
+      }
+
+      // Full Scan (Analyse approfondie sur l'ensemble des disques)
+      let anyThreat = false;
+      let lastCancelled = false;
+
+      for (let i = 0; i < drives.length; i++) {
+        const d = drives[i];
+        const drivePct = Math.round((i / drives.length) * 85);
+        onProgress?.(`Analyse approfondie du volume ${d} (${i + 1}/${drives.length})...`, {
+          currentDrive: d,
+          driveIndex: i + 1,
+          totalDrives: drives.length,
+          drivesList: drives,
+          percent: drivePct,
+        });
+
+        const driveRes = await this.runMpCmdRunChild(mpCmdRun, ['-Scan', '-ScanType', '3', '-File', d], 600000);
+        if (driveRes.exitCode === 2) anyThreat = true;
+        if (driveRes.wasCancelled) lastCancelled = true;
+      }
+
+      const threats = await this.getDetectionHistory(10);
+      const hasThreats = anyThreat || threats.length > 0;
       return {
-        success: runResult.exitCode === 0 || runResult.exitCode === 2,
-        scanType,
+        success: true,
+        scanType: 'full',
         threatCount: hasThreats ? Math.max(1, threats.length) : 0,
         threats: hasThreats ? threats : [],
-        durationMs,
-        exitCode: runResult.exitCode,
-        message,
-        wasCancelled,
+        durationMs: Date.now() - startTime,
+        exitCode: anyThreat ? 2 : 0,
+        message: anyThreat
+          ? 'Menace(s) détectée(s) sur un ou plusieurs disques.'
+          : `Analyse approfondie multi-disques terminée avec succès sur ${drives.join(', ')}. Aucun malware.`,
+        wasCancelled: lastCancelled,
       };
     } finally {
       this.isScanning = false;

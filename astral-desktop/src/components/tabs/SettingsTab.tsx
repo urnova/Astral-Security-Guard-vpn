@@ -109,6 +109,10 @@ export default function SettingsTab({
   // Downloads Scanner
   const [scanDownloads, setScanDownloads]     = useState(true);
   const [blockUnsigned, setBlockUnsigned]     = useState(false);
+  const [usbScanEnabled, setUsbScanEnabled]   = useState(true);
+  const [downloadSound, setDownloadSound]     = useState(true);
+  const [showModalEvenIfSafe, setShowModalEvenIfSafe] = useState(false);
+  const [watchDirs, setWatchDirs]             = useState<string[]>([]);
 
   // Gaming / Overlay
   const [hudEnabled, setHudEnabled]           = useState(false);
@@ -130,10 +134,10 @@ export default function SettingsTab({
 
   // Updates
   const [autoUpdate, setAutoUpdate]         = useState(true);
-  const [betaChannel, setBetaChannel]       = useState(false);
+  const [betaChannel, setBetaChannel]       = useState(true);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateStatus, setUpdateStatus]     = useState('');
-  const [currentVersion, setCurrentVersion] = useState('0.1.0');
+  const [currentVersion, setCurrentVersion] = useState('0.1.1');
   const [updateInfo, setUpdateInfo]         = useState<{ version?: string; hasUpdate?: boolean } | null>(null);
 
   const playTestNotificationSound = () => {
@@ -219,6 +223,17 @@ export default function SettingsTab({
     api.hudGetState?.().then((res: any) => {
       if (typeof res?.active === 'boolean') setHudEnabled(res.active);
       else if (typeof res === 'boolean') setHudEnabled(res);
+    }).catch(() => {});
+
+    // Sync download scanner config
+    api.getScannerConfig?.().then((res: any) => {
+      if (res?.config) {
+        if (typeof res.config.enabled === 'boolean') setScanDownloads(res.config.enabled);
+        if (typeof res.config.usbScanEnabled === 'boolean') setUsbScanEnabled(res.config.usbScanEnabled);
+        if (typeof res.config.soundEnabled === 'boolean') setDownloadSound(res.config.soundEnabled);
+        if (typeof res.config.showModalEvenIfSafe === 'boolean') setShowModalEvenIfSafe(res.config.showModalEvenIfSafe);
+        if (Array.isArray(res.config.watchDirs)) setWatchDirs(res.config.watchDirs);
+      }
     }).catch(() => {});
 
     const unHud = api.on?.('hud:state-changed', (d: any) => {
@@ -661,21 +676,26 @@ export default function SettingsTab({
           {activeSection === 'downloads' && (
             <div className="stack" style={{ gap: 20 }}>
               <div>
-                <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Scanner de téléchargements</h2>
+                <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Scanner de téléchargements & Sentinelle USB</h2>
                 <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-                  Analyse automatique immédiate des fichiers entrants dans vos dossiers de téléchargement.
+                  Surveillance native des dossiers entrants (%USERPROFILE%\Downloads) et contrôle des clés USB sans charge CPU.
                 </p>
               </div>
 
               <div className="list">
                 <div className="setting-row">
                   <div className="setting-info">
-                    <div className="setting-title">Analyser chaque téléchargement entrant</div>
-                    <div className="setting-desc">Analyse instantanée des extensions exécutables et archives (.exe, .msi, .zip, .jar)</div>
+                    <div className="setting-title">Surveillance proactive des téléchargements</div>
+                    <div className="setting-desc">Analyse instantanée des exécutables et archives (.exe, .msi, .zip, .rar, .iso) dès stabilisation d'écriture</div>
                   </div>
                   <div
                     className={`sw ${scanDownloads ? 'on' : ''}`}
-                    onClick={() => setScanDownloads(!scanDownloads)}
+                    onClick={async () => {
+                      const next = !scanDownloads;
+                      setScanDownloads(next);
+                      await api?.saveScannerConfig?.({ enabled: next });
+                      showToast(next ? 'Scanner de téléchargements activé' : 'Scanner de téléchargements désactivé');
+                    }}
                     role="switch"
                     aria-checked={scanDownloads}
                     tabIndex={0}
@@ -684,16 +704,115 @@ export default function SettingsTab({
 
                 <div className="setting-row">
                   <div className="setting-info">
-                    <div className="setting-title">Avertir sur les binaires non signés numériquement</div>
-                    <div className="setting-desc">Vérifie le certificat Authenticode de l'éditeur avant d'autoriser l'exécution</div>
+                    <div className="setting-title">Sentinelle des périphériques USB & amovibles</div>
+                    <div className="setting-desc">Détecte l'insertion de clés USB et prévient l'exécution automatique de scripts hostiles</div>
                   </div>
                   <div
-                    className={`sw ${blockUnsigned ? 'on' : ''}`}
-                    onClick={() => setBlockUnsigned(!blockUnsigned)}
+                    className={`sw ${usbScanEnabled ? 'on' : ''}`}
+                    onClick={async () => {
+                      const next = !usbScanEnabled;
+                      setUsbScanEnabled(next);
+                      await api?.saveScannerConfig?.({ usbScanEnabled: next });
+                      showToast(next ? 'Sentinelle USB activée' : 'Sentinelle USB désactivée');
+                    }}
                     role="switch"
-                    aria-checked={blockUnsigned}
+                    aria-checked={usbScanEnabled}
                     tabIndex={0}
                   />
+                </div>
+
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Alertes sonores lors de la détection de menaces</div>
+                    <div className="setting-desc">Émet un signal sonore distinctif lorsqu'un fichier malveillant ou suspect est neutralisé</div>
+                  </div>
+                  <div
+                    className={`sw ${downloadSound ? 'on' : ''}`}
+                    onClick={async () => {
+                      const next = !downloadSound;
+                      setDownloadSound(next);
+                      await api?.saveScannerConfig?.({ soundEnabled: next });
+                      showToast(next ? 'Alertes sonores activées' : 'Alertes sonores désactivées');
+                    }}
+                    role="switch"
+                    aria-checked={downloadSound}
+                    tabIndex={0}
+                  />
+                </div>
+
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Afficher la notification même si le fichier est sain</div>
+                    <div className="setting-desc">Recommandé : Désactivé (mode discret sans interruption pour les fichiers sûrs)</div>
+                  </div>
+                  <div
+                    className={`sw ${showModalEvenIfSafe ? 'on' : ''}`}
+                    onClick={async () => {
+                      const next = !showModalEvenIfSafe;
+                      setShowModalEvenIfSafe(next);
+                      await api?.saveScannerConfig?.({ showModalEvenIfSafe: next });
+                      showToast(next ? 'Affichage pour tous les fichiers activé' : 'Mode discret activé (alertes uniquement)');
+                    }}
+                    role="switch"
+                    aria-checked={showModalEvenIfSafe}
+                    tabIndex={0}
+                  />
+                </div>
+              </div>
+
+              {/* Dossiers sous surveillance */}
+              <div style={{
+                background: 'var(--bg)',
+                border: '1px solid var(--line)',
+                borderRadius: 'var(--r-md)',
+                padding: 16,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <div>
+                    <b style={{ fontSize: 13, color: 'var(--text)' }}>Dossiers sous surveillance continue</b>
+                    <p style={{ fontSize: 11, color: 'var(--muted)', margin: '2px 0 0' }}>Emplacements analysés automatiquement par le FileSystemWatcher natif.</p>
+                  </div>
+                  <button
+                    className="btn btn-sm"
+                    onClick={async () => {
+                      try {
+                        const res = await api?.selectScannerFolder?.();
+                        if (res?.success && res.folderPath) {
+                          const next = Array.from(new Set([...watchDirs, res.folderPath]));
+                          setWatchDirs(next);
+                          await api?.saveScannerConfig?.({ watchDirs: next });
+                          showToast(`Dossier ajouté : ${res.folderPath}`);
+                        }
+                      } catch {}
+                    }}
+                    style={{ fontSize: 11, padding: '5px 12px' }}
+                  >
+                    + Ajouter un dossier
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {(watchDirs.length > 0 ? watchDirs : ['%USERPROFILE%\\Downloads (Dossier Téléchargements par défaut)']).map((dir, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        padding: '6px 12px',
+                        background: 'rgba(255,255,255,0.03)',
+                        borderRadius: 'var(--r-sm)',
+                        fontSize: 11.5,
+                        color: 'var(--text)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        border: '1px solid rgba(255,255,255,0.05)',
+                      }}
+                    >
+                      <span className="mono">{dir}</span>
+                      <span style={{ fontSize: 9.5, color: '#22c55e', background: 'rgba(34,197,94,0.12)', padding: '1px 7px', borderRadius: 10, fontWeight: 700 }}>
+                        SURVEILLÉ
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1189,19 +1308,71 @@ export default function SettingsTab({
 
           {/* ── Profil utilisateur ── */}
           {activeSection === 'profile' && (
-            <div className="stack" style={{ gap: 20 }}>
-              <div>
-                <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Profil utilisateur</h2>
-                <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-                  Personnalisation locale du tableau de bord et du message d'accueil.
-                </p>
+            <div className="stack" style={{ gap: 22 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div
+                    style={{
+                      width: 58,
+                      height: 58,
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, rgba(var(--a1r), 0.25), rgba(var(--a1r), 0.05))',
+                      border: '2px solid var(--a1)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 20,
+                      fontWeight: 800,
+                      color: 'var(--a1)',
+                      boxShadow: '0 0 18px rgba(var(--a1r), 0.25)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {((firstName?.[0] || '') + (lastName?.[0] || '')).toUpperCase() || 'VC'}
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <h2 style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', margin: 0 }}>
+                        {firstName ? `${firstName} ${lastName}`.trim() : 'Utilisateur Vanguard'}
+                      </h2>
+                      <span style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: '#22c55e',
+                        background: 'rgba(34,197,94,0.12)',
+                        border: '1px solid rgba(34,197,94,0.3)',
+                        borderRadius: 12,
+                        padding: '2px 8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 5,
+                      }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} />
+                        COMPTE LOCAL AUTONOME
+                      </span>
+                    </div>
+                    <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                      Personnalisation locale du tableau de bord et du message d'accueil Astral Vanguard.
+                    </p>
+                  </div>
+                </div>
+
+                {onRelaunchOnboarding && (
+                  <button
+                    className="btn btn-ghost"
+                    onClick={onRelaunchOnboarding}
+                    style={{ fontSize: 12, padding: '7px 14px', borderRadius: 'var(--r-sm)' }}
+                  >
+                    <span>Relancer l'assistant initial</span>
+                  </button>
+                )}
               </div>
 
               {error && <div className="state-error">{error}</div>}
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
                 <div>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 6 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 6, letterSpacing: '0.04em' }}>
                     PRÉNOM
                   </label>
                   <input
@@ -1214,15 +1385,16 @@ export default function SettingsTab({
                       background: 'var(--bg)',
                       border: '1px solid var(--line)',
                       borderRadius: 'var(--r-sm)',
-                      padding: '8px 12px',
+                      padding: '10px 14px',
                       color: 'var(--text)',
-                      fontSize: 13,
+                      fontSize: 13.5,
+                      fontWeight: 600,
                     }}
                   />
                 </div>
 
                 <div>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 6 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 6, letterSpacing: '0.04em' }}>
                     NOM (OPTIONNEL)
                   </label>
                   <input
@@ -1235,24 +1407,29 @@ export default function SettingsTab({
                       background: 'var(--bg)',
                       border: '1px solid var(--line)',
                       borderRadius: 'var(--r-sm)',
-                      padding: '8px 12px',
+                      padding: '10px 14px',
                       color: 'var(--text)',
-                      fontSize: 13,
+                      fontSize: 13.5,
+                      fontWeight: 600,
                     }}
                   />
                 </div>
               </div>
 
-              <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
                 <button
                   className="btn"
                   onClick={handleSaveProfile}
                   disabled={savingProfile}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 22px', fontSize: 13, fontWeight: 700 }}
                 >
-                  <Save size={14} />
-                  <span>{savingProfile ? 'Enregistrement…' : profileSaved ? 'Enregistré !' : 'Sauvegarder mon profil'}</span>
+                  <Save size={15} />
+                  <span>{savingProfile ? 'Enregistrement…' : profileSaved ? '✓ Enregistré !' : 'Sauvegarder mon profil'}</span>
                 </button>
+
+                <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+                  🔒 Zéro télémétrie · Stockage local exclusif dans votre espace utilisateur
+                </div>
               </div>
             </div>
           )}

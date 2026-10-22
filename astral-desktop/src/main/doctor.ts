@@ -245,19 +245,6 @@ function setupWatchdog(win: BrowserWindow) {
 
       if (!isNaN(latency) && latency > 0) {
         win.webContents.send('doctor:ping-update', { ping: latency });
-
-        if (latency >= watchdogThresholdMs) {
-          logger.warn(`Pic de latence anormal détecté par le Watchdog : ${latency}ms (Seuil: ${watchdogThresholdMs}ms)`);
-          win.webContents.send('notification:trigger', {
-            type: 'lag',
-            title: 'Pic de latence élevé détecté',
-            message: `Latence anormale de ${latency}ms détectée. Purge automatique des sockets...`,
-            latency,
-          });
-
-          // Perform lightweight safe flush
-          await runPowerShell(`Clear-DnsClientCache; ipconfig /flushdns | Out-Null`, { timeout: 6000 });
-        }
       }
     } catch {}
   };
