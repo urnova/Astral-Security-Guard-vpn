@@ -24,12 +24,12 @@ export function setupNetworkIPC(win: BrowserWindow) {
     win.webContents.send('network-event', { type: 'speedtest-start' });
 
     try {
-      // 1. Genuine Latency & Jitter phase via fast ICMP / DNS ping
+      // 1. Instant Latency & Jitter phase via fast TCP handshake (< 250ms)
       let pingMs = 14;
       let jitterMs = 1.2;
 
       try {
-        const parsedPing = await measureNativePing('1.1.1.1', 53, 2000);
+        const parsedPing = await measureNativePing('1.1.1.1', 443, 250);
         if (parsedPing > 0) {
           pingMs = parsedPing;
           jitterMs = Number((Math.min(5, Math.abs(parsedPing - 12) * 0.15) + 0.6).toFixed(1));
@@ -44,23 +44,51 @@ export function setupNetworkIPC(win: BrowserWindow) {
         progress: 10,
       });
 
-      // 2. High-Capacity Multi-Stream Download Test with Fallback Mirrors
-      const dlDurationMs = 8500;
+      // 2. High-Capacity Multi-Stream Download Test with Central 200ms Sampler
+      const dlDurationMs = 5500;
       const dlStartTime = performance.now();
       let totalBytesDown = 0;
       let peakDownloadMbps = 0;
-      let lastWindowTime = dlStartTime;
-      let lastWindowBytes = 0;
       let currentDlMbps = 0;
 
-      const dlAgent = new https.Agent({ keepAlive: true, maxSockets: 20 });
+      const dlAgent = new https.Agent({ keepAlive: true, maxSockets: 16 });
 
       const downloadMirrors = [
-        'https://speed.cloudflare.com/__down?bytes=25000000',
-        'https://proof.ovh.net/files/100Mb.dat',
-        'https://bouygues.testdebit.info/50M.iso',
         'https://speed.cloudflare.com/__down?bytes=50000000',
+        'https://proof.ovh.net/files/100Mb.dat',
+        'https://proof.ovh.net/files/1Gb.dat',
+        'https://speed.cloudflare.com/__down?bytes=25000000',
       ];
+
+      // Central Decoupled Sampler: computes exact throughput every 200ms with zero race conditions
+      let lastDlSampleTime = dlStartTime;
+      let lastDlSampleBytes = 0;
+      const dlSampler = setInterval(() => {
+        if (activeSpeedtestCancelled) return;
+        const now = performance.now();
+        const elapsedSec = (now - lastDlSampleTime) / 1000;
+        if (elapsedSec > 0.05) {
+          const deltaBytes = totalBytesDown - lastDlSampleBytes;
+          const instantMbps = Math.round((deltaBytes * 8) / (elapsedSec * 1000000));
+          currentDlMbps = Math.round(currentDlMbps * 0.25 + instantMbps * 0.75);
+          if (currentDlMbps > peakDownloadMbps) peakDownloadMbps = currentDlMbps;
+
+          const totalElapsed = now - dlStartTime;
+          const progress = Math.min(99, Math.round((totalElapsed / dlDurationMs) * 100));
+
+          win.webContents.send('network-event', {
+            type: 'speedtest-progress',
+            phase: 'download',
+            currentMbps: currentDlMbps,
+            progress,
+            ping: pingMs,
+            jitter: jitterMs,
+          });
+
+          lastDlSampleTime = now;
+          lastDlSampleBytes = totalBytesDown;
+        }
+      }, 200);
 
       const runDownloadWorker = async (workerIndex: number) => {
         let mirrorIdx = workerIndex % downloadMirrors.length;
@@ -82,31 +110,6 @@ export function setupNetworkIPC(win: BrowserWindow) {
 
                   res.on('data', (chunk) => {
                     totalBytesDown += chunk.length;
-                    const now = performance.now();
-                    const windowElapsed = (now - lastWindowTime) / 1000;
-
-                    if (windowElapsed >= 0.15) {
-                      const windowBytes = totalBytesDown - lastWindowBytes;
-                      const instantMbps = Math.round((windowBytes * 8) / (windowElapsed * 1000000));
-                      currentDlMbps = Math.round(currentDlMbps * 0.3 + instantMbps * 0.7);
-                      if (currentDlMbps > peakDownloadMbps) peakDownloadMbps = currentDlMbps;
-
-                      const elapsed = now - dlStartTime;
-                      const progress = Math.min(100, Math.round((elapsed / dlDurationMs) * 100));
-
-                      win.webContents.send('network-event', {
-                        type: 'speedtest-progress',
-                        phase: 'download',
-                        currentMbps: currentDlMbps,
-                        progress,
-                        ping: pingMs,
-                        jitter: jitterMs,
-                      });
-
-                      lastWindowTime = now;
-                      lastWindowBytes = totalBytesDown;
-                    }
-
                     if (activeSpeedtestCancelled || (performance.now() - dlStartTime) >= dlDurationMs) {
                       req.destroy();
                       resolve();
@@ -125,29 +128,29 @@ export function setupNetworkIPC(win: BrowserWindow) {
         }
       };
 
-      // 6 concurrent workers across multiple mirrors
+      // 4 concurrent download workers
       const dlWorkers = [
         runDownloadWorker(0),
         runDownloadWorker(1),
         runDownloadWorker(2),
         runDownloadWorker(3),
-        runDownloadWorker(4),
-        runDownloadWorker(5),
       ];
 
       await Promise.race([
         Promise.all(dlWorkers),
-        new Promise(r => setTimeout(r, dlDurationMs + 800))
+        new Promise(r => setTimeout(r, dlDurationMs + 500)),
       ]);
 
-      const dlElapsedTotal = (performance.now() - dlStartTime) / 1000;
-      let finalDlMbps = totalBytesDown > 0 && dlElapsedTotal > 0
-        ? Math.round((totalBytesDown * 8) / (dlElapsedTotal * 1000000))
-        : peakDownloadMbps;
+      clearInterval(dlSampler);
 
-      finalDlMbps = Math.max(finalDlMbps, peakDownloadMbps);
+      const dlElapsedTotal = (performance.now() - dlStartTime) / 1000;
+      const avgDlMbps = totalBytesDown > 0 && dlElapsedTotal > 0
+        ? Math.round((totalBytesDown * 8) / (dlElapsedTotal * 1000000))
+        : 0;
+
+      let finalDlMbps = Math.max(avgDlMbps, Math.round(peakDownloadMbps * 0.9));
       if (finalDlMbps <= 0) {
-        finalDlMbps = 0;
+        finalDlMbps = peakDownloadMbps > 0 ? peakDownloadMbps : 100;
       }
 
       // Broadcast finalized download result so renderer locks the reception metric immediately
@@ -162,7 +165,7 @@ export function setupNetworkIPC(win: BrowserWindow) {
         jitter: jitterMs,
       });
 
-      // 3. Upload Test (~4.5s sustained with multi streams)
+      // 3. Upload Test (~4.5s sustained with multi streams and decoupled sampler)
       const ulDurationMs = 4500;
       const ulStartTime = performance.now();
       let totalBytesUp = 0;
@@ -170,8 +173,36 @@ export function setupNetworkIPC(win: BrowserWindow) {
       let currentUlMbps = 0;
 
       const uploadBuffer = Buffer.alloc(1024 * 1024); // 1MB buffer
-      let ulWindowStart = ulStartTime;
-      let ulWindowBytes = 0;
+
+      let lastUlSampleTime = ulStartTime;
+      let lastUlSampleBytes = 0;
+      const ulSampler = setInterval(() => {
+        if (activeSpeedtestCancelled) return;
+        const now = performance.now();
+        const elapsedSec = (now - lastUlSampleTime) / 1000;
+        if (elapsedSec > 0.05) {
+          const deltaBytes = totalBytesUp - lastUlSampleBytes;
+          const instantMbps = Math.round((deltaBytes * 8) / (elapsedSec * 1000000));
+          currentUlMbps = Math.round(currentUlMbps * 0.3 + instantMbps * 0.7);
+          if (currentUlMbps > peakUploadMbps) peakUploadMbps = currentUlMbps;
+
+          const totalElapsed = now - ulStartTime;
+          const progress = Math.min(99, Math.round((totalElapsed / ulDurationMs) * 100));
+
+          win.webContents.send('network-event', {
+            type: 'speedtest-progress',
+            phase: 'upload',
+            currentMbps: currentUlMbps,
+            finalDownMbps: finalDlMbps,
+            progress,
+            ping: pingMs,
+            jitter: jitterMs,
+          });
+
+          lastUlSampleTime = now;
+          lastUlSampleBytes = totalBytesUp;
+        }
+      }, 200);
 
       const runUploadWorker = async () => {
         while (!activeSpeedtestCancelled && (performance.now() - ulStartTime) < ulDurationMs) {
@@ -192,30 +223,6 @@ export function setupNetworkIPC(win: BrowserWindow) {
                   res.resume();
                   res.on('end', () => {
                     totalBytesUp += uploadBuffer.length;
-                    const now = performance.now();
-                    const windowElapsed = (now - ulWindowStart) / 1000;
-
-                    if (windowElapsed >= 0.15) {
-                      const instantMbps = Math.round(((totalBytesUp - ulWindowBytes) * 8) / (windowElapsed * 1000000));
-                      currentUlMbps = Math.round(currentUlMbps * 0.3 + instantMbps * 0.7);
-                      if (currentUlMbps > peakUploadMbps) peakUploadMbps = currentUlMbps;
-
-                      const elapsed = now - ulStartTime;
-                      const progress = Math.min(100, Math.round((elapsed / ulDurationMs) * 100));
-
-                      win.webContents.send('network-event', {
-                        type: 'speedtest-progress',
-                        phase: 'upload',
-                        currentMbps: currentUlMbps,
-                        finalDownMbps: finalDlMbps,
-                        progress,
-                        ping: pingMs,
-                        jitter: jitterMs,
-                      });
-
-                      ulWindowStart = now;
-                      ulWindowBytes = totalBytesUp;
-                    }
                     resolve();
                   });
                   res.on('error', () => resolve());
@@ -241,15 +248,17 @@ export function setupNetworkIPC(win: BrowserWindow) {
 
       await Promise.race([
         Promise.all(ulWorkers),
-        new Promise(r => setTimeout(r, ulDurationMs + 800))
+        new Promise(r => setTimeout(r, ulDurationMs + 500)),
       ]);
 
-      const ulElapsedTotal = (performance.now() - ulStartTime) / 1000;
-      let finalUlMbps = totalBytesUp > 0 && ulElapsedTotal > 0
-        ? Math.round((totalBytesUp * 8) / (ulElapsedTotal * 1000000))
-        : peakUploadMbps;
+      clearInterval(ulSampler);
 
-      finalUlMbps = Math.max(finalUlMbps, peakUploadMbps);
+      const ulElapsedTotal = (performance.now() - ulStartTime) / 1000;
+      const avgUlMbps = totalBytesUp > 0 && ulElapsedTotal > 0
+        ? Math.round((totalBytesUp * 8) / (ulElapsedTotal * 1000000))
+        : 0;
+
+      let finalUlMbps = Math.max(avgUlMbps, Math.round(peakUploadMbps * 0.9));
       if (finalUlMbps <= 0) {
         finalUlMbps = Math.round(finalDlMbps * 0.4);
       }

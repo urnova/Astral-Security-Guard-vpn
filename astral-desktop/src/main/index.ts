@@ -119,6 +119,7 @@ export function notifyUser(
       title,
       message: body,
       critical: isCritical,
+      desktopToastShown,
     });
   }
 }

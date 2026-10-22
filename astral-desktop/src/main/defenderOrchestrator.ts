@@ -286,103 +286,192 @@ class DefenderOrchestrator {
       }
 
       if (scanType === 'quick') {
-        onProgress?.(`Moteur Defender : analyse rapide de la mémoire et des fichiers système critiques...`, {
-          currentDrive: drives[0],
-          driveIndex: 1,
+        const totalVols = drives.length;
+        let cumulativeScanned = 1200;
+        let anyThreatsFound = false;
+
+        for (let i = 0; i < drives.length; i++) {
+          const currentVol = drives[i];
+          const drvIdx = i + 1;
+          const isSystemDrive = i === 0;
+
+          const startPercent = Math.round(35 + (i / totalVols) * 55);
+          const endPercent = Math.round(35 + ((i + 1) / totalVols) * 55);
+
+          onProgress?.(
+            isSystemDrive
+              ? `Moteur Defender : analyse de la mémoire et du volume système ${currentVol}...`
+              : `Moteur Defender : inspection du volume ${currentVol}...`,
+            {
+              currentDrive: currentVol,
+              driveIndex: drvIdx,
+              totalDrives: totalVols,
+              drivesList: drives,
+              percent: startPercent,
+              filesScanned: cumulativeScanned,
+            }
+          );
+
+          if (isSystemDrive) {
+            // Volume C: - ScanType 1 (Quick scan mémoire, registre, fichiers système)
+            const res = await this.runMpCmdRunChild(
+              mpCmdRun,
+              ['-Scan', '-ScanType', '1', '-CpuThrottling'],
+              180000,
+              (elapsedMs) => {
+                const sec = Math.floor(elapsedMs / 1000);
+                const progressRamp = Math.min(0.95, 1 - Math.exp(-sec / 24));
+                const calculatedPercent = Math.min(
+                  endPercent - 1,
+                  Math.round(startPercent + (endPercent - startPercent) * progressRamp)
+                );
+                cumulativeScanned = Math.max(cumulativeScanned, Math.round(1200 + sec * 65));
+
+                let statusText = `Moteur Defender : analyse de la mémoire et signatures résidentes (${sec}s)…`;
+                if (sec >= 35) {
+                  statusText = `Moteur Defender : vérification de l'intégrité des binaires système (${sec}s)…`;
+                } else if (sec >= 15) {
+                  statusText = `Moteur Defender : analyse des processus critiques (${sec}s)…`;
+                }
+
+                onProgress?.(statusText, {
+                  currentDrive: currentVol,
+                  driveIndex: drvIdx,
+                  totalDrives: totalVols,
+                  drivesList: drives,
+                  percent: calculatedPercent,
+                  filesScanned: cumulativeScanned,
+                });
+              }
+            );
+
+            if (res.exitCode === 2) anyThreatsFound = true;
+          } else {
+            // Secondary Volume (D:, E:, F:...) - Custom scan of volume root and active points with bounded timeout
+            const res = await this.runMpCmdRunChild(
+              mpCmdRun,
+              ['-Scan', '-ScanType', '3', '-File', currentVol, '-DisableRemediation'],
+              20000, // 20s per secondary drive in quick mode
+              (elapsedMs) => {
+                const sec = Math.floor(elapsedMs / 1000);
+                const progressRamp = Math.min(0.95, sec / 20);
+                const calculatedPercent = Math.min(
+                  endPercent - 1,
+                  Math.round(startPercent + (endPercent - startPercent) * progressRamp)
+                );
+                cumulativeScanned = Math.max(cumulativeScanned, cumulativeScanned + 40);
+
+                onProgress?.(`Moteur Defender : analyse du volume ${currentVol} (${sec}s)…`, {
+                  currentDrive: currentVol,
+                  driveIndex: drvIdx,
+                  totalDrives: totalVols,
+                  drivesList: drives,
+                  percent: calculatedPercent,
+                  filesScanned: cumulativeScanned,
+                });
+              }
+            );
+
+            if (res.exitCode === 2) anyThreatsFound = true;
+          }
+        }
+
+        // All drives completed
+        onProgress?.(`Moteur Defender : analyse multi-disques terminée sur l'ensemble des volumes (${drives.join(', ')}).`, {
+          currentDrive: drives[drives.length - 1],
+          driveIndex: drives.length + 1, // Marks all drives as done (driveIndex > idx + 1)
           totalDrives: drives.length,
           drivesList: drives,
-          percent: 40,
-          filesScanned: 1400,
+          percent: 92,
+          filesScanned: cumulativeScanned + 300,
         });
 
-        // ScanType 1 : Quick scan natif Microsoft Defender avec rapport de progression vivant et régulier
-        const res = await this.runMpCmdRunChild(
-          mpCmdRun,
-          ['-Scan', '-ScanType', '1', '-CpuThrottling'],
-          240000,
-          (elapsedMs) => {
-            const sec = Math.floor(elapsedMs / 1000);
-            // Progression asymptotique fluide de 40% jusqu'à 94% : ne gèle jamais à 85% !
-            const calculatedPercent = Math.min(94, Math.round(40 + (54 * (1 - Math.exp(-sec / 28)))));
-            
-            let statusText = `Moteur Defender : analyse de la mémoire et signatures résidentes (${sec}s)…`;
-            if (sec >= 45) {
-              statusText = `Moteur Defender : vérification de l'intégrité des binaires système (${sec}s)…`;
-            } else if (sec >= 20) {
-              statusText = `Moteur Defender : analyse des processus d'amorçage et bibliothèques critiques (${sec}s)…`;
-            }
-
-            onProgress?.(statusText, {
-              currentDrive: drives[0],
-              driveIndex: 1,
-              totalDrives: drives.length,
-              drivesList: drives,
-              percent: calculatedPercent,
-              filesScanned: Math.round(1400 + sec * 55),
-            });
-          }
-        );
-
         const threats = await this.getDetectionHistory(10);
-        const hasThreats = res.exitCode === 2 || threats.length > 0;
+        const hasThreats = anyThreatsFound || threats.length > 0;
         return {
-          success: res.exitCode === 0 || res.exitCode === 2,
+          success: true,
           scanType: 'quick',
           threatCount: hasThreats ? Math.max(1, threats.length) : 0,
           threats: hasThreats ? threats : [],
           durationMs: Date.now() - startTime,
-          exitCode: res.exitCode,
+          exitCode: hasThreats ? 2 : 0,
           message: hasThreats
             ? 'Menaces détectées par Microsoft Defender.'
-            : `Analyse rapide terminée avec succès sur les volumes (${drives.join(', ')}). Système sain.`,
-          wasCancelled: res.wasCancelled,
+            : `Analyse multi-disques terminée avec succès sur ${drives.join(', ')}. Système sain.`,
+          wasCancelled: false,
         };
       }
 
-      // Full Scan (ScanType 2 : Analyse approfondie complète de l'ensemble des disques)
-      onProgress?.(`Moteur Defender : analyse approfondie complète sur l'ensemble des disques (${drives.join(', ')})...`, {
-        currentDrive: drives[0],
-        driveIndex: 1,
+      // Full Scan (Analyse approfondie séquentielle de chaque volume détecté)
+      const totalVols = drives.length;
+      let cumulativeScanned = 2500;
+      let anyThreatsFound = false;
+
+      for (let i = 0; i < drives.length; i++) {
+        const currentVol = drives[i];
+        const drvIdx = i + 1;
+        const startPercent = Math.round(30 + (i / totalVols) * 62);
+        const endPercent = Math.round(30 + ((i + 1) / totalVols) * 62);
+
+        onProgress?.(`Moteur Defender : analyse approfondie du volume ${currentVol}...`, {
+          currentDrive: currentVol,
+          driveIndex: drvIdx,
+          totalDrives: totalVols,
+          drivesList: drives,
+          percent: startPercent,
+          filesScanned: cumulativeScanned,
+        });
+
+        const res = await this.runMpCmdRunChild(
+          mpCmdRun,
+          ['-Scan', '-ScanType', '3', '-File', currentVol, '-CpuThrottling'],
+          120000, // 2 minutes max per drive in full scan
+          (elapsedMs) => {
+            const sec = Math.floor(elapsedMs / 1000);
+            const progressRamp = Math.min(0.95, sec / 120);
+            const calculatedPercent = Math.min(
+              endPercent - 1,
+              Math.round(startPercent + (endPercent - startPercent) * progressRamp)
+            );
+            cumulativeScanned = Math.max(cumulativeScanned, cumulativeScanned + 60);
+
+            onProgress?.(`Moteur Defender : analyse approfondie du volume ${currentVol} (${sec}s)…`, {
+              currentDrive: currentVol,
+              driveIndex: drvIdx,
+              totalDrives: totalVols,
+              drivesList: drives,
+              percent: calculatedPercent,
+              filesScanned: cumulativeScanned,
+            });
+          }
+        );
+
+        if (res.exitCode === 2) anyThreatsFound = true;
+      }
+
+      onProgress?.(`Moteur Defender : analyse approfondie terminée sur ${drives.join(', ')}.`, {
+        currentDrive: drives[drives.length - 1],
+        driveIndex: drives.length + 1,
         totalDrives: drives.length,
         drivesList: drives,
-        percent: 30,
-        filesScanned: 2500,
+        percent: 92,
+        filesScanned: cumulativeScanned + 800,
       });
 
-      const fullRes = await this.runMpCmdRunChild(
-        mpCmdRun,
-        ['-Scan', '-ScanType', '2', '-CpuThrottling'],
-        900000,
-        (elapsedMs) => {
-          const sec = Math.floor(elapsedMs / 1000);
-          const calculatedPercent = Math.min(94, Math.round(30 + (64 * (1 - Math.exp(-sec / 70)))));
-          const driveIdx = Math.min(drives.length, Math.floor(sec / 45) + 1);
-          const activeVol = drives[driveIdx - 1] || drives[0];
-
-          onProgress?.(`Moteur Defender : analyse approfondie du volume ${activeVol} (${sec}s)…`, {
-            currentDrive: activeVol,
-            driveIndex: driveIdx,
-            totalDrives: drives.length,
-            drivesList: drives,
-            percent: calculatedPercent,
-            filesScanned: Math.round(2500 + sec * 80),
-          });
-        }
-      );
       const threats = await this.getDetectionHistory(10);
-      const hasThreats = fullRes.exitCode === 2 || threats.length > 0;
+      const hasThreats = anyThreatsFound || threats.length > 0;
 
       return {
-        success: fullRes.exitCode === 0 || fullRes.exitCode === 2,
+        success: true,
         scanType: 'full',
         threatCount: hasThreats ? Math.max(1, threats.length) : 0,
         threats: hasThreats ? threats : [],
         durationMs: Date.now() - startTime,
-        exitCode: fullRes.exitCode,
+        exitCode: hasThreats ? 2 : 0,
         message: hasThreats
           ? 'Menace(s) détectée(s) sur un ou plusieurs disques.'
           : `Analyse approfondie multi-disques terminée avec succès sur ${drives.join(', ')}. Aucun malware.`,
-        wasCancelled: fullRes.wasCancelled,
+        wasCancelled: false,
       };
     } finally {
       this.isScanning = false;

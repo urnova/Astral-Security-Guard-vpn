@@ -194,7 +194,7 @@ export async function performVpnConnect(serverId: string, win?: BrowserWindow): 
         trayUpdateCallback({ vpnConnected: true, vpnNodeName: serverName });
       }
       if (notifyVpnCallback) {
-        notifyVpnCallback('Astral VPN Connecté', `Tunnel actif vers ${serverName}. Adresse IP protégée.`, { type: 'vpn' });
+        notifyVpnCallback('Astral VPN Connecté', `Tunnel actif vers ${serverName}. Adresse IP protégée.`, { type: 'vpn_connected' });
       }
       if (win && !win.isDestroyed()) {
         win.webContents.send('vpn-event', { type: 'connected', serverName });
@@ -238,7 +238,7 @@ export async function performVpnDisconnect(win?: BrowserWindow): Promise<any> {
     trayUpdateCallback({ vpnConnected: false, vpnNodeName: '' });
   }
   if (notifyVpnCallback) {
-    notifyVpnCallback('Astral VPN Déconnecté', 'Le tunnel chiffré est désormais fermé.', { type: 'vpn' });
+    notifyVpnCallback('Astral VPN Déconnecté', 'Le tunnel chiffré est désormais fermé.', { type: 'vpn_disconnected' });
   }
 
   if (win && !win.isDestroyed()) {

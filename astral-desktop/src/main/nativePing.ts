@@ -6,7 +6,7 @@
 
 import net from 'net';
 
-export async function measureNativePing(host = '1.1.1.1', port = 53, timeout = 2500): Promise<number> {
+export async function measureNativePing(host = '1.1.1.1', port = 443, timeout = 400): Promise<number> {
   return new Promise((resolve) => {
     const start = performance.now();
     const socket = new net.Socket();

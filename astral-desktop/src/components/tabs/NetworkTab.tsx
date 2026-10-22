@@ -285,13 +285,15 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
   };
 
   const getGradeInfo = () => {
-    if (!speedResult && liveDownMbps === null) {
+    if ((!speedResult && liveDownMbps === null) || (testing && (!speedResult && (liveDownMbps === null || liveDownMbps === 0)))) {
       return {
         grade: 'A+',
         scorePct: 98,
         color: '#38bdf8',
-        label: 'Prêt pour l\'Évaluation Multi-Flux',
-        summary: 'Votre adaptateur réseau et votre passerelle sont actifs. Lancez le test multi-flux pour obtenir le bilan complet et certifié de votre ligne par l\'IA Vanguard.',
+        label: testing ? 'Évaluation Multi-Flux en Cours…' : 'Prêt pour l\'Évaluation Multi-Flux',
+        summary: testing
+          ? 'Mesure en direct de la bande passante descendante et montante par les sondes haute capacité Vanguard.'
+          : 'Votre adaptateur réseau et votre passerelle sont actifs. Lancez le test multi-flux pour obtenir le bilan complet et certifié de votre ligne par l\'IA Vanguard.',
         isPending: true,
       };
     }
@@ -300,7 +302,7 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
     const ping = speedResult ? speedResult.ping : (livePing ?? 14);
     const jitter = speedResult ? speedResult.jitter : 1.2;
 
-    if (down >= 300 && ping <= 18 && jitter <= 3) {
+    if (down >= 200 && ping <= 25) {
       return {
         grade: 'A+',
         scorePct: 99,
@@ -310,7 +312,7 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
         isPending: false,
       };
     }
-    if (down >= 100 && ping <= 25) {
+    if (down >= 80 && ping <= 35) {
       return {
         grade: 'A',
         scorePct: 94,
@@ -320,7 +322,7 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
         isPending: false,
       };
     }
-    if (down >= 40 && ping <= 45) {
+    if (down >= 30 && ping <= 50) {
       return {
         grade: 'B',
         scorePct: 82,
@@ -330,7 +332,7 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
         isPending: false,
       };
     }
-    if (ping <= 75) {
+    if (down > 0 && ping <= 80) {
       return {
         grade: 'C',
         scorePct: 68,
@@ -838,6 +840,76 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
           </div>
         </div>
 
+        {/* ── Historique des Débits & Stabilité (Mbps) with SVG Curve Chart ── */}
+        <div className="card card-p-lg" style={{ padding: 22, marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <div className="lbl" style={{ margin: 0, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Activity size={15} style={{ color: '#38bdf8' }} />
+              Historique des Débits & Stabilité (Mbps)
+            </div>
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+              {history.length > 0 ? `${history.length} mesure${history.length > 1 ? 's' : ''} enregistrée${history.length > 1 ? 's' : ''}` : 'Stabilité de votre ligne'}
+            </span>
+          </div>
+
+          {history.length === 0 ? (
+            <div style={{ height: 160, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', gap: 8 }}>
+              <Activity size={24} style={{ opacity: 0.4 }} />
+              <span style={{ fontSize: 12, fontWeight: 600 }}>Aucune mesure enregistrée</span>
+              <small style={{ fontSize: 11 }}>Lancez un test de débit pour tracer la stabilité temporelle de votre connexion.</small>
+            </div>
+          ) : (
+            <div style={{ width: '100%', height: 160, position: 'relative' }}>
+              <svg viewBox="0 0 500 160" width="100%" height="160" style={{ overflow: 'visible' }}>
+                <defs>
+                  <linearGradient id="chartGradDown" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.3" />
+                    <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.0" />
+                  </linearGradient>
+                </defs>
+
+                <line x1="0" y1="30" x2="500" y2="30" stroke="rgba(255,255,255,0.05)" strokeDasharray="4 4" />
+                <line x1="0" y1="80" x2="500" y2="80" stroke="rgba(255,255,255,0.05)" strokeDasharray="4 4" />
+                <line x1="0" y1="130" x2="500" y2="130" stroke="rgba(255,255,255,0.05)" strokeDasharray="4 4" />
+
+                <text x="4" y="26" fill="var(--muted)" fontSize="9">1000 Mbps</text>
+                <text x="4" y="76" fill="var(--muted)" fontSize="9">500 Mbps</text>
+                <text x="4" y="126" fill="var(--muted)" fontSize="9">100 Mbps</text>
+
+                {(() => {
+                  const maxDown = 1000;
+                  const pts = history.map((p, idx) => {
+                    const x = history.length === 1 ? 250 : (idx / (history.length - 1)) * 440 + 30;
+                    const y = 140 - (Math.min(maxDown, p.down) / maxDown) * 110;
+                    return { x, y, ...p };
+                  });
+
+                  const lineD = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
+                  const areaD = `${lineD} L ${pts[pts.length - 1].x} 140 L ${pts[0].x} 140 Z`;
+
+                  return (
+                    <>
+                      {history.length > 1 && <path d={areaD} fill="url(#chartGradDown)" />}
+                      {history.length > 1 && <path d={lineD} fill="none" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
+                      {pts.map((pt, i) => (
+                        <g key={i}>
+                          <circle cx={pt.x} cy={pt.y} r="4.5" fill="#38bdf8" stroke="#0b0f17" strokeWidth="2" />
+                          <text x={pt.x} y={pt.y - 8} fill="#fff" fontSize="9.5" fontWeight="700" textAnchor="middle">
+                            {pt.down}
+                          </text>
+                          <text x={pt.x} y={152} fill="var(--muted)" fontSize="8.5" textAnchor="middle">
+                            {pt.time}
+                          </text>
+                        </g>
+                      ))}
+                    </>
+                  );
+                })()}
+              </svg>
+            </div>
+          )}
+        </div>
+
         {/* ── Tier 3: Bottom Masterpiece: AI Vanguard Line Quality Grade Card (Full Width) ── */}
         {(() => {
           const gradeInfo = getGradeInfo();
@@ -941,20 +1013,27 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
                 </div>
               </div>
 
-              {/* Right Column: Mini Stability Trend & Re-test Button */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'space-between', height: '100%' }}>
-                <span style={{ fontSize: 11, color: 'var(--dim)' }}>
+              {/* Right Column: Mini Line Certification Status */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', height: '100%', minWidth: 140 }}>
+                <span style={{ fontSize: 11, color: 'var(--dim)', textAlign: 'right' }}>
                   {speedResult?.timestamp ? `Mesuré à ${speedResult.timestamp}` : 'Surveillance en veille'}
                 </span>
-                <button
-                  className="btn btn-sm btn-ghost"
-                  onClick={runSpeedTest}
-                  disabled={testing}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, marginTop: 12 }}
-                >
-                  <RefreshCw size={12} className={testing ? 'spin' : ''} />
-                  <span>Réévaluer la ligne</span>
-                </button>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  marginTop: 8,
+                  padding: '5px 10px',
+                  borderRadius: 6,
+                  background: 'rgba(34, 197, 94, 0.1)',
+                  border: '1px solid rgba(34, 197, 94, 0.25)',
+                  fontSize: 11,
+                  color: '#22c55e',
+                  fontWeight: 600,
+                }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+                  <span>Ligne certifiée</span>
+                </div>
               </div>
             </div>
           );

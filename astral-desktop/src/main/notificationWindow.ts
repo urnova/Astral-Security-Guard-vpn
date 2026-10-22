@@ -130,14 +130,34 @@ export function showAvastStyleToast({
 }: {
   title: string;
   message: string;
-  type?: 'info' | 'threat' | 'gaming' | 'success' | 'network' | 'ping' | 'stability' | 'vpn' | 'performance' | 'security';
+  type?:
+    | 'info'
+    | 'threat'
+    | 'security_threat'
+    | 'download_threat'
+    | 'security_clean'
+    | 'download_safe'
+    | 'download_clean'
+    | 'vpn_connected'
+    | 'vpn_disconnected'
+    | 'gaming'
+    | 'success'
+    | 'network'
+    | 'ping'
+    | 'stability'
+    | 'vpn'
+    | 'performance'
+    | 'maintenance'
+    | 'security'
+    | string;
   soundEnabled?: boolean;
   volume?: number;
   onClickFocus?: () => void;
 }) {
   const now = Date.now();
   recentNotifTimestamps = recentNotifTimestamps.filter(t => now - t < 2500);
-  if (recentNotifTimestamps.length >= 3 && type !== 'threat' && type !== 'security') {
+  const isCriticalType = type === 'threat' || type === 'security_threat' || type === 'download_threat';
+  if (recentNotifTimestamps.length >= 3 && !isCriticalType) {
     // Coalesce / throttle non-critical notifications to avoid avalanche
     return;
   }
@@ -149,49 +169,63 @@ export function showAvastStyleToast({
   const { x, y } = getPopupPosition(400, 150);
   win.setBounds({ x, y, width: 400, height: 150 });
 
+  const isThreat = type === 'threat' || type === 'security_threat' || type === 'download_threat';
+  const isSecurityClean = type === 'security_clean' || type === 'success' || (type === 'security' && !isThreat);
+  const isDownloadSafe = type === 'download_safe' || type === 'download_clean';
+  const isVpnConnected = type === 'vpn_connected' || (type === 'vpn' && !title.toLowerCase().includes('déconnecté'));
+  const isVpnDisconnected = type === 'vpn_disconnected' || (type === 'vpn' && title.toLowerCase().includes('déconnecté'));
+  const isPerformance = type === 'performance' || type === 'maintenance';
+  const isNetwork = type === 'network' || type === 'ping' || type === 'stability';
+  const isGaming = type === 'gaming';
+
   const borderColor =
-    type === 'threat' || type === 'security' ? 'rgba(239, 68, 68, 0.45)' :
-    type === 'gaming' ? 'rgba(56, 189, 248, 0.45)' :
-    type === 'success' ? 'rgba(34, 197, 94, 0.45)' :
-    type === 'network' || type === 'ping' ? 'rgba(96, 165, 250, 0.45)' :
-    type === 'vpn' ? 'rgba(168, 85, 247, 0.45)' :
-    type === 'performance' ? 'rgba(234, 179, 8, 0.45)' :
-    type === 'stability' ? 'rgba(234, 179, 8, 0.45)' :
+    isThreat ? 'rgba(239, 68, 68, 0.45)' :
+    isSecurityClean ? 'rgba(34, 197, 94, 0.45)' :
+    isDownloadSafe ? 'rgba(6, 182, 212, 0.45)' :
+    isVpnConnected ? 'rgba(59, 130, 246, 0.45)' :
+    isVpnDisconnected ? 'rgba(245, 158, 11, 0.45)' :
+    isPerformance ? 'rgba(168, 85, 247, 0.45)' :
+    isNetwork ? 'rgba(56, 189, 248, 0.45)' :
+    isGaming ? 'rgba(16, 185, 129, 0.45)' :
     'rgba(255, 255, 255, 0.15)';
 
   const accentColor =
-    type === 'threat' || type === 'security' ? '#ef4444' :
-    type === 'gaming' ? '#38bdf8' :
-    type === 'success' ? '#22c55e' :
-    type === 'network' || type === 'ping' ? '#60a5fa' :
-    type === 'vpn' ? '#a855f7' :
-    type === 'performance' ? '#eab308' :
-    type === 'stability' ? '#eab308' :
+    isThreat ? '#ef4444' :
+    isSecurityClean ? '#22c55e' :
+    isDownloadSafe ? '#06b6d4' :
+    isVpnConnected ? '#3b82f6' :
+    isVpnDisconnected ? '#f59e0b' :
+    isPerformance ? '#a855f7' :
+    isNetwork ? '#38bdf8' :
+    isGaming ? '#10b981' :
     '#38bdf8';
 
   const badgeText =
-    type === 'threat' || type === 'security' ? 'ALERTE SÉCURITÉ' :
-    type === 'gaming' ? 'MODE GAMING' :
-    type === 'success' ? 'SYSTÈME PROTÉGÉ' :
-    type === 'network' || type === 'ping' ? 'RÉSEAU & LATENCE' :
-    type === 'vpn' ? 'VPN SÉCURISÉ' :
-    type === 'performance' ? 'PERFORMANCE & SYSTÈME' :
-    type === 'stability' ? 'STABILITÉ SYSTÈME' :
+    isThreat ? 'ALERTE SÉCURITÉ' :
+    isSecurityClean ? 'SYSTÈME SAIN & PROTÉGÉ' :
+    isDownloadSafe ? 'TÉLÉCHARGEMENT SÉCURISÉ' :
+    isVpnConnected ? 'VPN SÉCURISÉ · CONNECTÉ' :
+    isVpnDisconnected ? 'VPN DÉCONNECTÉ' :
+    isPerformance ? 'MAINTENANCE & SYSTÈME' :
+    isNetwork ? 'RÉSEAU & LATENCE' :
+    isGaming ? 'MODE GAMING' :
     'VANGUARD CORE';
 
   // SVG Icons according to notification type
   const iconSvg =
-    type === 'threat' || type === 'security'
-      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`
-      : type === 'gaming'
+    isThreat
+      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`
+      : isSecurityClean
+      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>`
+      : isDownloadSafe
+      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`
+      : isGaming
       ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>`
-      : type === 'vpn'
+      : isVpnConnected || isVpnDisconnected
       ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`
-      : type === 'performance'
+      : isPerformance
       ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`
-      : type === 'success'
-      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`
-      : type === 'network' || type === 'ping'
+      : isNetwork
       ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>`
       : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`;
 
@@ -330,7 +364,7 @@ export function showAvastStyleToast({
             <div class="message">${escapeHtml(message)}</div>
           </div>
           <div class="footer">
-            <span>Vanguard Core v${app.getVersion() || "0.1.0"}</span>
+            <span>Vanguard Core v${app.getVersion() || "0.1.4"}</span>
             <span class="action-hint">Ouvrir l'application ➔</span>
           </div>
         </div>
@@ -341,20 +375,100 @@ export function showAvastStyleToast({
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
             if (ctx.state === 'suspended') ctx.resume();
             const now = ctx.currentTime;
-            const notifType = '${type}';
+            const isThreat = ${isThreat};
+            const isSecurityClean = ${isSecurityClean};
+            const isDownloadSafe = ${isDownloadSafe};
+            const isVpnConnected = ${isVpnConnected};
+            const isVpnDisconnected = ${isVpnDisconnected};
+            const isPerformance = ${isPerformance};
+            const isGaming = ${isGaming};
+            const isNetwork = ${isNetwork};
             const baseVol = ${safeVol};
 
-            if (notifType === 'threat' || notifType === 'security') {
+            if (isThreat) {
+              // Descending warning alarm (880Hz -> 440Hz)
               const osc = ctx.createOscillator();
               const gain = ctx.createGain();
               osc.type = 'sawtooth';
-              osc.frequency.setValueAtTime(660, now);
-              osc.frequency.exponentialRampToValueAtTime(330, now + 0.18);
+              osc.frequency.setValueAtTime(880, now);
+              osc.frequency.exponentialRampToValueAtTime(440, now + 0.22);
               gain.gain.setValueAtTime(0.08 * baseVol, now);
-              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
               osc.connect(gain); gain.connect(ctx.destination);
-              osc.start(now); osc.stop(now + 0.22);
-            } else if (notifType === 'gaming') {
+              osc.start(now); osc.stop(now + 0.26);
+            } else if (isSecurityClean) {
+              // Gentle 2-tone clean confirmation chime (D5 -> A5)
+              const osc1 = ctx.createOscillator();
+              const gain1 = ctx.createGain();
+              osc1.type = 'sine';
+              osc1.frequency.setValueAtTime(587.33, now);
+              gain1.gain.setValueAtTime(0.06 * baseVol, now);
+              gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+              osc1.connect(gain1); gain1.connect(ctx.destination);
+              osc1.start(now); osc1.stop(now + 0.2);
+
+              const osc2 = ctx.createOscillator();
+              const gain2 = ctx.createGain();
+              osc2.type = 'sine';
+              osc2.frequency.setValueAtTime(880, now + 0.1);
+              gain2.gain.setValueAtTime(0.07 * baseVol, now + 0.1);
+              gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+              osc2.connect(gain2); gain2.connect(ctx.destination);
+              osc2.start(now + 0.1); osc2.stop(now + 0.38);
+            } else if (isDownloadSafe) {
+              // Subtle clean radar ping (659Hz -> 880Hz)
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(659.25, now);
+              osc.frequency.exponentialRampToValueAtTime(880, now + 0.09);
+              gain.gain.setValueAtTime(0.05 * baseVol, now);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+              osc.connect(gain); gain.connect(ctx.destination);
+              osc.start(now); osc.stop(now + 0.14);
+            } else if (isVpnConnected) {
+              // Double pleasant chime (C5 -> E5)
+              const osc1 = ctx.createOscillator();
+              const gain1 = ctx.createGain();
+              osc1.type = 'sine';
+              osc1.frequency.setValueAtTime(523.25, now);
+              gain1.gain.setValueAtTime(0.06 * baseVol, now);
+              gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+              osc1.connect(gain1); gain1.connect(ctx.destination);
+              osc1.start(now); osc1.stop(now + 0.11);
+
+              const osc2 = ctx.createOscillator();
+              const gain2 = ctx.createGain();
+              osc2.type = 'sine';
+              osc2.frequency.setValueAtTime(659.25, now + 0.09);
+              gain2.gain.setValueAtTime(0.06 * baseVol, now + 0.09);
+              gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+              osc2.connect(gain2); gain2.connect(ctx.destination);
+              osc2.start(now + 0.09); osc2.stop(now + 0.23);
+            } else if (isVpnDisconnected) {
+              // Soft descending disengagement tone (D5 -> A4)
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(587.33, now);
+              osc.frequency.exponentialRampToValueAtTime(440, now + 0.15);
+              gain.gain.setValueAtTime(0.05 * baseVol, now);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+              osc.connect(gain); gain.connect(ctx.destination);
+              osc.start(now); osc.stop(now + 0.2);
+            } else if (isPerformance) {
+              // Ascending crystal glissando (A4 -> C#5 -> E5)
+              [440, 554.37, 659.25].forEach((freq, idx) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now + idx * 0.07);
+                gain.gain.setValueAtTime(0.05 * baseVol, now + idx * 0.07);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.07 + 0.18);
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.start(now + idx * 0.07); osc.stop(now + idx * 0.07 + 0.2);
+              });
+            } else if (isGaming) {
               // Quick upbeat 2-note blip
               const osc1 = ctx.createOscillator();
               const gain1 = ctx.createGain();
@@ -373,26 +487,7 @@ export function showAvastStyleToast({
               gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
               osc2.connect(gain2); gain2.connect(ctx.destination);
               osc2.start(now + 0.08); osc2.stop(now + 0.19);
-            } else if (notifType === 'vpn') {
-              // Double pleasant chime
-              const osc1 = ctx.createOscillator();
-              const gain1 = ctx.createGain();
-              osc1.type = 'sine';
-              osc1.frequency.setValueAtTime(523.25, now);
-              gain1.gain.setValueAtTime(0.06 * baseVol, now);
-              gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-              osc1.connect(gain1); gain1.connect(ctx.destination);
-              osc1.start(now); osc1.stop(now + 0.11);
-
-              const osc2 = ctx.createOscillator();
-              const gain2 = ctx.createGain();
-              osc2.type = 'sine';
-              osc2.frequency.setValueAtTime(659.25, now + 0.09);
-              gain2.gain.setValueAtTime(0.06 * baseVol, now + 0.09);
-              gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
-              osc2.connect(gain2); gain2.connect(ctx.destination);
-              osc2.start(now + 0.09); osc2.stop(now + 0.23);
-            } else if (notifType === 'network' || notifType === 'ping') {
+            } else if (isNetwork) {
               const osc = ctx.createOscillator();
               const gain = ctx.createGain();
               osc.type = 'sine';
@@ -402,16 +497,6 @@ export function showAvastStyleToast({
               gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
               osc.connect(gain); gain.connect(ctx.destination);
               osc.start(now); osc.stop(now + 0.14);
-            } else if (notifType === 'performance') {
-              const osc = ctx.createOscillator();
-              const gain = ctx.createGain();
-              osc.type = 'sine';
-              osc.frequency.setValueAtTime(440, now);
-              osc.frequency.exponentialRampToValueAtTime(660, now + 0.14);
-              gain.gain.setValueAtTime(0.05 * baseVol, now);
-              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-              osc.connect(gain); gain.connect(ctx.destination);
-              osc.start(now); osc.stop(now + 0.16);
             } else {
               const osc = ctx.createOscillator();
               const gain = ctx.createGain();

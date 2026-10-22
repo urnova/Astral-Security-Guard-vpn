@@ -197,28 +197,6 @@ export function setupSecurityIPC(win: BrowserWindow, notifyFn?: (title: string, 
     });
 
     let currentProgress = 35;
-    const scanPhase2Start = Date.now();
-    const progressInterval = setInterval(() => {
-      if (currentProgress < 94) {
-        if (currentProgress < 85) {
-          currentProgress += Math.min(4, Math.max(1, Math.round((85 - currentProgress) / 5)));
-        } else {
-          // Beyond 85%, smoothly crawl towards 94% without ever blocking
-          currentProgress = Math.min(94, currentProgress + 1);
-        }
-        const elapsedSec = Math.floor((Date.now() - scanPhase2Start) / 1000);
-        win.webContents.send('security:scan-event', {
-          type: 'scan-progress',
-          scanType: mode,
-          percent: currentProgress,
-          progress: currentProgress,
-          phase: 'Phase 2/3 · Moteur Microsoft Defender',
-          currentFile: `Contrôle continu des binaires système et signatures (${elapsedSec}s)…`,
-          filesScanned: Math.round(1400 + currentProgress * 45),
-        });
-      }
-    }, 1200);
-
     try {
       const result = await defenderOrchestrator.executeScan(
         mode,
@@ -233,7 +211,7 @@ export function setupSecurityIPC(win: BrowserWindow, notifyFn?: (title: string, 
             percent: currentProgress,
             progress: currentProgress,
             phase: meta?.currentDrive
-              ? `Phase 2/3 · Moteur Defender · Volume ${meta.currentDrive} (${meta.driveIndex}/${meta.totalDrives})`
+              ? `Phase 2/3 · Moteur Defender · Volume ${meta.currentDrive} (${meta.driveIndex || 1}/${meta.totalDrives || 1})`
               : 'Phase 2/3 · Moteur Microsoft Defender',
             currentFile: msg,
             currentDrive: meta?.currentDrive,
@@ -244,8 +222,6 @@ export function setupSecurityIPC(win: BrowserWindow, notifyFn?: (title: string, 
           });
         }
       );
-
-      clearInterval(progressInterval);
 
       // ── Phase 3 : Sentinel IA & Diagnostic d'Intégrité ──
       win.webContents.send('security:scan-event', {
@@ -300,17 +276,16 @@ export function setupSecurityIPC(win: BrowserWindow, notifyFn?: (title: string, 
         if (threatCount > 0) {
           notifyFn(
             'Alerte de Sécurité — Menace(s) Détectée(s)',
-            `${threatCount} menace(s) critique(s) identifiée(s) par le moteur multi-moteur. Une remédiation est requise.`,
-            { type: 'threat', isCritical: true }
+            `${threatCount} menace(s) critique(s) identifiée(s) par le moteur multi-moteurs. Une remédiation est requise.`,
+            { type: 'security_threat', isCritical: true }
           );
         } else {
-          notifyFn('Analyse de Sécurité Terminée', 'Système propre. Zéro indicateur de compromission détecté.', { type: 'security' });
+          notifyFn('Analyse de Sécurité Terminée', 'Système propre. Zéro indicateur de compromission détecté.', { type: 'security_clean' });
         }
       }
 
       return scanResultPayload;
     } catch (err: any) {
-      clearInterval(progressInterval);
       logger.error('[Security] Erreur exécution scan multi-moteurs :', err.message);
       win.webContents.send('security:scan-event', {
         type: 'scan-error',

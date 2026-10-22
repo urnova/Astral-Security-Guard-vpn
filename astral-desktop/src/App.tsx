@@ -100,12 +100,25 @@ export default function App() {
     // Sound effects for all system notifications & download events
     const cleanupNotif = api.on('notification:trigger', (d: any) => {
       if (!d) return;
+      // If desktop toast popup already synthesized category audio, don't double play
+      if (d.desktopToastShown) return;
+
       const t = d.type || 'info';
-      if (t === 'threat') playSound('threat_blocked');
-      else if (t === 'gaming') playSound('game_detected');
-      else if (t === 'network' || t === 'ping' || t === 'lag') playSound('lag_alert');
-      else if (t === 'vpn' || t === 'success') playSound('sos_resolved');
-      else playSound('notification');
+      if (t === 'threat' || t === 'security_threat' || t === 'download_threat') {
+        playSound('threat_blocked');
+      } else if (t === 'security_clean' || t === 'download_safe' || t === 'download_clean') {
+        playSound('scan_complete');
+      } else if (t === 'gaming') {
+        playSound('game_detected');
+      } else if (t === 'network' || t === 'ping' || t === 'lag') {
+        playSound('lag_alert');
+      } else if (t === 'vpn_connected' || t === 'vpn' || t === 'success') {
+        playSound('sos_resolved');
+      } else if (t === 'performance' || t === 'maintenance') {
+        playSound('update_ready');
+      } else {
+        playSound('notification');
+      }
     });
 
     const cleanupScanStart = api.on('download-scanner:scan-start', () => {

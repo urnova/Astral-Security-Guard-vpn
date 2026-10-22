@@ -262,6 +262,8 @@ export default function SecurityTab() {
   const finishScan = (threatCount: number, list: any[], aiReport: string) => {
     clearInterval(timerRef.current);
     setScanning(false);
+    setDriveIndex(99);
+    setCurrentDrive('');
     setThreats(threatCount);
     setThreatDetails(list);
     setAiReportText(aiReport);
@@ -638,6 +640,15 @@ export default function SecurityTab() {
                   <b style={{ fontSize: 13, color: 'var(--text)', display: 'block' }}>
                     Analyse terminée · Système protégé
                   </b>
+                  {drivesList.length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'center', margin: '8px 0', flexWrap: 'wrap' }}>
+                      {drivesList.map((drv) => (
+                        <span key={drv} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e', fontWeight: 600 }}>
+                          ✓ Disque {drv} scanné
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <p style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, maxWidth: 380, margin: '6px auto 0', lineHeight: 1.55 }}>
                     {scannedFiles > 0 ? scannedFiles.toLocaleString('fr-FR') : 'L\'ensemble des'} fichiers et la mémoire vive ont été inspectés sans aucune charge hostile.
                   </p>

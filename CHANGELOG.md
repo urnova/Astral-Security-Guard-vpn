@@ -10,6 +10,42 @@ Ce journal consigne de manière chronologique et détaillée toutes les modifica
 * **`framer-motion-ui` & `opera-gx-aesthetic`** : Conception de l'interface en mode sombre profond, accents néon adaptatifs, micro-interactions, skeleton loaders et compteurs animés fluides.
 * **`native-audio-synth`** : Moteur sonore Web Audio API synthétisant des carillons discrets pour chaque type d'alerte sans dépendance de fichiers audio externes.
 
+## [0.1.5] - Bêta Pré-Release (2026-10-22)
+
+### 🛡️ Analyse Antivirus Multimoteur Multi-Disques & Compteur Monotone
+- **Parcours séquentiel des disques** :
+  - Détection et inspection ordonnée de tous les volumes montés (`C:\`, `D:\`, `E:\`, `F:\`) au lieu de limiter l'analyse au disque principal Windows.
+  - Scan de mémoire et registre critique sur `C:\`, suivi d'inspections ciblées par volume pour les disques secondaires avec bascule visuelle explicite de `En attente` vers `Analyse…` puis `✓ Scanné`.
+  - Badges récapitulatifs des volumes contrôlés affichés dans le rapport final du centre de sécurité.
+- **Compteur de fichiers monotone et stabilisé** :
+  - Suppression de l'intervalle concurrent dans `security.ts` qui réinitialisait en boucle le nombre de fichiers scannés (oscillation 2555 <-> 5000).
+  - Accumulateur strictement monotone ne régressant jamais au fil de l'analyse multi-disques.
+
+### 🔔 Refonte Intégrale des Notifications (Styles & Sons par Catégorie)
+- **Éradication des fausses alertes rouges** :
+  - Fin du déclenchement du son d'alarme et de la bordure rouge lors des analyses saines : envoi d'un statut dédié `security_clean` affichant un badge vert émeraude « SYSTÈME PROPRE » avec carillon d'apaisement harmonique (D5 -> A5).
+- **Identité visuelle et audio spécifique par événement** :
+  - **Menaces & Malwares critiques** : Bordure rouge sang (`#ef4444`), badge « ALERTE SÉCURITÉ » et alarme sawtooth descendante.
+  - **Sécurité Saine** : Bordure vert émeraude (`#22c55e`), badge « SYSTÈME PROPRE » et carillon de confirmation doux.
+  - **Téléchargements Sûrs** : Bordure cyan (`#06b6d4`), badge « TÉLÉCHARGEMENT SÛR » et ping radar propre.
+  - **Connexion VPN** : Bordure azur (`#3b82f6`), badge « TUNNEL VPN SÉCURISÉ » et accord agréable montant.
+  - **Déconnexion VPN** : Bordure ambre (`#f59e0b`), badge « VPN DÉCONNECTÉ » et tonalité de désengagement feutrée.
+  - **Maintenance Système & Performance** : Bordure améthyste (`#a855f7`), badge « MAINTENANCE SYSTÈME » et glissando cristallin.
+  - **Diagnostic Réseau & Latence** : Bordure bleu ciel (`#38bdf8`), badge « RÉSEAU VANGUARD » et double ping haute fréquence.
+  - **Mode Gaming** : Bordure menthe (`#10b981`), badge « GAMING OPTIMIZER » et triade jeu vidéo.
+- **Suppression des échos audio** :
+  - Prise en charge exclusive de l'audio par le popup toast natif lorsqu'il est visible, évitant tout écho décalé avec le renderer principal.
+
+### 🌐 Speedtest Réseau Haute Capacité & Historique Visuel
+- **Éradication du gel sur les « petits points »** :
+  - Déclenchement quasi-instantané du test de débit grâce à une mesure de latence TCP native optimisée (< 250ms sur le port HTTPS 443).
+- **Résolution du bug « 0 Mbps » en réception sur fibre Gigabit** :
+  - Retrait du miroir Bouygues obsolète (`getaddrinfo ENOTFOUND`) et introduction de serveurs de test haute capacité (OVH 1Gb/100Mb et Cloudflare).
+  - Découplage de la mesure par un échantillonneur centralisé cadencé à 200ms, éliminant les collisions de threads et permettant de mesurer fidèlement les débits Gigabit (~800-984 Mbps).
+- **Restauration de la carte « Historique des Débits & Stabilité »** :
+  - Intégration de la courbe SVG des débits précédents directement au-dessus de la carte de diagnostic IA.
+  - Retrait du bouton redondant « Réévaluer la ligne » au sein de la carte IA et recalibrage des seuils pour attribuer la note d'excellence `A+ (E-Sport)` aux liaisons Gigabit.
+
 ## [0.1.4] - Bêta Pré-Release (2026-10-22)
 
 ### 🛡️ Laboratoire Sentinelle & Fichiers de Test EICAR (.com / .exe)
