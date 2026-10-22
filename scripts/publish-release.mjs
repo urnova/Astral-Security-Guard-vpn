@@ -186,11 +186,13 @@ async function main() {
     const expectedSize = fs.statSync(asset.path).size;
 
     if (existing) {
-      if (existing.size === expectedSize) {
+      // latest.yml and blockmap must ALWAYS be refreshed to guarantee matching sha512 checksums
+      const isMetadata = asset.name === 'latest.yml' || asset.name.endsWith('.blockmap');
+      if (!isMetadata && existing.size === expectedSize) {
         console.log(`[Release] Asset "${asset.name}" already present with identical size (${existing.size} bytes). Skipping.`);
         continue;
       } else {
-        console.log(`[Release] Asset "${asset.name}" size mismatch (${existing.size} vs ${expectedSize}). Deleting old asset...`);
+        console.log(`[Release] Deleting old asset "${asset.name}" (ID: ${existing.id}) to ensure fresh checksums...`);
         await httpsRequest(`https://api.github.com/repos/${OWNER}/${REPO}/releases/assets/${existing.id}`, {
           method: 'DELETE'
         });
