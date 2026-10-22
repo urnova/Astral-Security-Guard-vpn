@@ -323,7 +323,7 @@ export default function SecurityTab() {
         <div className="page-header">
           <div>
             <h1>Sécurité</h1>
-            <p className="sub">Protection multi-moteur unifiée : Astral Heuristique, Microsoft Defender et Sentinel IA.</p>
+            <p className="sub">Protection multi-moteur unifiée : Astral Heuristique, Microsoft Defender et intégrité système.</p>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             {notice && (

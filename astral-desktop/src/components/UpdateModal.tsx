@@ -73,8 +73,8 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
   };
 
   const progress     = updaterState?.progressPercent || 0;
-  const currentVer   = updaterState?.currentVersion || '2.5.12';
-  const targetVer    = info?.version || '2.5.12';
+  const currentVer   = updaterState?.currentVersion || '0.1.0';
+  const targetVer    = info?.version || '0.1.0';
   const isDownloaded = updaterState?.status === 'downloaded';
 
   return (

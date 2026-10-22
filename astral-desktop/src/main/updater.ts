@@ -113,10 +113,9 @@ export function setupAutoUpdater(win: BrowserWindow, onPrepareForQuit?: () => vo
   autoUpdater.autoDownload = false; // Give user choice or trigger via UI
   autoUpdater.autoInstallOnAppQuit = true;
 
-  // Configure preview/beta channel based on user preferences
-  const prefs = loadPreferences();
-  autoUpdater.allowPrerelease = prefs.previewChannel;
-  logger.info(`[AutoUpdater] Canal prévision (bêta) : ${prefs.previewChannel ? 'ACTIVÉ' : 'DÉSACTIVÉ'}`);
+  // Prerelease channel enabled by default for beta releases
+  autoUpdater.allowPrerelease = true;
+  logger.info('[AutoUpdater] Canal prévision (bêta) : ACTIVÉ');
 
   autoUpdater.on('checking-for-update', () => {
     logger.info('[AutoUpdater] Checking for updates on GitHub Releases...');

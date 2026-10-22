@@ -112,6 +112,7 @@ function createMainWindow() {
     minHeight: 640,
     show: false,
     titleBarStyle: 'hidden',
+    title: 'Vanguard Core',
     backgroundColor: '#131518',
     icon: path.join(process.env.PUBLIC!, 'icon.ico'),
     webPreferences: {

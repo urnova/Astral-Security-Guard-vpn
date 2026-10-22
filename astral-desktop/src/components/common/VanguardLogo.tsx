@@ -17,7 +17,7 @@ export default function VanguardLogo({
   return (
     <img
       src={vanguardLogoUrl}
-      alt="Astral Vanguard Logo"
+      alt="Vanguard Core Logo"
       width={size}
       height={size}
       className={`select-none pointer-events-none inline-block shrink-0 ${className}`}

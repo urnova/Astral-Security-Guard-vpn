@@ -133,7 +133,7 @@ export default function SettingsTab({
   const [betaChannel, setBetaChannel]       = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateStatus, setUpdateStatus]     = useState('');
-  const [currentVersion, setCurrentVersion] = useState('2.5.12');
+  const [currentVersion, setCurrentVersion] = useState('0.1.0');
   const [updateInfo, setUpdateInfo]         = useState<{ version?: string; hasUpdate?: boolean } | null>(null);
 
   const playTestNotificationSound = () => {
@@ -1279,12 +1279,12 @@ export default function SettingsTab({
                 </div>
                 <div>
                   <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Vanguard Core</h2>
-                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>v{currentVersion} (Bêta) · Application PC de la suite Astral Vanguard</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>v{currentVersion} (Bêta Pré-release) · Application PC de la suite Vanguard par Astral Security</div>
                 </div>
               </div>
 
               <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.8 }}>
-                Vanguard Core est l'application PC officielle développée par Astral Security. Elle coordonne
+                Vanguard Core est une application PC autonome de sécurité et de performances. Elle coordonne
                 la protection proactive des téléchargements, la maintenance système et les profils e-sport réversibles
                 sans compte, sans publicité et avec un respect strict de la confidentialité locale.
               </div>

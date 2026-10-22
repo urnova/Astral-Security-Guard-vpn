@@ -39,7 +39,7 @@ const pkgPath = path.join(rootDir, 'astral-desktop', 'package.json');
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 const VERSION = pkg.version;
 const TAG = `v${VERSION}`;
-const RELEASE_NAME = `Astral Vanguard v${VERSION} (Bêta Pré-release)`;
+const RELEASE_NAME = `Vanguard Core v${VERSION} (Bêta Pré-release)`;
 
 function httpsRequest(urlStr, options = {}, bodyBufferOrStream = null) {
   return new Promise((resolve, reject) => {
@@ -97,9 +97,9 @@ function getReleaseNotes() {
   const regex = new RegExp(`## \\[${VERSION.replace(/\./g, '\\.')}\\][^\\n]*\\n([\\s\\S]*?)(?=\\n## \\[|$)`);
   const match = content.match(regex);
   if (match && match[1]) {
-    return `## 🚀 Astral Vanguard v${VERSION}\n\n${match[1].trim()}\n\n---\n*Compilé et certifié par Astral Security.*`;
+    return `## 🚀 Vanguard Core v${VERSION} (Bêta Pré-release)\n\n${match[1].trim()}\n\n---\n*Développé et certifié par Astral Security.*`;
   }
-  return `Release v${VERSION} - Astral Vanguard Complete Overhaul`;
+  return `Release v${VERSION} - Vanguard Core Bêta Pré-release par Astral Security`;
 }
 
 async function uploadAsset(uploadUrlTemplate, fileName, filePath) {
@@ -176,17 +176,13 @@ async function main() {
   const assetsToUpload = [
     { name: 'latest.yml', path: latestYml },
     { name: `Vanguard-Core-Setup-${VERSION}.exe`, path: actualExe },
-    { name: `Vanguard-Core-Setup-${VERSION}.exe.blockmap`, path: actualBlockmap },
-    { name: `Astral-Vanguard-Setup-${VERSION}.exe`, path: actualExe },
-    { name: `Astral Vanguard Setup ${VERSION}.exe`, path: actualExe },
-    { name: `Astral-Vanguard-Setup-${VERSION}.exe.blockmap`, path: actualBlockmap },
-    { name: `Astral Vanguard Setup ${VERSION}.exe.blockmap`, path: actualBlockmap }
+    { name: `Vanguard-Core-Setup-${VERSION}.exe.blockmap`, path: actualBlockmap }
   ];
 
   // 3. Upload missing or outdated assets
   const existingAssets = release.assets || [];
   for (const asset of assetsToUpload) {
-    const existing = existingAssets.find(a => a.name === asset.name || (asset.name.includes(' ') && a.name === asset.name.replace(/ /g, '.')));
+    const existing = existingAssets.find(a => a.name === asset.name);
     const expectedSize = fs.statSync(asset.path).size;
 
     if (existing) {
@@ -212,9 +208,8 @@ async function main() {
 
   const expectedRequirements = [
     { label: 'latest.yml', names: ['latest.yml'] },
-    { label: `Vanguard-Core-Setup-${VERSION}.exe (Auto-Updater official)`, names: [`Vanguard-Core-Setup-${VERSION}.exe`, `Astral-Vanguard-Setup-${VERSION}.exe`] },
-    { label: `Astral-Vanguard-Setup-${VERSION}.exe (Fallback Updater)`, names: [`Astral-Vanguard-Setup-${VERSION}.exe`, `Astral Vanguard Setup ${VERSION}.exe`] },
-    { label: `Blockmap file`, names: [`Vanguard-Core-Setup-${VERSION}.exe.blockmap`, `Astral-Vanguard-Setup-${VERSION}.exe.blockmap`] }
+    { label: `Vanguard-Core-Setup-${VERSION}.exe`, names: [`Vanguard-Core-Setup-${VERSION}.exe`] },
+    { label: `Vanguard-Core-Setup-${VERSION}.exe.blockmap`, names: [`Vanguard-Core-Setup-${VERSION}.exe.blockmap`] }
   ];
 
   for (const req of expectedRequirements) {
@@ -245,12 +240,10 @@ async function main() {
   console.log(`[Verification] Release resolved: tag=${releaseEndpoint.tag_name}, draft=${releaseEndpoint.draft}, prerelease=${releaseEndpoint.prerelease}`);
 
   const latestYmlAsset = releaseEndpoint.assets.find(a => a.name === 'latest.yml');
-  const exeHyphenAsset = releaseEndpoint.assets.find(a => a.name === `Astral-Vanguard-Setup-${VERSION}.exe`);
-  const exeSpaceAsset = releaseEndpoint.assets.find(a => a.name === `Astral Vanguard Setup ${VERSION}.exe`);
+  const vanguardExeAsset = releaseEndpoint.assets.find(a => a.name === `Vanguard-Core-Setup-${VERSION}.exe`);
 
   console.log(`- latest.yml: ${latestYmlAsset ? `FOUND (${latestYmlAsset.browser_download_url})` : 'MISSING'}`);
-  console.log(`- Astral-Vanguard-Setup-${VERSION}.exe: ${exeHyphenAsset ? `FOUND (${exeHyphenAsset.browser_download_url})` : 'MISSING'}`);
-  console.log(`- Astral Vanguard Setup ${VERSION}.exe: ${exeSpaceAsset ? `FOUND (${exeSpaceAsset.browser_download_url})` : 'MISSING'}`);
+  console.log(`- Vanguard-Core-Setup-${VERSION}.exe: ${vanguardExeAsset ? `FOUND (${vanguardExeAsset.browser_download_url})` : 'MISSING'}`);
 }
 
 main().catch(err => {

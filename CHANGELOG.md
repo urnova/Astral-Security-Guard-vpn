@@ -10,6 +10,16 @@ Ce journal consigne de manière chronologique et détaillée toutes les modifica
 * **`framer-motion-ui` & `opera-gx-aesthetic`** : Conception de l'interface en mode sombre profond, accents néon adaptatifs, micro-interactions, skeleton loaders et compteurs animés fluides.
 * **`native-audio-synth`** : Moteur sonore Web Audio API synthétisant des carillons discrets pour chaque type d'alerte sans dépendance de fichiers audio externes.
 
+## [0.1.0] - Bêta Pré-Release (2026-10-22)
+
+### 🚀 Nouvelle Identité & Lancement Officiel Vanguard Core
+- **Rebranding officiel** : Lancement de **Vanguard Core (v0.1.0 Bêta)** par **Astral Security**, l'utilitaire autonome de sauvetage, nettoyage et optimisation PC de la suite Vanguard.
+- **Nouveau binaire & installateur NSIS** : Génération de l'exécutable propre `Vanguard-Core-Setup-0.1.0.exe` avec élévation et intégration du registre Windows.
+- **Sentinelle Téléchargements temps réel** : Analyse automatique des fichiers déposés dans le dossier Téléchargements via `MpCmdRun.exe`, actions immédiates (Quarantaine, Suppression, Ignorer) et déblocage de zone sécurisé.
+- **Optimisation E-Sport & HUD PresentMon** : Profils de session 100% réversibles sans altération définitive du système Windows, télémétrie réelle in-game (`Ctrl+Shift+O`).
+- **Tunnel Réseau & Diagnostics WMI** : Intégration du pilote haute performance Wintun avec Kill Switch et inspection directe de l'état matériel (GPU, CPU, BIOS, RAM `EmptyWorkingSet`).
+- **Auto-Updater & Distribution Bêta** : Prise en charge native du flux GitHub Releases avec manifests `latest.yml`.
+
 ## [2.5.12] - Bêta Pré-Release (2026-10-22)
 
 ### 🪟 Interface & Zéro Flou Visuel Windows (DWM)

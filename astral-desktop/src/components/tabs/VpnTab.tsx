@@ -625,7 +625,7 @@ export default function VpnTab() {
             borderRadius: 14,
           }}>
             <div style={{ width: '100%' }}>
-              <div className="lbl" style={{ margin: '0 0 20px', fontSize: 13 }}>Tunnel Sécurisé Astral Vanguard</div>
+              <div className="lbl" style={{ margin: '0 0 20px', fontSize: 13 }}>Tunnel Sécurisé Vanguard Core</div>
 
               {/* Centered Large High-Tech Radar Button */}
               <div style={{ display: 'flex', justifyContent: 'center', margin: '14px 0 20px' }}>

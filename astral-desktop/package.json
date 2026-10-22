@@ -1,7 +1,7 @@
 {
   "name": "vanguard-core",
-  "version": "2.5.12",
-  "description": "Vanguard Core - Suite de Sécurité, E-Sport & Sauvetage PC par Astral Security",
+  "version": "0.1.0",
+  "description": "Vanguard Core - Outil de Sauvetage, Nettoyage & Optimisation PC par Astral Security",
   "author": "Astral Security",
   "private": true,
   "main": "dist-electron/main/index.js",
