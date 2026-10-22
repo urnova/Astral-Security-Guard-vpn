@@ -150,25 +150,33 @@ async function main() {
 
   // 2. Prepare files to upload from dist-electron/release
   const releaseDir = path.join(rootDir, 'astral-desktop', 'dist-electron', 'release');
+  const vanguardExe = path.join(releaseDir, `Vanguard-Core-Setup-${VERSION}.exe`);
+  const vanguardBlockmap = path.join(releaseDir, `Vanguard-Core-Setup-${VERSION}.exe.blockmap`);
   const installerExeSpaced = path.join(releaseDir, `Astral Vanguard Setup ${VERSION}.exe`);
   const installerExeHyphen = path.join(releaseDir, `Astral-Vanguard-Setup-${VERSION}.exe`);
   const blockmapFileSpaced = path.join(releaseDir, `Astral Vanguard Setup ${VERSION}.exe.blockmap`);
   const blockmapFileHyphen = path.join(releaseDir, `Astral-Vanguard-Setup-${VERSION}.exe.blockmap`);
   const latestYml = path.join(releaseDir, 'latest.yml');
 
-  if (!fs.existsSync(installerExeSpaced) && !fs.existsSync(installerExeHyphen)) {
-    throw new Error(`Installer not found at: ${installerExeSpaced}`);
+  const actualExe = fs.existsSync(vanguardExe) 
+    ? vanguardExe 
+    : (fs.existsSync(installerExeHyphen) ? installerExeHyphen : installerExeSpaced);
+  const actualBlockmap = fs.existsSync(vanguardBlockmap)
+    ? vanguardBlockmap
+    : (fs.existsSync(blockmapFileHyphen) ? blockmapFileHyphen : blockmapFileSpaced);
+
+  if (!fs.existsSync(actualExe)) {
+    throw new Error(`Installer not found at: ${vanguardExe}`);
   }
   if (!fs.existsSync(latestYml)) {
     throw new Error(`latest.yml not found at: ${latestYml}`);
   }
 
-  const actualExe = fs.existsSync(installerExeHyphen) ? installerExeHyphen : installerExeSpaced;
-  const actualBlockmap = fs.existsSync(blockmapFileHyphen) ? blockmapFileHyphen : blockmapFileSpaced;
-
   // Assets to ensure both electron-updater and direct manual downloads resolve seamlessly:
   const assetsToUpload = [
     { name: 'latest.yml', path: latestYml },
+    { name: `Vanguard-Core-Setup-${VERSION}.exe`, path: actualExe },
+    { name: `Vanguard-Core-Setup-${VERSION}.exe.blockmap`, path: actualBlockmap },
     { name: `Astral-Vanguard-Setup-${VERSION}.exe`, path: actualExe },
     { name: `Astral Vanguard Setup ${VERSION}.exe`, path: actualExe },
     { name: `Astral-Vanguard-Setup-${VERSION}.exe.blockmap`, path: actualBlockmap },
@@ -204,10 +212,9 @@ async function main() {
 
   const expectedRequirements = [
     { label: 'latest.yml', names: ['latest.yml'] },
-    { label: `Astral-Vanguard-Setup-${VERSION}.exe (Auto-Updater)`, names: [`Astral-Vanguard-Setup-${VERSION}.exe`] },
-    { label: `Astral Vanguard Setup ${VERSION}.exe (Manual download)`, names: [`Astral Vanguard Setup ${VERSION}.exe`, `Astral.Vanguard.Setup.${VERSION}.exe`] },
-    { label: `Astral-Vanguard-Setup-${VERSION}.exe.blockmap`, names: [`Astral-Vanguard-Setup-${VERSION}.exe.blockmap`] },
-    { label: `Astral Vanguard Setup ${VERSION}.exe.blockmap`, names: [`Astral Vanguard Setup ${VERSION}.exe.blockmap`, `Astral.Vanguard.Setup.${VERSION}.exe.blockmap`] }
+    { label: `Vanguard-Core-Setup-${VERSION}.exe (Auto-Updater official)`, names: [`Vanguard-Core-Setup-${VERSION}.exe`, `Astral-Vanguard-Setup-${VERSION}.exe`] },
+    { label: `Astral-Vanguard-Setup-${VERSION}.exe (Fallback Updater)`, names: [`Astral-Vanguard-Setup-${VERSION}.exe`, `Astral Vanguard Setup ${VERSION}.exe`] },
+    { label: `Blockmap file`, names: [`Vanguard-Core-Setup-${VERSION}.exe.blockmap`, `Astral-Vanguard-Setup-${VERSION}.exe.blockmap`] }
   ];
 
   for (const req of expectedRequirements) {

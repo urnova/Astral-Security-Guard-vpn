@@ -10,6 +10,40 @@ Ce journal consigne de manière chronologique et détaillée toutes les modifica
 * **`framer-motion-ui` & `opera-gx-aesthetic`** : Conception de l'interface en mode sombre profond, accents néon adaptatifs, micro-interactions, skeleton loaders et compteurs animés fluides.
 * **`native-audio-synth`** : Moteur sonore Web Audio API synthétisant des carillons discrets pour chaque type d'alerte sans dépendance de fichiers audio externes.
 
+## [2.5.12] - Bêta Pré-Release (2026-10-22)
+
+### 🪟 Interface & Zéro Flou Visuel Windows (DWM)
+- Éradication totale du flou DWM et des bordures parasites sur les fenêtres transparentes (HUD FPS et notifications) : configuration native `transparent: true`, `frame: false`, `hasShadow: false`, `thickFrame: false`, `roundedCorners: false`, et couleur de fond hexadécimale RGBA `#00000000`.
+- Suppression stricte de toutes les directives CSS `backdrop-filter: blur(...)` sur l'ensemble de l'application (modales, tiroirs SlideDrawer, onglets de sécurité et de performances).
+- Badge de version officiel dans la barre de titre : « Bêta pré-release ».
+
+### 📊 Overlay HUD FPS Minimal & Vérité Métriques
+- Unique source de vérité dans le processus principal (`hudEnabled`), synchronisée en temps réel entre le raccourci global `Ctrl+Shift+O`, les boutons de l'interface et le bouton de fermeture direct du HUD.
+- Élimination intégrale des valeurs factices ou codées en dur : PresentMon temps réel ou « — » si aucun jeu actif n'est hooké, métriques réelles CPU, GPU, RAM, et latence réseau.
+- Design compact et sombre (#0d111a) sans cadre superflu.
+
+### 🔔 Notifications Ciblées & Synthèse Sonore Procédurale
+- Fenêtre de notification ultra-compacte, sobre et sans flou.
+- Synthétiseur audio Web Audio API générant des sons distincts par catégorie d'événement (Sécurité, VPN, Réseau, Performance, Gaming).
+- Curseur de volume sonore, désactivation audio et panneau interactif d'envoi de notifications de test dans les Paramètres.
+
+### 🔍 Sentinelle de Téléchargements Style Avast
+- Détection instantanée et automatique des nouveaux fichiers dans le dossier Téléchargements.
+- Pop-up dédiée avec étapes claires : « Analyse en cours » -> « Fichier sain » (fermeture automatique sous 3 secondes), ou options de remédiation en cas de menace (Quarantaine, Supprimer, Ignorer).
+- Déblocage automatique des identifiants de zone Windows (Zone.Identifier) pour les fichiers sains.
+- Cache robuste (`chemin + taille + mtime`) et filtre des fichiers temporaires (.tmp, .crdownload, .part) pour éviter les analyses répétitives.
+
+### 📁 Modales Latérales & Tiroirs SlideDrawer
+- Migration de tous les panneaux d'aide et de détails (centre anti-latence, guide de flash BIOS, réversibilité des tweaks) vers un tiroir coulissant droit épuré avec fond sombre uni.
+- Cartes de bibliothèque de jeux aérées : boutons Lancer et Désinstaller toujours visibles, affichage net des jaquettes et titres sans coupure.
+
+### 🔄 Moteur de Mise à Jour Automatique Electron-Updater
+- Prise en charge native du canal Bêta / Pré-release (`allowPrerelease: true`).
+- Correction du redémarrage et de l'installation de mise à jour : terminaison propre des processus enfants et exécution directe silencieuse de l'installateur NSIS.
+- Publication des manifestes `latest.yml` et des binaires officiels signés par empreinte SHA-512.
+
+---
+
 ## [2.5.10] - Préversion Bêta (2026-10-17)
 
 ### 🪟 Interface, Tiroir Latéral & Expérience Zéro Flou
