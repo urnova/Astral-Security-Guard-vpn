@@ -1,8 +1,5 @@
-import { exec } from 'child_process';
-import util from 'util';
+import cp from 'child_process';
 import { logger } from './logger';
-
-const execPromise = util.promisify(exec);
 
 export interface PSResult<T = any> {
   success: boolean;
@@ -23,6 +20,8 @@ export function encodePowerShell(script: string): string {
 
 /**
  * Execute a PowerShell script securely with full error trapping.
+ * Spawns powershell.exe directly with -WindowStyle Hidden and windowsHide: true
+ * to guarantee that no console windows or prompts ever appear on user screen.
  */
 export async function runPowerShell<T = any>(
   scriptContent: string,
@@ -42,49 +41,104 @@ export async function runPowerShell<T = any>(
   `;
 
   const base64Command = encodePowerShell(wrappedScript);
-  const command = `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ${base64Command}`;
 
-  try {
-    const { stdout, stderr } = await execPromise(command, {
-      timeout,
-      maxBuffer: 10 * 1024 * 1024, // 10MB
-      windowsHide: true,
+  return new Promise((resolve) => {
+    let stdoutData = '';
+    let stderrData = '';
+    let timedOut = false;
+
+    const child = cp.spawn(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-WindowStyle',
+        'Hidden',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-EncodedCommand',
+        base64Command,
+      ],
+      {
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }
+    );
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try {
+        child.kill();
+      } catch {}
+      resolve({
+        success: false,
+        error: "L'opération a expiré (délai dépassé). Le système était peut-être occupé.",
+        technicalError: 'Process timed out and was killed.',
+      });
+    }, timeout);
+
+    child.stdout?.on('data', (chunk) => {
+      stdoutData += chunk.toString('utf8');
     });
 
-    const trimmedOut = stdout ? stdout.trim() : '';
+    child.stderr?.on('data', (chunk) => {
+      stderrData += chunk.toString('utf8');
+    });
 
-    if (options.asJson) {
-      try {
-        const parsed = JSON.parse(trimmedOut);
-        return { success: true, data: parsed, stdout: trimmedOut };
-      } catch (parseErr) {
-        logger.warn('PowerShell output could not be parsed as JSON', { stdout: trimmedOut });
-        return { success: true, data: undefined, stdout: trimmedOut };
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      if (timedOut) return;
+      logger.error('PowerShell spawn error', { error: err.message });
+      resolve({
+        success: false,
+        error: "Erreur lors du lancement de l'opération système.",
+        technicalError: err.message,
+      });
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (timedOut) return;
+
+      const trimmedOut = stdoutData.trim();
+      const trimmedErr = stderrData.trim();
+
+      if (code !== 0 && code !== null) {
+        const technical = trimmedErr || trimmedOut || `Exit code ${code}`;
+        logger.error('PowerShell execution failed', { error: technical, scriptSample: scriptContent.slice(0, 150) });
+
+        let humanMessage = "Une erreur est survenue lors de l'exécution de l'opération système.";
+        if (technical.includes('Administrator') || technical.includes('Access is denied') || technical.includes('Accès refusé')) {
+          humanMessage = 'Privilèges insuffisants : cette action nécessite les droits administrateur.';
+        } else if (technical.includes('timeout')) {
+          humanMessage = "L'opération a expiré (délai dépassé). Le système était peut-être occupé.";
+        } else if (technical.includes('network') || technical.includes('hôte inconnu')) {
+          humanMessage = "Problème de connectivité réseau lors de l'exécution.";
+        }
+
+        resolve({
+          success: false,
+          error: humanMessage,
+          technicalError: technical,
+        });
+        return;
       }
-    }
 
-    return {
-      success: true,
-      stdout: trimmedOut,
-    };
-  } catch (err: any) {
-    const technical = err.stderr || err.stdout || err.message || String(err);
-    logger.error('PowerShell execution failed', { error: technical, scriptSample: scriptContent.slice(0, 150) });
+      if (options.asJson) {
+        try {
+          const parsed = JSON.parse(trimmedOut);
+          resolve({ success: true, data: parsed, stdout: trimmedOut });
+        } catch {
+          logger.warn('PowerShell output could not be parsed as JSON', { stdout: trimmedOut });
+          resolve({ success: true, data: undefined, stdout: trimmedOut });
+        }
+        return;
+      }
 
-    // Friendly humanized error message
-    let humanMessage = 'Une erreur est survenue lors de l\'exécution de l\'opération système.';
-    if (technical.includes('Administrator') || technical.includes('Access is denied') || technical.includes('Accès refusé')) {
-      humanMessage = 'Privilèges insuffisants : cette action nécessite les droits administrateur.';
-    } else if (technical.includes('timeout') || err.killed) {
-      humanMessage = 'L\'opération a expiré (délai dépassé). Le système était peut-être occupé.';
-    } else if (technical.includes('network') || technical.includes('hôte inconnu')) {
-      humanMessage = 'Problème de connectivité réseau lors de l\'exécution.';
-    }
-
-    return {
-      success: false,
-      error: humanMessage,
-      technicalError: technical.trim(),
-    };
-  }
+      resolve({
+        success: true,
+        stdout: trimmedOut,
+      });
+    });
+  });
 }

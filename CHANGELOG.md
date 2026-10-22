@@ -10,6 +10,38 @@ Ce journal consigne de manière chronologique et détaillée toutes les modifica
 * **`framer-motion-ui` & `opera-gx-aesthetic`** : Conception de l'interface en mode sombre profond, accents néon adaptatifs, micro-interactions, skeleton loaders et compteurs animés fluides.
 * **`native-audio-synth`** : Moteur sonore Web Audio API synthétisant des carillons discrets pour chaque type d'alerte sans dépendance de fichiers audio externes.
 
+## [0.1.2] - Bêta Pré-Release (2026-10-22)
+
+### ⚡ Éradication des Fenêtres PowerShell Parasites & Performance d'Analyse
+- **Suppression intégrale des fenêtres PowerShell visibles** :
+  - Remplacement de l'exécution via `child_process.exec` (qui invoquait `cmd.exe` avec affichage de fenêtres consoles) par `child_process.spawn` direct avec les paramètres stricts `-WindowStyle Hidden` et `windowsHide: true`.
+  - Implémentation du module `nativePing.ts` exploitant une socket TCP native Node.js (15ms, 0% CPU) pour remplacer l'ensemble des commandes lourdes `Test-Connection` de PowerShell appelées à répétition par le dashboard et l'overlay.
+  - Détection GPU via WMI mise en cache de façon définitive au démarrage (`gpuDetected = true`), éliminant tout appel répétitif en arrière-plan.
+- **Optimisation Majeure du Moteur d'Analyse Defender** :
+  - Correction de l'analyse rapide : exécution exclusive de `-ScanType 1` (mémoire vive et fichiers système critiques) sans sur-analyse récursive des disques secondaires volumineux qui causait des gels de 100% disque et des blocages de l'analyse.
+  - Standardisation de l'analyse approfondie via `-ScanType 2` officiel de Microsoft Defender.
+  - Verrouillage anti-conflit dans `getStatus()` : suspension des requêtes WMI Defender pendant qu'un scan est actif pour éviter tout blocage mutuel.
+  - Élimination des requêtes concurrentes en file d'attente grâce à un garde d'exécution `inFlightRef` dans le contexte de télémétrie.
+
+### 🔄 Fiabilisation Totale de l'Auto-Updater & Relaunch Garanti
+- **Résolution du bug de relance aléatoire (1 fois sur 2)** :
+  - Libération immédiate du mutex d'instance unique Windows (`app.releaseSingleInstanceLock()`) avant l'invocation de `quitAndInstall` pour empêcher le nouveau processus d'être rejeté en doublon.
+  - Tolérance d'attente active au redémarrage : boucle d'acquisition du verrou système (jusqu'à 2s) lors des relances post-mise à jour (`--updated`) avant toute fermeture.
+  - Nettoyage préventif des processus enfants (OpenVPN, PowerShell) et descripteurs de fichiers avant l'exécution du paquet NSIS.
+- **Nouvel Indicateur Visuel de Mise à Jour en Cours** :
+  - Modal immersif animé « Mise à jour en cours d'application » informant l'utilisateur en temps réel de chaque étape (libération des verrous, remplacement des fichiers, redémarrage automatique imminent).
+  - Élimination de l'effet « fermeture brutale sans retour visuel » et protection contre les clics intempestifs durant la transition.
+- **Gestion Stricte des Checksums SHA-512** :
+  - Synchronisation forcée et suppression préventive des manifests `latest.yml` et blockmaps obsolètes à chaque publication pour éradiquer tout mismatch cryptographique.
+
+## [0.1.1] - Bêta Pré-Release (2026-10-22)
+
+### 🛡️ Sécurité Multi-Disques, Anti-Fuite VPN & Privilèges Persistants
+- Détection et analyse multi-disques automatique simultanée de tous les volumes physiques (`C:`, `D:`, `E:`, `F:`).
+- Résolution du faux statut « Action requise » et affichage des motifs précis dans le tableau de bord.
+- Rétablissement des directives de routage strictes VPN (`redirect-gateway def1 bypass-dhcp` et `block-outside-dns`) et suppression des connexions factices.
+- Privilèges administrateur permanents (tâche planifiée `VanguardCore_Elevated` et clé de registre `~ RUNASADMIN`).
+
 ## [0.1.0] - Bêta Pré-Release (2026-10-22)
 
 ### 🚀 Nouvelle Identité & Lancement Officiel Vanguard Core

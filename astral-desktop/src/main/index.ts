@@ -17,11 +17,29 @@ import { setupProfileIPC, loadPreferences, savePreferences } from './profile';
 import { executePrivilegedAction } from './privilegedHelper';
 
 // ── Single Instance Lock ───────────────────────────────────────────────────────
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
+let gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
-  logger.info('[App] Another instance of Vanguard Core is already running. Quitting duplicate instance.');
-  app.quit();
-  process.exit(0);
+  // If this launch was triggered by an auto-update restart, allow a brief retry window
+  const isUpdateRestart = process.argv.some(arg => arg.includes('--updated') || arg.includes('--update-restart'));
+  if (isUpdateRestart) {
+    logger.info('[App] Update restart detected. Waiting for terminating instance to release mutex...');
+    const cp = require('child_process');
+    for (let i = 0; i < 8; i++) {
+      try {
+        cp.spawnSync('powershell', ['-NoProfile', '-Command', 'Start-Sleep -Milliseconds 250'], { windowsHide: true });
+      } catch {}
+      gotSingleInstanceLock = app.requestSingleInstanceLock();
+      if (gotSingleInstanceLock) {
+        logger.info('[App] Single-instance lock acquired successfully after waiting.');
+        break;
+      }
+    }
+  }
+  if (!gotSingleInstanceLock) {
+    logger.info('[App] Another instance of Vanguard Core is already running. Quitting duplicate instance.');
+    app.quit();
+    process.exit(0);
+  }
 }
 
 // Set Application User Model ID for Windows toast notifications & taskbar grouping
@@ -199,6 +217,15 @@ function createMainWindow() {
       try {
         tray?.destroy();
         tray = null;
+      } catch {}
+      try {
+        app.releaseSingleInstanceLock();
+        logger.info('[App] Released single-instance mutex ahead of installer execution.');
+      } catch (err: any) {
+        logger.warn('[App] Error releasing single instance lock:', err?.message);
+      }
+      try {
+        cleanupAstralFirewallRules();
       } catch {}
     });
     startGameDetection(mainWin, () => overlayWin, setOverlayWin);

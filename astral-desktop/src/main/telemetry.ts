@@ -15,6 +15,7 @@ import fs from 'node:fs';
 import cp from 'node:child_process';
 import util from 'node:util';
 import { logger } from './logger';
+import { runPowerShell } from './psHelper';
 
 const execPromise = util.promisify(cp.exec);
 
@@ -286,22 +287,20 @@ export async function getRealGpuMetrics(): Promise<GpuTelemetry> {
 
   // 1. Détection initiale du nom du GPU via WMI / CIM une seule fois
   if (!gpuDetected) {
+    gpuDetected = true;
     try {
-      const { stdout } = await execPromise(
-        `powershell.exe -NoProfile -NonInteractive -Command "Get-CimInstance Win32_VideoController | Where-Object { $_.Name -notmatch 'Virtual|Remote|Basic' } | Select-Object -First 1 Name, DriverVersion | ConvertTo-Json -Compress"`,
-        { timeout: 3500 }
-      );
-      if (stdout && stdout.trim()) {
-        const parsed = JSON.parse(stdout.trim());
+      const script = `Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch 'Virtual|Remote|Basic' } | Select-Object -First 1 Name, DriverVersion | ConvertTo-Json -Compress`;
+      const res = await runPowerShell<any>(script, { asJson: true, timeout: 3500 });
+      if (res.data) {
         cachedGpuStatic = {
-          name: parsed.Name || 'GPU Dédié',
-          driver: parsed.DriverVersion || undefined,
+          name: res.data.Name || 'GPU Dédié',
+          driver: res.data.DriverVersion || undefined,
         };
-        gpuDetected = true;
+      } else {
+        cachedGpuStatic = { name: 'GPU Standard' };
       }
     } catch {
       cachedGpuStatic = { name: 'GPU Standard' };
-      gpuDetected = true;
     }
   }
 
@@ -311,7 +310,7 @@ export async function getRealGpuMetrics(): Promise<GpuTelemetry> {
   try {
     const { stdout } = await execPromise(
       'nvidia-smi --query-gpu=utilization.gpu,temperature.gpu,memory.total,memory.used --format=csv,noheader,nounits',
-      { timeout: 1500 }
+      { timeout: 1500, windowsHide: true }
     );
     if (stdout && stdout.trim()) {
       const parts = stdout.trim().split(',').map((s) => parseFloat(s.trim()));
@@ -359,6 +358,7 @@ export async function getTopProcesses(limit = 15): Promise<ProcessTelemetryItem[
     const { stdout } = await execPromise('tasklist /FO CSV /NH', {
       timeout: 3000,
       maxBuffer: 2 * 1024 * 1024,
+      windowsHide: true,
     });
 
     const lines = stdout.trim().split('\r\n');

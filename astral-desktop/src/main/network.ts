@@ -5,6 +5,7 @@ import { runPowerShell } from './psHelper';
 import { logger } from './logger';
 import { detectThirdPartyVpn } from './vpn';
 import { executePrivilegedAction } from './privilegedHelper';
+import { measureNativePing } from './nativePing';
 
 
 let activeSpeedtestCancelled = false;
@@ -28,11 +29,7 @@ export function setupNetworkIPC(win: BrowserWindow) {
       let jitterMs = 1.2;
 
       try {
-        const pingPs = await runPowerShell(
-          `(Test-Connection -ComputerName 1.1.1.1 -Count 3 -ErrorAction SilentlyContinue | Measure-Object -Property ResponseTime -Average).Average`,
-          { timeout: 3500 }
-        );
-        const parsedPing = Math.round(parseFloat(pingPs.stdout || '0'));
+        const parsedPing = await measureNativePing('1.1.1.1', 53, 2000);
         if (parsedPing > 0) {
           pingMs = parsedPing;
           jitterMs = Number((Math.min(5, Math.abs(parsedPing - 12) * 0.15) + 0.6).toFixed(1));
@@ -409,11 +406,7 @@ export function setupNetworkIPC(win: BrowserWindow) {
 
     const results = [];
     for (const p of providers) {
-      const pingTest = await runPowerShell(
-        `(Test-Connection -ComputerName ${p.primary} -Count 2 -ErrorAction SilentlyContinue | Measure-Object -Property ResponseTime -Average).Average`,
-        { timeout: 4000 }
-      );
-      const avgPing = Math.round(parseFloat(pingTest.stdout || '0')) || 35;
+      const avgPing = await measureNativePing(p.primary, 53, 1500).catch(() => 35);
       const status: 'fastest' | 'good' | 'slow' = avgPing < 25 ? 'fastest' : avgPing < 60 ? 'good' : 'slow';
       results.push({ ...p, latencyMs: avgPing, status });
     }

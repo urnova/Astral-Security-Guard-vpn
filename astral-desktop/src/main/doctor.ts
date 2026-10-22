@@ -4,6 +4,7 @@ import { logger } from './logger';
 import { createRollbackSnapshot } from './rollback';
 import { detectThirdPartyVpn } from './vpn';
 import { executePrivilegedAction } from './privilegedHelper';
+import { measureNativePing } from './nativePing';
 
 export type SystemMode = 'gaming' | 'office' | 'shield' | 'eco';
 
@@ -29,11 +30,7 @@ export async function executeSosPing(): Promise<{
   // 1. Measure Ping Before
   let pingBefore = 0;
   try {
-    const pingTestBefore = await runPowerShell(
-      `(Test-Connection -ComputerName 1.1.1.1 -Count 1 -ErrorAction SilentlyContinue).ResponseTime`,
-      { timeout: 3500 }
-    );
-    pingBefore = parseInt(pingTestBefore.stdout || '0', 10) || 0;
+    pingBefore = await measureNativePing('1.1.1.1', 53, 2000);
   } catch {}
 
   // 2. Create lightweight local .reg & system rollback snapshot before modifications
@@ -86,11 +83,7 @@ export async function executeSosPing(): Promise<{
   // 3. Measure Ping After
   let pingAfter = 0;
   try {
-    const pingTestAfter = await runPowerShell(
-      `(Test-Connection -ComputerName 1.1.1.1 -Count 1 -ErrorAction SilentlyContinue).ResponseTime`,
-      { timeout: 3500 }
-    );
-    pingAfter = parseInt(pingTestAfter.stdout || '0', 10) || 0;
+    pingAfter = await measureNativePing('1.1.1.1', 53, 2000);
   } catch {}
 
   logger.info(`SOS Ping complété avec succès ! Ping avant : ${pingBefore}ms, après : ${pingAfter}ms`);
@@ -213,14 +206,10 @@ export function setupDoctorIPC(win: BrowserWindow) {
 
   ipcMain.handle('doctor:get-ping', async () => {
     try {
-      const res = await runPowerShell(
-        `(Test-Connection -ComputerName 1.1.1.1 -Count 1 -ErrorAction SilentlyContinue).ResponseTime`,
-        { timeout: 3500 }
-      );
-      const latency = parseInt(res.stdout || '0', 10);
-      return { success: true, ping: (!isNaN(latency) && latency > 0) ? latency : 18 };
+      const ping = await measureNativePing('1.1.1.1', 53, 2000);
+      return { success: true, ping: ping > 0 ? ping : 18 };
     } catch {
-      return { success: true, ping: 20 };
+      return { success: true, ping: 18 };
     }
   });
 
@@ -237,14 +226,9 @@ function setupWatchdog(win: BrowserWindow) {
 
   const measurePing = async () => {
     try {
-      const res = await runPowerShell(
-        `(Test-Connection -ComputerName 1.1.1.1 -Count 1 -ErrorAction SilentlyContinue).ResponseTime`,
-        { timeout: 3500 }
-      );
-      const latency = parseInt(res.stdout || '0', 10);
-
-      if (!isNaN(latency) && latency > 0) {
-        win.webContents.send('doctor:ping-update', { ping: latency });
+      const ping = await measureNativePing('1.1.1.1', 53, 2000);
+      if (ping > 0 && !win.isDestroyed()) {
+        win.webContents.send('doctor:ping-update', { ping });
       }
     } catch {}
   };

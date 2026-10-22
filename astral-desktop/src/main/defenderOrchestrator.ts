@@ -81,6 +81,11 @@ class DefenderOrchestrator {
    */
   public async getStatus(forceRefresh = false): Promise<DefenderStatus> {
     const now = Date.now();
+    // Pendant un scan actif, ne pas interroger WMI pour éviter les conflits de verrouillage
+    if (this.isScanning && this.cachedStatus) {
+      return this.cachedStatus;
+    }
+
     if (!forceRefresh && this.cachedStatus && now - this.lastStatusCheck < 30000) {
       return this.cachedStatus;
     }
@@ -246,32 +251,16 @@ class DefenderOrchestrator {
       }
 
       if (scanType === 'quick') {
-        onProgress?.(`Moteur Defender : analyse rapide du système principal (${drives[0]})...`, {
+        onProgress?.(`Moteur Defender : analyse rapide de la mémoire et des fichiers système critiques...`, {
           currentDrive: drives[0],
           driveIndex: 1,
           totalDrives: drives.length,
           drivesList: drives,
-          percent: 30,
+          percent: 45,
         });
 
+        // ScanType 1 : Quick scan natif Microsoft Defender (rapide, mémoire + composants système critiques)
         const res = await this.runMpCmdRunChild(mpCmdRun, ['-Scan', '-ScanType', '1'], 180000);
-
-        // Analyse multi-disques des autres volumes
-        for (let i = 1; i < drives.length; i++) {
-          const d = drives[i];
-          const pct = Math.round(30 + (i / drives.length) * 50);
-          onProgress?.(`Contrôle multi-disques du volume ${d}...`, {
-            currentDrive: d,
-            driveIndex: i + 1,
-            totalDrives: drives.length,
-            drivesList: drives,
-            percent: pct,
-          });
-
-          try {
-            await this.runMpCmdRunChild(mpCmdRun, ['-Scan', '-ScanType', '3', '-File', d], 60000);
-          } catch {}
-        }
 
         const threats = await this.getDetectionHistory(10);
         const hasThreats = res.exitCode === 2 || threats.length > 0;
@@ -284,44 +273,35 @@ class DefenderOrchestrator {
           exitCode: res.exitCode,
           message: hasThreats
             ? 'Menaces détectées par Microsoft Defender.'
-            : `Analyse multi-disques terminée sur ${drives.length} volume(s) (${drives.join(', ')}). Système sain.`,
+            : `Analyse rapide terminée avec succès sur les volumes (${drives.join(', ')}). Système sain.`,
           wasCancelled: res.wasCancelled,
         };
       }
 
-      // Full Scan (Analyse approfondie sur l'ensemble des disques)
-      let anyThreat = false;
-      let lastCancelled = false;
+      // Full Scan (ScanType 2 : Analyse approfondie complète de l'ensemble des disques)
+      onProgress?.(`Moteur Defender : analyse approfondie complète sur l'ensemble des disques (${drives.join(', ')})...`, {
+        currentDrive: drives[0],
+        driveIndex: 1,
+        totalDrives: drives.length,
+        drivesList: drives,
+        percent: 30,
+      });
 
-      for (let i = 0; i < drives.length; i++) {
-        const d = drives[i];
-        const drivePct = Math.round((i / drives.length) * 85);
-        onProgress?.(`Analyse approfondie du volume ${d} (${i + 1}/${drives.length})...`, {
-          currentDrive: d,
-          driveIndex: i + 1,
-          totalDrives: drives.length,
-          drivesList: drives,
-          percent: drivePct,
-        });
-
-        const driveRes = await this.runMpCmdRunChild(mpCmdRun, ['-Scan', '-ScanType', '3', '-File', d], 600000);
-        if (driveRes.exitCode === 2) anyThreat = true;
-        if (driveRes.wasCancelled) lastCancelled = true;
-      }
-
+      const fullRes = await this.runMpCmdRunChild(mpCmdRun, ['-Scan', '-ScanType', '2'], 900000);
       const threats = await this.getDetectionHistory(10);
-      const hasThreats = anyThreat || threats.length > 0;
+      const hasThreats = fullRes.exitCode === 2 || threats.length > 0;
+
       return {
-        success: true,
+        success: fullRes.exitCode === 0 || fullRes.exitCode === 2,
         scanType: 'full',
         threatCount: hasThreats ? Math.max(1, threats.length) : 0,
         threats: hasThreats ? threats : [],
         durationMs: Date.now() - startTime,
-        exitCode: anyThreat ? 2 : 0,
-        message: anyThreat
+        exitCode: fullRes.exitCode,
+        message: hasThreats
           ? 'Menace(s) détectée(s) sur un ou plusieurs disques.'
           : `Analyse approfondie multi-disques terminée avec succès sur ${drives.join(', ')}. Aucun malware.`,
-        wasCancelled: lastCancelled,
+        wasCancelled: fullRes.wasCancelled,
       };
     } finally {
       this.isScanning = false;

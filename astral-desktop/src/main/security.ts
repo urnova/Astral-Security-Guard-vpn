@@ -21,6 +21,7 @@ import { yaraEngine, YaraScanResult } from './yaraEngine';
 import { clamAvEngine, ClamAvStatus, ClamAvScanResult } from './clamavEngine';
 import { localSecurityDiagnostics, SecurityDiagnosis } from './aiDiagnostics';
 import { multiEngineReportAggregator, MultiEngineScanReport } from './multiEngineReport';
+import { getTopProcesses } from './telemetry';
 
 export interface ThreatInfo {
   ThreatID?: number | string;
@@ -168,25 +169,19 @@ export function setupSecurityIPC(win: BrowserWindow) {
       filesScanned: 240,
     });
 
-    // Scan heuristique rapide des processus actifs
+    // Scan heuristique rapide des processus actifs (sans appel PowerShell)
     try {
-      const psCheck = await runPowerShell(
-        `Get-Process | Where-Object { $_.Path } | Select-Object -First 30 -ExpandProperty Path`,
-        { timeout: 3000 }
-      );
-      if (psCheck.stdout) {
-        const procPaths = psCheck.stdout.split('\n').map(p => p.trim()).filter(Boolean);
-        for (const p of procPaths.slice(0, 5)) {
-          win.webContents.send('security:scan-event', {
-            type: 'scan-progress',
-            scanType: mode,
-            percent: 25,
-            progress: 25,
-            phase: 'Phase 1/3 · Moteur Astral Heuristique',
-            currentFile: p,
-            filesScanned: 480,
-          });
-        }
+      const procs = await getTopProcesses(10);
+      for (const p of procs.slice(0, 5)) {
+        win.webContents.send('security:scan-event', {
+          type: 'scan-progress',
+          scanType: mode,
+          percent: 25,
+          progress: 25,
+          phase: 'Phase 1/3 · Moteur Astral Heuristique',
+          currentFile: p.name,
+          filesScanned: 480,
+        });
       }
     } catch {}
 

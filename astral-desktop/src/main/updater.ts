@@ -11,7 +11,7 @@ import { loadPreferences, savePreferences } from './profile';
 
 export interface UpdaterState {
   currentVersion: string;
-  status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
+  status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'installing' | 'error';
   updateInfo: UpdateInfo | null;
   progressPercent: number;
   bytesPerSecond: number;
@@ -61,6 +61,11 @@ export function quitAndInstallUpdate(isSilent = true, isForceRunAfter = true): v
     }
   }
 
+  // Ensure single instance mutex is immediately freed so the newly launched installer/app is never rejected
+  try {
+    app.releaseSingleInstanceLock();
+  } catch {}
+
   try {
     const fn = (autoUpdater as any).quitAndInstall;
     if (typeof fn === 'function' && fn.length === 1) {
@@ -79,11 +84,11 @@ export function quitAndInstallUpdate(isSilent = true, isForceRunAfter = true): v
     }
   }
 
-  // Safety fallback: if app hasn't terminated within 3.5s, exit directly to free installer file lock
+  // Fallback: exit after 1000ms so we do not hold file handles against the installer
   setTimeout(() => {
-    logger.info('[AutoUpdater] Forcing application exit to release single-instance mutex for installer');
+    logger.info('[AutoUpdater] Exiting old process to allow clean installer execution');
     app.exit(0);
-  }, 3500);
+  }, 1000);
 }
 
 export function setupAutoUpdater(win: BrowserWindow, onPrepareForQuit?: () => void) {
@@ -211,8 +216,14 @@ export function setupAutoUpdater(win: BrowserWindow, onPrepareForQuit?: () => vo
   });
 
   ipcMain.handle('updater:install', async () => {
-    logger.info('[AutoUpdater] User confirmed installation, proceeding with silent quitAndInstall');
-    quitAndInstallUpdate(true, true);
+    logger.info('[AutoUpdater] User confirmed installation, broadcasting installing state and proceeding');
+    updaterState.status = 'installing';
+    broadcastState();
+
+    // Allow 800ms for renderer to display the full animated installation modal
+    setTimeout(() => {
+      quitAndInstallUpdate(true, true);
+    }, 800);
     return { success: true };
   });
 

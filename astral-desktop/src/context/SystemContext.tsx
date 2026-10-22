@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 
 export interface MetricsData {
   cpuModel?: string;
@@ -114,17 +114,35 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
   const [isWarmedUp, setIsWarmedUp] = useState(false);
 
   const api = typeof window !== 'undefined' ? (window as any).vanguard : null;
+  const inFlightRef = useRef(false);
 
-  const refreshTelemetry = useCallback(async () => {
+  const refreshSecurity = useCallback(async () => {
     if (!api) return;
     try {
-      const [mRes, sRes] = await Promise.allSettled([
-        api.getMetrics?.(),
-        api.getSecurityStatus?.(),
-      ]);
+      const sRes = await api.getSecurityStatus?.();
+      if (sRes?.success && sRes.data) {
+        const s = sRes.data;
+        setSecurityStatus((prev) => ({
+          ...prev,
+          antivirusEnabled: s.AntivirusEnabled ?? true,
+          realTimeProtection: s.RealTimeProtectionEnabled ?? true,
+          signaturesVersion: s.AntivirusSignatureVersion || prev.signaturesVersion,
+          signaturesUpdated: s.AntivirusSignatureLastUpdate
+            ? new Date(s.AntivirusSignatureLastUpdate).toLocaleDateString('fr-FR')
+            : prev.signaturesUpdated,
+        }));
+      }
+    } catch {}
+  }, [api]);
 
-      if (mRes.status === 'fulfilled' && mRes.value?.success && mRes.value.data) {
-        const d = mRes.value.data;
+  const refreshTelemetry = useCallback(async () => {
+    if (!api || inFlightRef.current) return;
+    inFlightRef.current = true;
+    try {
+      const mRes = await api.getMetrics?.();
+
+      if (mRes?.success && mRes.data) {
+        const d = mRes.data;
         setMetrics((prev) => ({
           ...prev,
           cpuModel: d.cpuModel || prev.cpuModel,
@@ -140,26 +158,17 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
           uptimeHours: d.uptimeHours ? Number(d.uptimeHours.toFixed(1)) : prev.uptimeHours,
         }));
       }
-
-      if (sRes.status === 'fulfilled' && sRes.value?.success && sRes.value.data) {
-        const s = sRes.value.data;
-        setSecurityStatus((prev) => ({
-          ...prev,
-          antivirusEnabled: s.AntivirusEnabled ?? true,
-          realTimeProtection: s.RealTimeProtectionEnabled ?? true,
-          signaturesVersion: s.AntivirusSignatureVersion || prev.signaturesVersion,
-          signaturesUpdated: s.AntivirusSignatureLastUpdate
-            ? new Date(s.AntivirusSignatureLastUpdate).toLocaleDateString('fr-FR')
-            : prev.signaturesUpdated,
-        }));
-      }
-    } catch {}
+    } catch {} finally {
+      inFlightRef.current = false;
+    }
   }, [api]);
 
   // Initial and periodic refresh + IPC tray listeners
   useEffect(() => {
     refreshTelemetry();
-    const interval = setInterval(refreshTelemetry, 1000);
+    refreshSecurity();
+    const metricsInterval = setInterval(refreshTelemetry, 1000);
+    const securityInterval = setInterval(refreshSecurity, 15000);
 
     const cleanupSec = api?.on?.('security:status-changed', (event: any) => {
       if (event) {
@@ -210,13 +219,14 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => {
-      clearInterval(interval);
+      clearInterval(metricsInterval);
+      clearInterval(securityInterval);
       if (typeof cleanupSec === 'function') cleanupSec();
       if (typeof cleanupVpnState === 'function') cleanupVpnState();
       if (typeof cleanupVpnQuick === 'function') cleanupVpnQuick();
       if (typeof cleanupVpnDisc === 'function') cleanupVpnDisc();
     };
-  }, [refreshTelemetry, api]);
+  }, [refreshTelemetry, refreshSecurity, api]);
 
   const connectVpn = async (node: VpnNode): Promise<boolean> => {
     setIsVpnConnecting(true);
