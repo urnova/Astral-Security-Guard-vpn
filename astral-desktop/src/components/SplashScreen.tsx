@@ -48,8 +48,8 @@ export default function SplashScreen({ onFinish }: Props) {
         <VanguardLogo size={52} glow={false} />
       </div>
 
-      <div className="splash-name">Astral Vanguard</div>
-      <div className="splash-sub">Protection · Performance · Confidentialité</div>
+      <div className="splash-name">Vanguard Core</div>
+      <div className="splash-sub">Protection · E-Sport · Diagnostic PC par Astral Security</div>
 
       {/* Progress */}
       <div className="splash-bar">

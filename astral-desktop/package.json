@@ -1,7 +1,7 @@
 {
-  "name": "astral-vanguard",
+  "name": "vanguard-core",
   "version": "2.5.12",
-  "description": "Astral Vanguard - Gaming, Security & Anti-Lag Suite",
+  "description": "Vanguard Core - Suite de Sécurité, E-Sport & Sauvetage PC par Astral Security",
   "author": "Astral Security",
   "private": true,
   "main": "dist-electron/main/index.js",
@@ -12,8 +12,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "build": {
-    "appId": "com.astral.vanguard",
-    "productName": "Astral Vanguard",
+    "appId": "com.astral.vanguardcore",
+    "productName": "Vanguard Core",
+    "artifactName": "Vanguard-Core-Setup-${version}.${ext}",
     "copyright": "Copyright © 2026 Astral Security. Tous droits réservés.",
     "directories": {
       "output": "dist-electron/release"

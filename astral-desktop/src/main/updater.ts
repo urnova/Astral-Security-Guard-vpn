@@ -47,10 +47,11 @@ export function registerQuitPreparer(cb: () => void) {
 
 /**
  * Handles quitAndInstall cleanly.
- * Silent mode (/S) is essential on Windows NSIS so the installer applies the update
- * seamlessly without hanging in interactive GUI mode.
+ * Using non-silent mode (isSilent = false) on Windows NSIS is required so that:
+ * 1. The Windows UAC elevation prompt is presented to the user.
+ * 2. The user visibly sees the installer window rather than having the application close silently with no feedback.
  */
-export function quitAndInstallUpdate(isSilent = true, isForceRunAfter = true): void {
+export function quitAndInstallUpdate(isSilent = false, isForceRunAfter = true): void {
   logger.info(`[AutoUpdater] Invoking quitAndInstall (isSilent=${isSilent}, isForceRunAfter=${isForceRunAfter})`);
   
   if (onPrepareForQuitCallback) {
@@ -79,11 +80,11 @@ export function quitAndInstallUpdate(isSilent = true, isForceRunAfter = true): v
     }
   }
 
-  // Safety fallback: if app hasn't terminated within 2.5s, exit directly to free installer file lock
+  // Safety fallback: if app hasn't terminated within 3.5s, exit directly to free installer file lock
   setTimeout(() => {
     logger.info('[AutoUpdater] Forcing application exit to release single-instance mutex for installer');
     app.exit(0);
-  }, 2500);
+  }, 3500);
 }
 
 export function setupAutoUpdater(win: BrowserWindow, onPrepareForQuit?: () => void) {
@@ -202,7 +203,7 @@ export function setupAutoUpdater(win: BrowserWindow, onPrepareForQuit?: () => vo
 
   ipcMain.handle('updater:install', async () => {
     logger.info('[AutoUpdater] User confirmed installation, proceeding with quitAndInstall');
-    quitAndInstallUpdate(true, true);
+    quitAndInstallUpdate(false, true);
     return { success: true };
   });
 

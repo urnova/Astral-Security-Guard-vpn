@@ -1053,7 +1053,7 @@ export default function SettingsTab({
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-                        Astral Vanguard v{currentVersion}
+                        Vanguard Core v{currentVersion}
                       </span>
                       <span
                         style={{
@@ -1271,23 +1271,22 @@ export default function SettingsTab({
                     alignItems: 'center',
                     justifyContent: 'center',
                     fontWeight: 700,
-                    fontSize: 18,
+                    fontSize: 16,
                     color: 'var(--a1)',
                   }}
                 >
-                  AV
+                  VC
                 </div>
                 <div>
-                  <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Astral Vanguard</h2>
-                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>v{currentVersion} (Bêta Pré-release) · Suite de Sécurité & Optimisation Gaming</div>
+                  <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Vanguard Core</h2>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>v{currentVersion} (Bêta) · Application PC de la suite Astral Vanguard</div>
                 </div>
               </div>
 
               <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.8 }}>
-                Astral Vanguard est une solution libre et locale d'orchestration de sécurité pour Windows.
-                Elle s'appuie directement sur les fondations robustes de <strong>Microsoft Defender</strong>,
-                des règles de pare-feu natives et de l'architecture tunnel sécurisée <strong>WireGuard</strong>.
-                Aucune télémétrie invasive ni donnée privée n'est transmise hors de votre ordinateur.
+                Vanguard Core est l'application PC officielle développée par Astral Security. Elle coordonne
+                la protection proactive des téléchargements, la maintenance système et les profils e-sport réversibles
+                sans compte, sans publicité et avec un respect strict de la confidentialité locale.
               </div>
 
               <div

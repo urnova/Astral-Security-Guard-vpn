@@ -19,13 +19,13 @@ import { executePrivilegedAction } from './privilegedHelper';
 // ── Single Instance Lock ───────────────────────────────────────────────────────
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
-  logger.info('[App] Another instance of Astral Vanguard is already running. Quitting duplicate instance.');
+  logger.info('[App] Another instance of Vanguard Core is already running. Quitting duplicate instance.');
   app.quit();
   process.exit(0);
 }
 
 // Set Application User Model ID for Windows toast notifications & taskbar grouping
-app.setAppUserModelId('com.astral.vanguard');
+app.setAppUserModelId('com.astral.vanguardcore');
 
 process.env.DIST = path.join(__dirname, '../..');
 process.env.PUBLIC = app.isPackaged
@@ -368,11 +368,11 @@ export function updateTrayState(opts: {
 
   const menu = Menu.buildFromTemplate([
     {
-      label: `⚡ Astral Vanguard v${currentAppVersion} (Bêta Pré-release)`,
+      label: `⚡ Vanguard Core v${currentAppVersion} (Bêta)`,
       enabled: false,
     },
     {
-      label: 'Ouvrir Astral Vanguard',
+      label: 'Ouvrir Vanguard Core',
       click: showAndFocus,
     },
     { type: 'separator' },
@@ -491,7 +491,7 @@ export function updateTrayState(opts: {
       },
     },
     {
-      label: 'Quitter Définitivement Astral Vanguard',
+      label: 'Quitter Définitivement Vanguard Core',
       click: () => {
         minimizeToTray = false;
         app.exit(0);
@@ -500,7 +500,7 @@ export function updateTrayState(opts: {
   ]);
 
   tray.setContextMenu(menu);
-  tray.setToolTip('Astral Vanguard');
+  tray.setToolTip('Vanguard Core');
 }
 
 function createTray() {

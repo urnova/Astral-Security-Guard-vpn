@@ -6,7 +6,6 @@ import {
   Wifi,
   Cpu,
   Gamepad2,
-  ExternalLink,
   ChevronRight,
   CheckCircle2,
   Check,
@@ -18,12 +17,12 @@ import {
 
 const REPO_OWNER = 'urnova';
 const REPO_NAME = 'Astral-Security-Guard-vpn';
-const FALLBACK_VERSION = 'v2.5.12';
-const FALLBACK_DOWNLOAD_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${FALLBACK_VERSION}/Astral-Vanguard-Setup-2.5.12.exe`;
+const FALLBACK_STABLE_VERSION = 'v2.5.3';
+const FALLBACK_DOWNLOAD_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${FALLBACK_STABLE_VERSION}/Astral-Vanguard-Setup-2.5.3.exe`;
 
 export default function App() {
   const [downloadUrl, setDownloadUrl] = useState<string>(FALLBACK_DOWNLOAD_URL);
-  const [version, setVersion] = useState<string>(FALLBACK_VERSION);
+  const [version, setVersion] = useState<string>(FALLBACK_STABLE_VERSION);
   const [activeTab, setActiveTab] = useState<'security' | 'gaming' | 'vpn' | 'hardware'>('security');
   const [copiedSha, setCopiedSha] = useState(false);
 
@@ -35,19 +34,19 @@ export default function App() {
       })
       .then((data) => {
         const releases = Array.isArray(data) ? data : [data];
-        const latest = releases[0];
-        if (latest) {
-          if (latest.tag_name) setVersion(latest.tag_name);
-          const exeAsset = latest.assets?.find((a: any) => a.name.endsWith('.exe'));
+        // Filtrage strict : SEULES les versions stables publiques sont proposées sur le site web
+        const latestStable = releases.find((r: any) => !r.prerelease && !r.draft);
+        if (latestStable) {
+          if (latestStable.tag_name) setVersion(latestStable.tag_name);
+          const exeAsset = latestStable.assets?.find((a: any) => a.name.endsWith('.exe'));
           if (exeAsset?.browser_download_url) {
             setDownloadUrl(exeAsset.browser_download_url);
           }
         }
       })
       .catch(() => {
-        // Fallback to static release URL
         setDownloadUrl(FALLBACK_DOWNLOAD_URL);
-        setVersion(FALLBACK_VERSION);
+        setVersion(FALLBACK_STABLE_VERSION);
       });
   }, []);
 
@@ -78,7 +77,7 @@ export default function App() {
             <div className="flex items-center gap-2.5">
               <span className="font-bold text-base tracking-tight text-white">Astral Vanguard</span>
               <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-sky-500/10 border border-sky-500/30 text-sky-400">
-                {version} BÊTA
+                {version} STABLE
               </span>
             </div>
           </a>
@@ -86,8 +85,8 @@ export default function App() {
           {/* Center Navigation Links */}
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-300">
             <a href="#features" className="hover:text-white transition-colors">Fonctionnalités</a>
-            <a href="#preview" className="hover:text-white transition-colors">Aperçu & Modules</a>
-            <a href="#transparency" className="hover:text-white transition-colors">Engagement & Sécurité</a>
+            <a href="#preview" className="hover:text-white transition-colors">Modules Intégrés</a>
+            <a href="#transparency" className="hover:text-white transition-colors">Sécurité & Éthique</a>
             <a href="#specs" className="hover:text-white transition-colors">Spécifications</a>
             <a href="#faq" className="hover:text-white transition-colors">FAQ</a>
           </nav>
@@ -95,21 +94,11 @@ export default function App() {
           {/* Right Action Buttons */}
           <div className="flex items-center gap-3">
             <a
-              href={`https://github.com/${REPO_OWNER}/${REPO_NAME}`}
-              target="_blank"
-              rel="noreferrer"
-              className="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-md border border-white/10 bg-white/[0.03] text-slate-300 hover:text-white hover:bg-white/[0.06] transition-all"
-            >
-              <ExternalLink size={13} />
-              <span>GitHub</span>
-            </a>
-
-            <a
               href={downloadUrl}
               className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-md bg-sky-500 hover:bg-sky-400 text-slate-950 shadow-sm shadow-sky-500/20 transition-all hover:shadow-sky-500/30"
             >
               <Download size={14} strokeWidth={2.5} />
-              <span>Télécharger</span>
+              <span>Télécharger l'Installateur</span>
             </a>
           </div>
         </div>
@@ -120,21 +109,21 @@ export default function App() {
         
         {/* Status Pill */}
         <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full border border-sky-500/30 bg-sky-500/[0.06] text-sky-300 text-xs font-medium mb-8">
-          <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
-          <span>Nouvelle version <b>{version}</b> disponible pour Windows 10 & 11 (64-bit)</span>
+          <span className="w-2 h-2 rounded-full bg-emerald-400" />
+          <span>Version Stable Officielle <b>{version}</b> certifiée pour Windows 10 & 11 (64-bit)</span>
         </div>
 
         {/* Main Title */}
         <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-white leading-[1.12] mb-6">
           Sécurité réactive, e-sport et maintenance système.
           <span className="block mt-2 text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-sky-300 to-indigo-300">
-            Une suite PC sobre et 100% transparente.
+            Une suite PC propriétaire sobre et maîtrisée.
           </span>
         </h1>
 
         {/* Subtitle / Value Proposition */}
         <p className="max-w-2xl mx-auto text-base sm:text-lg text-slate-300 leading-relaxed mb-10">
-          Antivirus ciblé avec analyse immédiate des téléchargements, profils de session de jeu réversibles à latence minimale, VPN OpenVPN sans compte et télémétrie matérielle native.
+          Antivirus ciblé avec analyse immédiate des téléchargements, profils de session de jeu réversibles à latence minimale, tunnel VPN chiffré sans compte et diagnostic matériel direct.
         </p>
 
         {/* Primary Download CTAs */}
@@ -144,19 +133,17 @@ export default function App() {
             className="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-8 py-3.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-sm shadow-lg shadow-sky-500/20 transition-all transform hover:-translate-y-0.5"
           >
             <Download size={18} strokeWidth={2.4} />
-            <span>Télécharger Astral Vanguard pour Windows</span>
+            <span>Télécharger la Version Stable pour Windows</span>
             <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded bg-slate-950/20 text-slate-900">
               83 Mo
             </span>
           </a>
 
           <a
-            href={`https://github.com/${REPO_OWNER}/${REPO_NAME}/releases`}
-            target="_blank"
-            rel="noreferrer"
+            href="#preview"
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-lg border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-slate-200 font-semibold text-sm transition-all"
           >
-            <span>Notes de version & Releases</span>
+            <span>Explorer les modules intégrés</span>
             <ChevronRight size={15} />
           </a>
         </div>
@@ -165,7 +152,7 @@ export default function App() {
         <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-slate-400 font-medium">
           <span className="inline-flex items-center gap-1.5">
             <Check size={14} className="text-emerald-400" />
-            100% Gratuit & Communautaire
+            100% Gratuit & Sans abonnement
           </span>
           <span className="inline-flex items-center gap-1.5">
             <Check size={14} className="text-emerald-400" />
@@ -173,23 +160,28 @@ export default function App() {
           </span>
           <span className="inline-flex items-center gap-1.5">
             <Check size={14} className="text-emerald-400" />
-            Code source auditable sur GitHub
+            Distribution officielle sécurisée
           </span>
           <span className="inline-flex items-center gap-1.5">
             <Check size={14} className="text-emerald-400" />
-            Mises à jour automatiques sécurisées
+            Mises à jour automatiques stables
           </span>
+        </div>
+
+        {/* Note on Beta channel */}
+        <div className="mt-4 text-[11px] text-slate-500">
+          Les pré-versions et canaux bêta sont réservés aux tests et s'activent directement dans les réglages du logiciel.
         </div>
 
       </section>
 
-      {/* ── Interactive Module Showcase (Aperçu fidèle de l'application) ── */}
+      {/* ── Interactive Module Showcase ── */}
       <section id="preview" className="relative z-10 py-16 max-w-6xl mx-auto px-4 sm:px-6 w-full">
         <div className="text-center mb-10">
-          <span className="text-xs font-bold uppercase tracking-wider text-sky-400">Architecture Modulaire</span>
+          <span className="text-xs font-bold uppercase tracking-wider text-sky-400">Suite Intégrée</span>
           <h2 className="text-2xl sm:text-3xl font-bold text-white mt-1">Conçu pour l'efficacité opérationnelle</h2>
           <p className="text-sm text-slate-400 mt-2 max-w-xl mx-auto">
-            Chaque module répond à un besoin précis sans processus d'arrière-plan superflu ni télémétrie commerciale.
+            Une synergie d'outils natifs développés avec rigueur, sans processus d'arrière-plan superflu ni télémétrie commerciale.
           </p>
         </div>
 
@@ -229,7 +221,7 @@ export default function App() {
               }`}
             >
               <Wifi size={14} />
-              <span>Réseau & OpenVPN</span>
+              <span>Réseau & Tunnel Privé</span>
             </button>
 
             <button
@@ -393,13 +385,13 @@ export default function App() {
               <div className="lg:col-span-6 space-y-4">
                 <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded bg-indigo-500/10 border border-indigo-500/25 text-indigo-400 text-xs font-semibold">
                   <Wifi size={13} />
-                  <span>OpenVPN Distribué & Résolveurs Sécurisés</span>
+                  <span>Tunnel OpenVPN & Résolveurs Sécurisés</span>
                 </div>
                 <h3 className="text-xl sm:text-2xl font-bold text-white">
-                  VPN communautaire illimité sans compte ni inscription.
+                  Protection réseau et tunnel chiffré sans compte.
                 </h3>
                 <p className="text-sm text-slate-300 leading-relaxed">
-                  Connectez-vous aux nœuds OpenVPN mondiaux vérifiés du réseau VPN Gate. Bénéficiez d'un chiffrement robuste AES-256-GCM avec pilote Wintun haute performance et d'un Kill Switch automatique coupant tout trafic en cas de rupture de tunnel.
+                  Bénéficiez d'un tunnel sécurisé avec chiffrement fort AES-256-GCM via pilote Wintun haute performance et d'un Kill Switch automatique coupant tout trafic réseau en cas d'interruption accidentelle.
                 </p>
                 <div className="space-y-2.5 pt-2">
                   <div className="flex items-center gap-2.5 text-xs text-slate-300">
@@ -429,7 +421,7 @@ export default function App() {
                 <div className="p-4 rounded-lg bg-[#0e1422] border border-white/[0.08] mb-3">
                   <div className="flex items-center justify-between text-xs mb-2">
                     <span className="text-slate-400">Adresse IP Virtuelle :</span>
-                    <span className="font-mono font-bold text-white">104.28.19.42 (Tokyo, JP)</span>
+                    <span className="font-mono font-bold text-white">104.28.19.42 (Chiffrée)</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-400">Protection Kill Switch :</span>
@@ -520,7 +512,7 @@ export default function App() {
           <span className="text-xs font-bold uppercase tracking-wider text-sky-400">Spécifications Fonctions</span>
           <h2 className="text-3xl font-extrabold text-white mt-1">Conçu sans artifice, pour durer</h2>
           <p className="text-sm text-slate-400 mt-2">
-            Des utilitaires système rigoureusement développés sous Electron et TypeScript, communiquant directement avec les interfaces de bas niveau de Windows.
+            Des utilitaires système rigoureusement développés, communiquant directement avec les interfaces de bas niveau de Windows.
           </p>
         </div>
 
@@ -552,9 +544,9 @@ export default function App() {
             <div className="w-10 h-10 rounded-lg bg-sky-500/10 border border-sky-500/25 flex items-center justify-center text-sky-400 mb-4">
               <Wifi size={20} />
             </div>
-            <h3 className="text-base font-bold text-white mb-2">Tunnel VPN Communautaire</h3>
+            <h3 className="text-base font-bold text-white mb-2">Tunnel Réseau Sécurisé</h3>
             <p className="text-xs text-slate-300 leading-relaxed mb-4">
-              Connexion instantanée aux relais OpenVPN du projet universitaire VPN Gate. Bande passante illimitée, contournement de censure et chiffrement fort.
+              Connexion chiffrée haut débit avec masquage de l'adresse IP d'origine, protection anti-fuite DNS et routage Wintun optimisé.
             </p>
             <div className="text-[11px] font-mono text-sky-400/80">OpenVPN 2.6 + Wintun Driver</div>
           </div>
@@ -600,9 +592,9 @@ export default function App() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6">
           <div className="text-center max-w-2xl mx-auto mb-12">
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Éthique & Respect du Système</span>
-            <h2 className="text-2xl sm:text-3xl font-bold text-white mt-1">À l'opposé des bloatwares commerciaux</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mt-1">À l'opposé des logiciels intrusifs</h2>
             <p className="text-sm text-slate-400 mt-2">
-              Pourquoi Astral Vanguard a été conçu : remplacer les suites intrusives qui ralentissent votre PC par un outil propre, réversible et honnête.
+              Astral Vanguard est conçu pour protéger votre PC sans créer de dépendance ni altérer la stabilité de Windows.
             </p>
           </div>
 
@@ -627,7 +619,7 @@ export default function App() {
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-emerald-400 font-bold">✓</span>
-                  <span><b>Code source public</b> : inspectez librement les scripts et les appels API sur GitHub.</span>
+                  <span><b>Développement propriétaire maîtrisé</b> : distribution officielle certifiée et intègre, contrôlée directement par l'équipe Vanguard.</span>
                 </li>
               </ul>
             </div>
@@ -696,7 +688,7 @@ export default function App() {
         {/* Checksum SHA-512 Box */}
         <div className="mt-6 p-4 rounded-xl bg-[#0c101a] border border-white/[0.06] flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-xs text-slate-300">
-            <span className="font-semibold text-white">Empreinte d'intégrité officielle (SHA-512 v2.5.12) :</span>
+            <span className="font-semibold text-white">Empreinte d'intégrité officielle (SHA-512 version stable) :</span>
             <div className="font-mono text-[11px] text-slate-400 mt-0.5 break-all">
               zyMcPGL/Vghnf9B+Gru53n3/YacYidCgz4ZbJTzumUas766BfUMqL+i+zY4qGZNe54F5VlUsAEVTKFm7Ko7C8A==
             </div>
@@ -726,7 +718,7 @@ export default function App() {
                 Astral Vanguard est-il réellement 100% gratuit et sans abonnement ?
               </h3>
               <p className="text-xs text-slate-300 leading-relaxed">
-                Oui. Astral Vanguard est un projet open-source et communautaire. Toutes les fonctionnalités (antivirus, profils e-sport, overlay HUD, VPN OpenVPN et centre matériel) sont accessibles sans restriction, sans période d'essai et sans clé d'activation.
+                Oui. Astral Vanguard est développé et distribué gratuitement. Toutes les fonctionnalités (antivirus, profils e-sport, overlay HUD, tunnel VPN et centre matériel) sont accessibles sans restriction, sans période d'essai et sans clé d'activation.
               </p>
             </div>
 
@@ -741,10 +733,10 @@ export default function App() {
 
             <div className="p-5 rounded-xl bg-[#0e131f] border border-white/[0.06]">
               <h3 className="text-sm font-bold text-white mb-1.5">
-                Comment sont gérées les mises à jour automatiques ?
+                Comment sont gérées les mises à jour et les versions Bêta ?
               </h3>
               <p className="text-xs text-slate-300 leading-relaxed">
-                Astral Vanguard intègre le protocole officiel <code className="font-mono text-[11px] bg-white/5 px-1 py-0.5 rounded text-sky-300">electron-updater</code> lié aux GitHub Releases avec le fichier de contrôle <code className="font-mono text-[11px] bg-white/5 px-1 py-0.5 rounded text-sky-300">latest.yml</code>. Lorsqu'une nouvelle version stable ou pré-release est publiée, l'application vous avertit et propose un redémarrage avec installation transparente.
+                Le site web officiel propose exclusivement le <b>canal stable</b> destiné au grand public. Les pré-versions et versions bêta sont réservées aux tests avancés : elles sont accessibles uniquement aux utilisateurs ayant expressément activé le canal bêta dans les Paramètres de l'application.
               </p>
             </div>
 
@@ -759,10 +751,10 @@ export default function App() {
 
             <div className="p-5 rounded-xl bg-[#0e131f] border border-white/[0.06]">
               <h3 className="text-sm font-bold text-white mb-1.5">
-                Comment fonctionne le VPN sans inscription ?
+                Comment fonctionne le tunnel VPN sans inscription ?
               </h3>
               <p className="text-xs text-slate-300 leading-relaxed">
-                L'application se synchronise dynamiquement avec l'API publique mondiale de VPN Gate (développée par l'Université de Tsukuba) ainsi qu'un miroir de secours. Les profils OpenVPN sont téléchargés et injectés dans le moteur local avec pilote Wintun, sans passer par un serveur tiers commercial.
+                L'application se synchronise dynamiquement avec un réseau mondial de relais OpenVPN vérifiés. Les profils sont injectés dans le moteur local avec pilote Wintun sans compte tiers commercial, garantissant chiffrement et confidentialité immédiats.
               </p>
             </div>
 
@@ -793,22 +785,20 @@ export default function App() {
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-3.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-sm shadow-lg shadow-sky-500/20 transition-all transform hover:-translate-y-0.5"
             >
               <Download size={18} strokeWidth={2.4} />
-              <span>Télécharger l'Installateur {version}</span>
+              <span>Télécharger l'Installateur Officiel {version}</span>
             </a>
 
             <a
-              href={`https://github.com/${REPO_OWNER}/${REPO_NAME}`}
-              target="_blank"
-              rel="noreferrer"
+              href="#specs"
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-lg border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-slate-200 font-semibold text-sm transition-all"
             >
-              <span>Voir le Dépôt GitHub</span>
-              <ExternalLink size={14} />
+              <span>Consulter les prérequis techniques</span>
+              <ChevronRight size={15} />
             </a>
           </div>
 
           <div className="text-[11px] text-slate-500 mt-6">
-            Astral Vanguard Setup 2.5.12.exe • Compatible Windows 10 (1809+) & Windows 11
+            Astral Vanguard Setup • Canal Stable Officiel • Compatible Windows 10 & 11
           </div>
         </div>
       </section>
@@ -819,29 +809,16 @@ export default function App() {
           <div className="flex items-center gap-3">
             <img src="/vanguard-logo.png" alt="Logo" className="w-6 h-6 object-contain" />
             <span className="font-bold text-white text-sm">Astral Vanguard</span>
-            <span className="text-slate-500">© 2026 Astral Security. Tous droits réservés.</span>
+            <span className="text-slate-500">© 2026 Astral Vanguard. Logiciel propriétaire — Tous droits réservés.</span>
           </div>
 
           <div className="flex items-center gap-6">
             <a href="#features" className="hover:text-white transition-colors">Fonctions</a>
+            <a href="#preview" className="hover:text-white transition-colors">Modules</a>
             <a href="#specs" className="hover:text-white transition-colors">Spécifications</a>
             <a href="#faq" className="hover:text-white transition-colors">FAQ</a>
-            <a
-              href={`https://github.com/${REPO_OWNER}/${REPO_NAME}`}
-              target="_blank"
-              rel="noreferrer"
-              className="hover:text-white transition-colors"
-            >
-              GitHub
-            </a>
-            <a
-              href={`https://github.com/${REPO_OWNER}/${REPO_NAME}/releases`}
-              target="_blank"
-              rel="noreferrer"
-              className="hover:text-white transition-colors"
-            >
-              Releases
-            </a>
+            <span className="text-slate-600">|</span>
+            <span className="text-sky-400 font-medium">Distribution Officielle</span>
           </div>
         </div>
       </footer>

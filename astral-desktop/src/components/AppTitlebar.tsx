@@ -27,7 +27,7 @@ export default function AppTitlebar({ gamingActive, currentGame }: Props) {
       <div className="tb-brand" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <VanguardLogo size={25} glow={false} />
         <span className="tb-name" style={{ fontWeight: 600, letterSpacing: '-0.01em', color: 'var(--text)', fontSize: 13 }}>
-          Astral Vanguard
+          Vanguard Core
         </span>
         <span className="tb-ver" style={{ fontSize: 10, color: 'var(--dim)', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--line)' }}>
           v{appVersion}

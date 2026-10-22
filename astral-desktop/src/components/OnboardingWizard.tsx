@@ -165,9 +165,9 @@ export default function OnboardingWizard({
           {step === 1 && (
             <div className="stack" style={{ gap: 20 }}>
               <div>
-                <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text)' }}>Bienvenue dans Astral Vanguard</h2>
+                <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text)' }}>Bienvenue dans Vanguard Core</h2>
                 <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4, lineHeight: 1.6 }}>
-                  Solution de sécurité sobre et performante pour Windows. Personnalisez votre profil local pour commencer.
+                  L'application PC de sauvetage et de protection de la suite Vanguard par Astral Security. Personnalisez votre profil local pour commencer.
                 </p>
               </div>
 
@@ -282,7 +282,7 @@ export default function OnboardingWizard({
               <div>
                 <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text)' }}>Intégration Windows</h2>
                 <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-                  Définissez comment Astral Vanguard s'exécute sur votre session.
+                  Définissez comment Vanguard Core s'exécute sur votre session.
                 </p>
               </div>
 

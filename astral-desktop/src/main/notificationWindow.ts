@@ -177,7 +177,7 @@ export function showAvastStyleToast({
     type === 'vpn' ? 'VPN SÉCURISÉ' :
     type === 'performance' ? 'PERFORMANCE & SYSTÈME' :
     type === 'stability' ? 'STABILITÉ SYSTÈME' :
-    'ASTRAL VANGUARD';
+    'VANGUARD CORE';
 
   // SVG Icons according to notification type
   const iconSvg =
@@ -330,7 +330,7 @@ export function showAvastStyleToast({
             <div class="message">${escapeHtml(message)}</div>
           </div>
           <div class="footer">
-            <span>Astral Vanguard v${app.getVersion() || "2.5.12"}</span>
+            <span>Vanguard Core v${app.getVersion() || "0.1.0"}</span>
             <span class="action-hint">Ouvrir l'application ➔</span>
           </div>
         </div>
@@ -701,7 +701,7 @@ export function showAvastStyleDownloadScan({
           ${actionButtonsHtml}
           ${!isMini ? `
           <div class="footer">
-            <span>Astral Vanguard v${app.getVersion() || "2.5.12"}</span>
+            <span>Vanguard Core v${app.getVersion() || "0.1.0"}</span>
             <span>Moteur heuristique autonome</span>
           </div>
           ` : ''}
