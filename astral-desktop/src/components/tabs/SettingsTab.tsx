@@ -161,7 +161,8 @@ export default function SettingsTab({
   };
 
   // Admin status
-  const [isAdmin, setIsAdmin]               = useState<boolean | null>(null);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [adminPersistent, setAdminPersistent] = useState<boolean>(false);
 
   // Diagnostic
   const [diagResults, setDiagResults] = useState<{ name: string; status: string; ok: boolean }[]>([]);
@@ -209,14 +210,22 @@ export default function SettingsTab({
       if (typeof res?.previewChannel === 'boolean') setBetaChannel(res.previewChannel);
     }).catch(() => {});
 
+    // Load auto-update setting
+    api.getAutoUpdate?.().then((res: any) => {
+      if (typeof res?.autoUpdateEnabled === 'boolean') setAutoUpdate(res.autoUpdateEnabled);
+    }).catch(() => {});
+
     // Load updater version info
     api.getUpdaterState?.().then((state: any) => {
       if (state?.currentVersion) setCurrentVersion(state.currentVersion);
     }).catch(() => {});
 
-    // Check admin status
+    // Check admin status & persistent permissions
     api.getAdminStatus?.().then((res: any) => {
-      if (typeof res?.isAdmin === 'boolean') setIsAdmin(res.isAdmin);
+      if (typeof res?.isAdmin === 'boolean') {
+        setIsAdmin(res.isAdmin);
+        setAdminPersistent(Boolean(res.isPersistent || res.isAdmin));
+      }
     }).catch(() => {});
 
     // Sync HUD state from main process
@@ -236,12 +245,20 @@ export default function SettingsTab({
       }
     }).catch(() => {});
 
+    const unAdmin = api.on?.('admin:status', (res: any) => {
+      if (typeof res?.isAdmin === 'boolean') {
+        setIsAdmin(res.isAdmin);
+        setAdminPersistent(Boolean(res.isPersistent || res.isAdmin));
+      }
+    });
+
     const unHud = api.on?.('hud:state-changed', (d: any) => {
       if (typeof d?.active === 'boolean') setHudEnabled(d.active);
       else if (typeof d?.enabled === 'boolean') setHudEnabled(d.enabled);
     });
 
     return () => {
+      unAdmin?.();
       unHud?.();
     };
   }, []);
@@ -344,6 +361,19 @@ export default function SettingsTab({
       );
     } catch {
       showToast('Erreur lors du changement de canal');
+    }
+  };
+
+  const handleToggleAutoUpdate = async (val: boolean) => {
+    setAutoUpdate(val);
+    try {
+      await api?.setAutoUpdate?.(val);
+      showToast(val
+        ? '⚡ Mises à jour automatiques activées — téléchargement silencieux en arrière-plan'
+        : 'Mises à jour automatiques désactivées'
+      );
+    } catch {
+      showToast('Erreur lors du paramétrage des mises à jour automatiques');
     }
   };
 
@@ -538,40 +568,61 @@ export default function SettingsTab({
 
               {/* Admin Status Card */}
               <div style={{
-                background: isAdmin === false ? 'rgba(239,68,68,.05)' : 'rgba(var(--a1r),.04)',
-                border: `1px solid ${isAdmin === false ? 'rgba(239,68,68,.25)' : isAdmin ? 'rgba(var(--a1r),.2)' : 'var(--line)'}`,
+                background: isAdmin ? 'rgba(34,197,94,.06)' : 'rgba(239,68,68,.06)',
+                border: `1px solid ${isAdmin ? 'rgba(34,197,94,.3)' : 'rgba(239,68,68,.3)'}`,
                 borderRadius: 'var(--r-md)',
-                padding: '14px 18px',
+                padding: '16px 20px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                gap: 12,
+                gap: 16,
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Lock size={16} style={{ color: isAdmin === false ? 'rgb(239,68,68)' : isAdmin ? 'var(--a1)' : 'var(--dim)', flexShrink: 0 }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <Shield size={20} style={{ color: isAdmin ? '#22c55e' : '#ef4444', flexShrink: 0 }} />
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-                      Droits Administrateur
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                        Permissions Administrateur
+                      </span>
+                      <span style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        padding: '2px 8px',
+                        borderRadius: 4,
+                        background: isAdmin ? 'rgba(34,197,94,.15)' : 'rgba(239,68,68,.15)',
+                        color: isAdmin ? '#22c55e' : '#ef4444',
+                        border: `1px solid ${isAdmin ? 'rgba(34,197,94,.3)' : 'rgba(239,68,68,.3)'}`,
+                        letterSpacing: '0.04em',
+                      }}>
+                        {isAdmin ? '✓ Actif' : '⚠ Inactif'}
+                      </span>
                     </div>
-                    <div style={{ fontSize: 11, color: isAdmin === false ? 'rgb(239,68,68)' : 'var(--muted)', marginTop: 2 }}>
-                      {isAdmin === null
-                        ? 'Vérification…'
-                        : isAdmin
-                        ? '✓ Session élevée — l’application dispose des privilèges système complets'
-                        : '⚠ Mode restreint détecté — certaines fonctions peuvent être limitées'}
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, lineHeight: 1.4 }}>
+                      {isAdmin
+                        ? 'Droits administrateur enregistrés de manière persistante (tâche système & compatibilité Windows). Aucun avertissement UAC ne sera redemandé au redémarrage ou lors des mises à jour.'
+                        : 'L’application s’exécute actuellement en mode utilisateur standard. Les optimisations système, VPN et antivirus nécessitent les privilèges administrateur.'}
                     </div>
                   </div>
                 </div>
-                {isAdmin === false && (
+
+                {!isAdmin && (
                   <button
                     className="btn"
-                    style={{ fontSize: 11, flexShrink: 0, borderColor: 'rgba(239,68,68,.4)', color: 'rgb(239,68,68)' }}
+                    style={{
+                      fontSize: 11,
+                      flexShrink: 0,
+                      borderColor: 'rgba(56, 189, 248, 0.4)',
+                      background: 'rgba(56, 189, 248, 0.12)',
+                      color: '#38bdf8',
+                      fontWeight: 600,
+                    }}
                     onClick={async () => {
+                      showToast('Demande des privilèges administrateur…');
                       await api?.relaunchElevated?.();
-                      showToast('Relancement en mode administrateur…');
                     }}
                   >
-                    Relancer en admin
+                    Activer les privilèges administrateur
                   </button>
                 )}
               </div>
@@ -1222,7 +1273,7 @@ export default function SettingsTab({
                   </div>
                   <div
                     className={`sw ${autoUpdate ? 'on' : ''}`}
-                    onClick={() => setAutoUpdate(!autoUpdate)}
+                    onClick={() => handleToggleAutoUpdate(!autoUpdate)}
                     role="switch"
                     aria-checked={autoUpdate}
                     tabIndex={0}

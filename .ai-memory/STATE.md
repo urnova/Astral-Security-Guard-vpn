@@ -35,7 +35,17 @@
    - Paramètres / Profil : badge "Compte Local Autonome", bouton de relance de l'onboarding, avatar lumineux.
    - Paramètres / Scanner : synchronisation réelle avec `downloadScanner.ts` (surveillance, sentinelle USB, alertes sonores, dossiers surveillés).
    - Modal Maintenance : SlideDrawer dédié avec sélection fine des caches et terminal en direct.
-   - Modal Session de jeu : sélecteur segmenté épuré, suppression de la surcharge textuelle IA, détails techniques clairs.
+6. **Auto-Updater Silencieux en Arrière-Plan & 5 Assets Releases :**
+   - Rétablissement du mode silencieux (`isSilent = true`) dans `quitAndInstallUpdate` pour remplacer les fichiers applicatifs sans lancer l'assistant interactif NSIS.
+   - Synchronisation réelle du switch "Mises à jour automatiques" (`autoUpdateEnabled`) avec les préférences du profil et `autoUpdater.autoDownload`.
+   - Vérification cyclique automatique en arrière-plan toutes les 30 minutes.
+   - Génération et téléversement des 3 binaires officiels sur GitHub (`latest.yml`, `Vanguard-Core-Setup-0.1.1.exe`, `Vanguard-Core-Setup-0.1.1.exe.blockmap`), portant à 5 le nombre total d'assets de la release v0.1.1.
+7. **Privilèges Administrateur Permanents (Modèle Wallpaper Engine) :**
+   - Écriture d'un fichier de privilèges persistant `admin-privileges.json` dans AppData.
+   - Enregistrement de la tâche planifiée à privilèges maximaux `VanguardCore_Elevated` (`/rl HIGHEST`).
+   - Inscription automatique de `~ RUNASADMIN` dans la base de registre Windows (`AppCompatFlags\Layers` HKCU & HKLM).
+   - Élévation silencieuse au démarrage sans invite UAC via la tâche planifiée si l'application démarre sans droits.
+   - Section Paramètres / Général & Système avec badge temps réel « ✓ Actif » ou bouton « Activer les privilèges administrateur » si inactif.
 
 ## Prochaine Action
 Présenter le compte-rendu exhaustif à l'utilisateur avec démonstration des corrections apportées.

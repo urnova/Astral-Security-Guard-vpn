@@ -47,11 +47,10 @@ export function registerQuitPreparer(cb: () => void) {
 
 /**
  * Handles quitAndInstall cleanly.
- * Using non-silent mode (isSilent = false) on Windows NSIS is required so that:
- * 1. The Windows UAC elevation prompt is presented to the user.
- * 2. The user visibly sees the installer window rather than having the application close silently with no feedback.
+ * Silent mode (isSilent = true) passes /S to the NSIS installer so the update
+ * applies seamlessly in the background without launching the setup wizard.
  */
-export function quitAndInstallUpdate(isSilent = false, isForceRunAfter = true): void {
+export function quitAndInstallUpdate(isSilent = true, isForceRunAfter = true): void {
   logger.info(`[AutoUpdater] Invoking quitAndInstall (isSilent=${isSilent}, isForceRunAfter=${isForceRunAfter})`);
   
   if (onPrepareForQuitCallback) {
@@ -110,12 +109,15 @@ export function setupAutoUpdater(win: BrowserWindow, onPrepareForQuit?: () => vo
     autoUpdater.requestHeaders = {};
   }
 
-  autoUpdater.autoDownload = false; // Give user choice or trigger via UI
+  const prefs = loadPreferences();
+  const autoUpdateActive = prefs.autoUpdateEnabled ?? true;
+  autoUpdater.autoDownload = autoUpdateActive;
   autoUpdater.autoInstallOnAppQuit = true;
 
   // Prerelease channel enabled by default for beta releases
-  autoUpdater.allowPrerelease = true;
-  logger.info('[AutoUpdater] Canal prévision (bêta) : ACTIVÉ');
+  autoUpdater.allowPrerelease = prefs.previewChannel ?? true;
+  logger.info(`[AutoUpdater] Canal prévision (bêta) : ${autoUpdater.allowPrerelease ? 'ACTIVÉ' : 'DÉSACTIVÉ'}`);
+  logger.info(`[AutoUpdater] Mises à jour automatiques : ${autoUpdateActive ? 'ACTIVÉES' : 'DÉSACTIVÉES'}`);
 
   autoUpdater.on('checking-for-update', () => {
     logger.info('[AutoUpdater] Checking for updates on GitHub Releases...');
@@ -130,6 +132,14 @@ export function setupAutoUpdater(win: BrowserWindow, onPrepareForQuit?: () => vo
     updaterState.updateInfo = info;
     updaterState.error = null;
     broadcastState();
+
+    const currentPrefs = loadPreferences();
+    if (currentPrefs.autoUpdateEnabled ?? true) {
+      logger.info('[AutoUpdater] Mises à jour automatiques actives : déclenchement du téléchargement en arrière-plan...');
+      autoUpdater.downloadUpdate().catch((err: any) => {
+        logger.warn('[AutoUpdater] Auto-download note:', err.message);
+      });
+    }
   });
 
   autoUpdater.on('update-not-available', (info: UpdateInfo) => {
@@ -201,9 +211,32 @@ export function setupAutoUpdater(win: BrowserWindow, onPrepareForQuit?: () => vo
   });
 
   ipcMain.handle('updater:install', async () => {
-    logger.info('[AutoUpdater] User confirmed installation, proceeding with quitAndInstall');
-    quitAndInstallUpdate(false, true);
+    logger.info('[AutoUpdater] User confirmed installation, proceeding with silent quitAndInstall');
+    quitAndInstallUpdate(true, true);
     return { success: true };
+  });
+
+  ipcMain.handle('updater:set-auto-update', async (_, enabled: boolean) => {
+    try {
+      savePreferences({ autoUpdateEnabled: enabled });
+      autoUpdater.autoDownload = enabled;
+      logger.info(`[AutoUpdater] Mises à jour automatiques changées : ${enabled ? 'ACTIVÉES' : 'DÉSACTIVÉES'}`);
+      if (enabled && updaterState.status === 'available') {
+        logger.info('[AutoUpdater] Téléchargement immédiat de la mise à jour disponible suite à l activation...');
+        autoUpdater.downloadUpdate().catch((err: any) => {
+          logger.warn('[AutoUpdater] Erreur auto-download post-activation:', err.message);
+        });
+      }
+      return { success: true, autoUpdateEnabled: enabled };
+    } catch (err: any) {
+      logger.error('[AutoUpdater] Failed to set autoUpdateEnabled:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('updater:get-auto-update', () => {
+    const prefs = loadPreferences();
+    return { autoUpdateEnabled: prefs.autoUpdateEnabled ?? true };
   });
 
   ipcMain.handle('updater:set-preview-channel', async (_, enabled: boolean) => {
@@ -227,5 +260,11 @@ export function setupAutoUpdater(win: BrowserWindow, onPrepareForQuit?: () => vo
     setTimeout(() => {
       autoUpdater.checkForUpdates().catch((e) => logger.warn('[AutoUpdater] Initial check error:', e.message));
     }, 5000);
+
+    // Periodic check every 30 minutes in background
+    setInterval(() => {
+      logger.info('[AutoUpdater] Vérification périodique des mises à jour en arrière-plan...');
+      autoUpdater.checkForUpdates().catch((e) => logger.debug('[AutoUpdater] Periodic check error:', e.message));
+    }, 30 * 60 * 1000);
   }
 }

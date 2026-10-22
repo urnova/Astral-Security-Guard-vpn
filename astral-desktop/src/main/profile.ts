@@ -17,6 +17,7 @@ export interface UserPreferences {
   gamingAutoDetect: boolean; // strictly false by default
   hudEnabled: boolean;        // strictly false by default
   previewChannel: boolean;   // beta/preview update channel
+  autoUpdateEnabled: boolean; // automatic background download and quiet installation
   adminElevationEnabled: boolean; // user has acknowledged admin requirement
 }
 
@@ -33,7 +34,8 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   downloadScannerEnabled: true,
   gamingAutoDetect: false,
   hudEnabled: false,
-  previewChannel: false,
+  previewChannel: true,
+  autoUpdateEnabled: true,
   adminElevationEnabled: true,
 };
 
@@ -65,7 +67,8 @@ export function loadPreferences(): UserPreferences {
           downloadScannerEnabled: typeof parsed.downloadScannerEnabled === 'boolean' ? parsed.downloadScannerEnabled : true,
           gamingAutoDetect: typeof parsed.gamingAutoDetect === 'boolean' ? parsed.gamingAutoDetect : false,
           hudEnabled: typeof parsed.hudEnabled === 'boolean' ? parsed.hudEnabled : false,
-          previewChannel: typeof parsed.previewChannel === 'boolean' ? parsed.previewChannel : false,
+          previewChannel: typeof parsed.previewChannel === 'boolean' ? parsed.previewChannel : true,
+          autoUpdateEnabled: typeof parsed.autoUpdateEnabled === 'boolean' ? parsed.autoUpdateEnabled : true,
           adminElevationEnabled: typeof parsed.adminElevationEnabled === 'boolean' ? parsed.adminElevationEnabled : true,
         };
       }

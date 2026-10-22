@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut, N
 import path from 'path';
 import fs from 'fs';
 import { logger } from './logger';
-import { isAdmin, getWindowsBuildInfo, relaunchElevated } from './adminHelper';
+import { isAdmin, getWindowsBuildInfo, relaunchElevated, ensurePersistentAdminTask, getAdminPrivilegeRecord } from './adminHelper';
 import { setupAutoUpdater } from './updater';
 import { setupSecurityIPC } from './security';
 import { setupVpnIPC, cleanupAstralFirewallRules, performVpnConnect, performVpnDisconnect, isVpnConnected, getActiveVpnNodeName } from './vpn';
@@ -207,7 +207,23 @@ function createMainWindow() {
     const admin = isAdmin();
     const osInfo = getWindowsBuildInfo();
     logger.info(`[App] Running with admin rights: ${admin}, OS: ${osInfo.edition} (${osInfo.buildNumber})`);
-    mainWin.webContents.send('admin:status', { isAdmin: admin, osInfo });
+    
+    if (admin) {
+      ensurePersistentAdminTask().catch((err) => {
+        logger.warn('[App] ensurePersistentAdminTask error:', err);
+      });
+    } else {
+      const record = getAdminPrivilegeRecord();
+      if (!record && app.isPackaged) {
+        logger.info('[App] First run without administrator privileges: requesting initial UAC elevation...');
+        relaunchElevated();
+      }
+    }
+    mainWin.webContents.send('admin:status', {
+      isAdmin: admin,
+      isPersistent: Boolean(admin || getAdminPrivilegeRecord()?.granted),
+      osInfo,
+    });
   };
 
   mainWin.once('ready-to-show', () => {
@@ -626,8 +642,12 @@ app.on('window-all-closed', () => {
 
 // Admin Elevation IPC
 ipcMain.handle('admin:get-status', () => {
+  const admin = isAdmin();
+  const record = getAdminPrivilegeRecord();
   return {
-    isAdmin: isAdmin(),
+    isAdmin: admin,
+    isPersistent: Boolean(admin || record?.granted),
+    grantedAt: record?.grantedAt || null,
     osInfo: getWindowsBuildInfo(),
   };
 });
