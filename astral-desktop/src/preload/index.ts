@@ -215,6 +215,9 @@ const api = {
     ipcRenderer.invoke('vpn:execute-msi-installer', payload),
   vpnGetAutoFailover: () => ipcRenderer.invoke('vpn:get-auto-failover'),
   vpnSetAutoFailover: (cfg: any) => ipcRenderer.invoke('vpn:set-auto-failover', cfg),
+  vpnConnectImportedProfile: (opts: { ovpnContent: string; username: string; password: string; label?: string }) =>
+    ipcRenderer.invoke('vpn:connect-imported-profile', opts),
+  vpnClearImportedProfile: () => ipcRenderer.invoke('vpn:clear-imported-profile'),
 
 
   // Gaming & Overlay

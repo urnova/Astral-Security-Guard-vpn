@@ -1,4 +1,9 @@
 import { BrowserWindow, ipcMain } from 'electron';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import * as electron from 'electron';
+const app = (electron as any)?.app || (electron as any)?.default?.app;
 import https from 'https';
 import dns from 'dns';
 import { runPowerShell } from './psHelper';
@@ -977,9 +982,73 @@ export function setupNetworkIPC(win: BrowserWindow) {
       };
     }
   });
-  // ── QoS par application (New-NetQosPolicy, Windows 10+) ───────────────────
-  // Toutes les politiques portent le préfixe "Vanguard-" pour être identifiées
-  // et supprimées sans toucher aux politiques d'entreprise existantes.
+  // ── QoS par application avec registre de possession et protection anti-collision ──
+  // RÈGLE FORMELLE : Vanguard ne supprime et ne modifie QUE les politiques qu'il a lui-même créées.
+  // Toute politique préexistante (créée avant Vanguard, par Windows ou GPO) est sanctuarisée.
+  const ownedQosPolicies = new Set<string>();
+  const preExistingQosPolicies = new Set<string>();
+  let qosOwnershipInitialized = false;
+
+  function getQosRegistryPath(): string {
+    try {
+      const userData = app?.getPath ? app.getPath('userData') : os.tmpdir();
+      return path.join(userData, 'vanguard_qos_registry.json');
+    } catch {
+      return path.join(os.tmpdir(), 'vanguard_qos_registry.json');
+    }
+  }
+
+  function loadQosRegistry(): void {
+    try {
+      const p = getQosRegistryPath();
+      if (fs.existsSync(p)) {
+        const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+        if (Array.isArray(data)) {
+          for (const name of data) {
+            if (typeof name === 'string' && name.trim()) ownedQosPolicies.add(name.trim());
+          }
+        }
+      }
+    } catch (e: any) {
+      logger.warn('[QoS] Erreur lecture registre QoS :', e.message);
+    }
+  }
+
+  function saveQosRegistry(): void {
+    try {
+      const p = getQosRegistryPath();
+      fs.writeFileSync(p, JSON.stringify(Array.from(ownedQosPolicies), null, 2), 'utf8');
+    } catch (e: any) {
+      logger.warn('[QoS] Erreur écriture registre QoS :', e.message);
+    }
+  }
+
+  async function ensureQosOwnershipInitialized(): Promise<void> {
+    if (qosOwnershipInitialized) return;
+    qosOwnershipInitialized = true;
+    loadQosRegistry();
+
+    // Snapshot des politiques système actuelles : celles absentes de notre registre sont préexistantes
+    try {
+      const script = `
+        try {
+          (Get-NetQosPolicy -ErrorAction Stop | Select-Object -ExpandProperty Name) -join ','
+        } catch { '' }
+      `;
+      const res = await runPowerShell<string>(script, { timeout: 4000 });
+      if (res?.data && typeof res.data === 'string') {
+        const names = res.data.split(',').map(s => s.trim()).filter(Boolean);
+        for (const n of names) {
+          if (!ownedQosPolicies.has(n)) {
+            preExistingQosPolicies.add(n);
+          }
+        }
+        logger.info(`[QoS] Initialisation possession : ${ownedQosPolicies.size} politique(s) Vanguard, ${preExistingQosPolicies.size} politique(s) préexistante(s) sanctuarisée(s).`);
+      }
+    } catch (err: any) {
+      logger.warn('[QoS] Impossible de capturer le snapshot des politiques préexistantes :', err.message);
+    }
+  }
 
   ipcMain.handle('network:set-qos', async (_, opts: { name: string; appPath: string; throttleKbps: number }) => {
     try {
@@ -987,44 +1056,65 @@ export function setupNetworkIPC(win: BrowserWindow) {
       if (!name || !appPath || throttleKbps < 0) {
         return { success: false, error: 'Paramètres invalides (nom, chemin ou débit manquant).' };
       }
+
+      await ensureQosOwnershipInitialized();
+
       // Vérifier la disponibilité de Get-NetQosPolicy (Windows 10+)
       const checkScript = `
         try { Get-Command Get-NetQosPolicy -ErrorAction Stop | Out-Null; Write-Output 'ok' }
         catch { Write-Output 'unsupported' }
       `;
-      const checkRes = await runPowerShell<string>(checkScript);
+      const checkRes = await runPowerShell<string>(checkScript, { timeout: 3000 });
       if (!checkRes?.data?.includes('ok')) {
         return { success: false, error: 'Get-NetQosPolicy non disponible sur ce système (Windows 10+ requis).', unsupported: true };
       }
 
       const policyName = `Vanguard-${name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64)}`;
+
+      // Détection de collision : refus formel d'écraser une politique préexistante
+      if (preExistingQosPolicies.has(policyName)) {
+        logger.warn(`[QoS] Collision détectée : ${policyName} préexiste hors Vanguard. Création refusée.`);
+        return {
+          success: false,
+          error: `Une politique réseau préexistante porte déjà le nom "${policyName}". Modification refusée pour éviter un conflit système.`
+        };
+      }
+
       const bitsPerSec = throttleKbps * 1000;
       const script = `
         $policyName = '${policyName}'
         $appPath = '${appPath.replace(/'/g, "''")}'
         $bps = ${bitsPerSec}
-        # Supprimer la politique existante si présente
         $existing = Get-NetQosPolicy -Name $policyName -ErrorAction SilentlyContinue
         if ($existing) { Remove-NetQosPolicy -Name $policyName -Confirm:$false -ErrorAction SilentlyContinue }
-        # Créer la nouvelle politique
         New-NetQosPolicy -Name $policyName -AppPathNameMatchCondition $appPath -ThrottleRateActionBitsPerSecond $bps -ErrorAction Stop | Out-Null
         [PSCustomObject]@{ ok=$true; policy=$policyName } | ConvertTo-Json -Compress
       `;
       const res = await runPowerShell<any>(script, { asJson: true, timeout: 10000 });
       if (res?.data?.ok) {
-        logger.info(`[QoS] Politique créée : ${policyName} — ${throttleKbps} Kbps`);
+        ownedQosPolicies.add(policyName);
+        saveQosRegistry();
+        logger.info(`[QoS] Politique créée et enregistrée sous possession Vanguard : ${policyName} — ${throttleKbps} Kbps`);
         return { success: true, policyName };
       }
-      return { success: false, error: 'Échec création de la politique QoS.' };
+      return { success: false, error: 'Échec création de la politique QoS (droits administrateur requis).' };
     } catch (err: any) {
-      logger.warn('[QoS] Erreur set-qos:', err.message);
+      logger.warn('[QoS] Erreur set-qos :', err.message);
       return { success: false, error: err.message };
     }
   });
 
   ipcMain.handle('network:remove-qos', async (_, name: string) => {
     try {
+      await ensureQosOwnershipInitialized();
       const policyName = `Vanguard-${name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64)}`;
+
+      // Refus de supprimer une politique non possédée
+      if (preExistingQosPolicies.has(policyName)) {
+        logger.warn(`[QoS] Tentative de suppression d'une politique préexistante non possédée : ${policyName}`);
+        return { success: false, error: 'Suppression refusée : cette politique n\'appartient pas à Vanguard.' };
+      }
+
       const script = `
         $policyName = '${policyName}'
         $existing = Get-NetQosPolicy -Name $policyName -ErrorAction SilentlyContinue
@@ -1036,16 +1126,19 @@ export function setupNetworkIPC(win: BrowserWindow) {
         }
       `;
       const res = await runPowerShell<any>(script, { asJson: true, timeout: 8000 });
-      logger.info(`[QoS] Politique supprimée : ${policyName}`);
+      ownedQosPolicies.delete(policyName);
+      saveQosRegistry();
+      logger.info(`[QoS] Politique possédée supprimée : ${policyName}`);
       return { success: true, removed: res?.data?.removed ?? null };
     } catch (err: any) {
-      logger.warn('[QoS] Erreur remove-qos:', err.message);
+      logger.warn('[QoS] Erreur remove-qos :', err.message);
       return { success: false, error: err.message };
     }
   });
 
   ipcMain.handle('network:get-qos-status', async () => {
     try {
+      await ensureQosOwnershipInitialized();
       const script = `
         try {
           $policies = Get-NetQosPolicy -ErrorAction Stop | Where-Object { $_.Name -like 'Vanguard-*' } |
@@ -1055,34 +1148,49 @@ export function setupNetworkIPC(win: BrowserWindow) {
       `;
       const res = await runPowerShell<any>(script, { asJson: true, timeout: 8000 });
       const policies = Array.isArray(res?.data) ? res.data : (res?.data ? [res.data] : []);
+      // Retourner uniquement les politiques possédées par Vanguard
       return {
         success: true,
         supported: true,
-        policies: policies.map((p: any) => ({
-          name: String(p.Name || ''),
-          appPath: String(p.AppPathNameMatchCondition || ''),
-          throttleKbps: Math.round((Number(p.ThrottleRateActionBitsPerSecond) || 0) / 1000),
-        })),
+        policies: policies
+          .filter((p: any) => ownedQosPolicies.has(String(p.Name || '')) && !preExistingQosPolicies.has(String(p.Name || '')))
+          .map((p: any) => ({
+            name: String(p.Name || ''),
+            appPath: String(p.AppPathNameMatchCondition || ''),
+            throttleKbps: Math.round((Number(p.ThrottleRateActionBitsPerSecond) || 0) / 1000),
+            isOwned: true,
+          })),
       };
     } catch (err: any) {
-      // Si Get-NetQosPolicy n'est pas disponible
       return { success: true, supported: false, policies: [] };
     }
   });
 
   ipcMain.handle('network:remove-all-vanguard-qos', async () => {
     try {
+      await ensureQosOwnershipInitialized();
+      if (ownedQosPolicies.size === 0) {
+        return { success: true, removed: 0, message: 'Aucune politique QoS possédée par Vanguard à supprimer.' };
+      }
+      const targets = Array.from(ownedQosPolicies);
+      const namesList = targets.map(t => `'${t}'`).join(',');
       const script = `
+        $targets = @(${namesList})
         $removed = @()
-        Get-NetQosPolicy -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'Vanguard-*' } | ForEach-Object {
-          $removed += $_.Name
-          Remove-NetQosPolicy -Name $_.Name -Confirm:$false -ErrorAction SilentlyContinue
+        foreach ($t in $targets) {
+          $existing = Get-NetQosPolicy -Name $t -ErrorAction SilentlyContinue
+          if ($existing) {
+            Remove-NetQosPolicy -Name $t -Confirm:$false -ErrorAction SilentlyContinue
+            $removed += $t
+          }
         }
         [PSCustomObject]@{ ok=$true; count=$removed.Count; names=$removed } | ConvertTo-Json -Compress
       `;
       const res = await runPowerShell<any>(script, { asJson: true, timeout: 10000 });
       const count = res?.data?.count ?? 0;
-      logger.info(`[QoS] ${count} politique(s) Vanguard supprimée(s)`);
+      ownedQosPolicies.clear();
+      saveQosRegistry();
+      logger.info(`[QoS] ${count} politique(s) possédée(s) par Vanguard supprimée(s). Politiques préexistantes sanctuarisées.`);
       return { success: true, removed: count };
     } catch (err: any) {
       return { success: false, error: err.message };

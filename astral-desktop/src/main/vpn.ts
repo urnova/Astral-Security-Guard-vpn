@@ -524,4 +524,64 @@ export function setupVpnIPC(
     }
     return await openVpnInstaller.executeInstaller(controlledPath);
   });
+
+  // ── Connexion via profil importé (VPNBook / OVPN utilisateur) ─────────────
+  // Parcours : l'utilisateur fournit un fichier .ovpn et ses credentials.
+  // Les credentials ne sont jamais persistés sur disque — utilisés uniquement
+  // comme payload temporaire en mémoire pour la durée de la session.
+  ipcMain.handle('vpn:connect-imported-profile', async (
+    _,
+    opts: { ovpnContent: string; username: string; password: string; label?: string }
+  ) => {
+    const { StrictOvpnParser } = await import('./ovpnParser');
+    if (!opts || !opts.ovpnContent) {
+      return { success: false, message: 'Contenu du profil OVPN manquant.' };
+    }
+    if (!opts.username || !opts.password) {
+      return { success: false, message: 'Identifiants requis pour ce profil.' };
+    }
+    // Validation stricte du profil via le même parseur que VPN Gate
+    const parsed = StrictOvpnParser.parse(opts.ovpnContent);
+    if (!parsed.valid || !parsed.sanitizedConfig) {
+      return {
+        success: false,
+        message: `Profil rejeté par le validateur de sécurité : ${parsed.error || parsed.rejectionReason}`,
+      };
+    }
+    // Construire un CommunityServer synthétique pour réutiliser le moteur existant
+    const label = opts.label?.trim() || parsed.remoteHost || 'Profil importé';
+    const syntheticServer: CommunityServer = {
+      id: `imported_${Date.now()}`,
+      hostname: parsed.remoteHost || label,
+      ip: parsed.remoteHost || '',
+      country: label,
+      countryCode: 'XX',
+      pingMs: 0,
+      speedMbps: 0,
+      sessions: 0,
+      uptimeHours: 0,
+      qualityScore: 0,
+      badges: ['import'],
+      configBase64: Buffer.from(parsed.sanitizedConfig).toString('base64'),
+      disclaimer: 'Profil importé manuellement. Vanguard Core ne garantit pas les caractéristiques de ce relais.',
+      lastTested: Date.now(),
+    };
+    // Injecter le serveur synthétique et les credentials en mémoire session
+    communityVpnEngine.injectImportedServer(syntheticServer, opts.username, opts.password);
+    logger.info(`[VPN Import] Profil importé validé : ${label} (${parsed.remoteHost}:${parsed.remotePort})`);
+    return {
+      success: true,
+      serverId: syntheticServer.id,
+      label,
+      remoteHost: parsed.remoteHost,
+      remotePort: parsed.remotePort,
+      protocol: parsed.protocol,
+      message: `Profil validé. Connexion à ${label} disponible.`,
+    };
+  });
+
+  ipcMain.handle('vpn:clear-imported-profile', async () => {
+    communityVpnEngine.clearImportedServer();
+    return { success: true };
+  });
 }

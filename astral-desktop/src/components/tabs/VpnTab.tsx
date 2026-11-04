@@ -206,6 +206,17 @@ export default function VpnTab() {
   const [installerInfo, setInstallerInfo]         = useState<any>(null);
   const [showInstallerModal, setShowInstallerModal] = useState(false);
 
+  // Parcours connexion via profil importé (VPNBook / OVPN utilisateur)
+  const [importedOvpn, setImportedOvpn]           = useState('');
+  const [importedUsername, setImportedUsername]   = useState('');
+  const [importedPassword, setImportedPassword]   = useState('');
+  const [importedLabel, setImportedLabel]         = useState('');
+  const [importedServerId, setImportedServerId]   = useState<string | null>(null);
+  const [importLoading, setImportLoading]         = useState(false);
+  const [importError, setImportError]             = useState<string | null>(null);
+  const [importSuccess, setImportSuccess]         = useState<string | null>(null);
+  const [showImportSection, setShowImportSection] = useState(false);
+
   // Charger le catalogue officiel VPN Gate
   const fetchCatalog = async (forceRefresh = false) => {
     if (!api?.vpnFetchServers) return;
@@ -1363,6 +1374,200 @@ export default function VpnTab() {
               )}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* ── Connexion via profil importé (VPNBook / OVPN utilisateur) ─────── */}
+      <div style={{ padding: '0 16px 16px' }}>
+        <div style={{
+          border: '1px solid var(--border)',
+          borderRadius: 8,
+          overflow: 'hidden',
+        }}>
+          <button
+            onClick={() => setShowImportSection(p => !p)}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 14px',
+              background: 'var(--surface-2)',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: 13,
+              fontWeight: 600,
+              color: 'var(--text)',
+              textAlign: 'left',
+            }}
+          >
+            <span>Connexion via profil OpenVPN importé</span>
+            <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>
+              {showImportSection ? '▲ Masquer' : '▼ Afficher'}
+            </span>
+          </button>
+
+          {showImportSection && (
+            <div style={{ padding: 14, background: 'var(--surface)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0, lineHeight: 1.5 }}>
+                Importez un fichier <code>.ovpn</code> officiel (ex. VPNBook) et saisissez vos identifiants.
+                Les identifiants ne sont jamais enregistrés sur disque.{' '}
+                <a href="https://www.vpnbook.com/" target="_blank" rel="noopener noreferrer"
+                   style={{ color: 'var(--accent)', textDecoration: 'none' }}>
+                  vpnbook.com
+                </a>{' '}→ onglet "Free OpenVPN Account" pour les credentials du jour.
+              </p>
+
+              {/* Coller le contenu OVPN */}
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                  Contenu du fichier .ovpn
+                </label>
+                <textarea
+                  rows={5}
+                  placeholder="Coller le contenu du fichier .ovpn ici…"
+                  value={importedOvpn}
+                  onChange={e => setImportedOvpn(e.target.value)}
+                  style={{
+                    width: '100%', fontSize: 11, fontFamily: 'monospace',
+                    padding: 8, borderRadius: 4, border: '1px solid var(--border)',
+                    background: 'var(--surface-2)', color: 'var(--text)',
+                    resize: 'vertical', boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              {/* Label optionnel */}
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                  Nom du relais (optionnel)
+                </label>
+                <input
+                  type="text"
+                  placeholder="ex. VPNBook US1"
+                  value={importedLabel}
+                  onChange={e => setImportedLabel(e.target.value)}
+                  style={{
+                    width: '100%', fontSize: 12, padding: '6px 8px',
+                    borderRadius: 4, border: '1px solid var(--border)',
+                    background: 'var(--surface-2)', color: 'var(--text)', boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              {/* Credentials */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                    Identifiant
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Identifiant VPN"
+                    value={importedUsername}
+                    onChange={e => setImportedUsername(e.target.value)}
+                    autoComplete="off"
+                    style={{
+                      width: '100%', fontSize: 12, padding: '6px 8px',
+                      borderRadius: 4, border: '1px solid var(--border)',
+                      background: 'var(--surface-2)', color: 'var(--text)', boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                    Mot de passe
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Mot de passe VPN"
+                    value={importedPassword}
+                    onChange={e => setImportedPassword(e.target.value)}
+                    autoComplete="off"
+                    style={{
+                      width: '100%', fontSize: 12, padding: '6px 8px',
+                      borderRadius: 4, border: '1px solid var(--border)',
+                      background: 'var(--surface-2)', color: 'var(--text)', boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Erreur / succès */}
+              {importError && (
+                <div style={{ fontSize: 12, color: 'var(--error, #e55)', padding: '6px 8px',
+                  background: 'rgba(220,50,50,0.08)', borderRadius: 4, border: '1px solid rgba(220,50,50,0.2)' }}>
+                  {importError}
+                </div>
+              )}
+              {importSuccess && (
+                <div style={{ fontSize: 12, color: 'var(--success, #4c4)', padding: '6px 8px',
+                  background: 'rgba(50,180,50,0.08)', borderRadius: 4, border: '1px solid rgba(50,180,50,0.2)' }}>
+                  {importSuccess}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  className="btn btn-primary btn-sm"
+                  disabled={importLoading || !importedOvpn.trim() || !importedUsername.trim() || !importedPassword.trim()}
+                  onClick={async () => {
+                    setImportLoading(true);
+                    setImportError(null);
+                    setImportSuccess(null);
+                    try {
+                      const res = await api?.vpnConnectImportedProfile?.({
+                        ovpnContent: importedOvpn.trim(),
+                        username: importedUsername.trim(),
+                        password: importedPassword,
+                        label: importedLabel.trim() || undefined,
+                      });
+                      if (res?.success) {
+                        setImportedServerId(res.serverId);
+                        setImportSuccess(`Profil validé : ${res.label} (${res.remoteHost}:${res.remotePort}). Sélectionnez-le dans le catalogue pour vous connecter.`);
+                        // Recharger le catalogue pour faire apparaître le serveur injecté
+                        fetchCatalog(false);
+                      } else {
+                        setImportError(res?.message || 'Validation du profil échouée.');
+                      }
+                    } catch (e: any) {
+                      setImportError(e.message || 'Erreur inattendue.');
+                    } finally {
+                      setImportLoading(false);
+                    }
+                  }}
+                >
+                  {importLoading ? 'Validation…' : 'Valider et préparer'}
+                </button>
+
+                {importedServerId && (
+                  <button
+                    className="btn btn-sm"
+                    onClick={async () => {
+                      await api?.vpnClearImportedProfile?.();
+                      setImportedServerId(null);
+                      setImportSuccess(null);
+                      setImportedOvpn('');
+                      setImportedUsername('');
+                      setImportedPassword('');
+                      setImportedLabel('');
+                      setImportError(null);
+                    }}
+                    style={{ color: 'var(--muted)' }}
+                  >
+                    Effacer le profil
+                  </button>
+                )}
+              </div>
+
+              <p style={{ fontSize: 11, color: 'var(--muted)', margin: 0, lineHeight: 1.5 }}>
+                Le profil est validé par le même vérificateur de sécurité que VPN Gate.
+                Les scripts, plugins et directives d'exécution sont rejetés.
+                Aucun identifiant n'est conservé après fermeture de l'application.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

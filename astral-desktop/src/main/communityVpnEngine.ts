@@ -195,6 +195,38 @@ class CommunityVpnEngine {
     this.lastCacheTime = Date.now();
   }
 
+  // Profil importé manuellement (VPNBook / OVPN utilisateur)
+  // Les credentials ne sont jamais écrits sur disque.
+  private importedServer: CommunityServer | null = null;
+  private importedUsername: string | null = null;
+  private importedPassword: string | null = null;
+
+  /**
+   * Injecte un serveur synthétique issu d'un profil OVPN importé manuellement.
+   * Les credentials sont conservés en mémoire seulement, pour la durée de la session.
+   */
+  public injectImportedServer(server: CommunityServer, username: string, password: string): void {
+    this.importedServer = server;
+    this.importedUsername = username;
+    this.importedPassword = password;
+    // Ajouter en tête de liste pour que connectTo() le trouve par son id
+    this.cachedServers = [server, ...this.cachedServers.filter(s => s.id !== server.id)];
+    logger.info(`[VPN Import] Serveur synthétique injecté : ${server.id}`);
+  }
+
+  /**
+   * Efface le profil importé et les credentials en mémoire.
+   */
+  public clearImportedServer(): void {
+    if (this.importedServer) {
+      this.cachedServers = this.cachedServers.filter(s => s.id !== this.importedServer!.id);
+    }
+    this.importedServer = null;
+    this.importedUsername = null;
+    this.importedPassword = null;
+    logger.info('[VPN Import] Profil importé effacé de la mémoire.');
+  }
+
   /**
    * Localise le binaire OpenVPN officiel sur le système
    */
@@ -771,6 +803,14 @@ class CommunityVpnEngine {
     const tempDir = os.tmpdir();
     this.activeTempConfigPath = path.join(tempDir, `vanguard_vpn_${attemptId}_${Date.now()}.ovpn`);
     fs.writeFileSync(this.activeTempConfigPath, parsed.sanitizedConfig, 'utf8');
+
+    // Si ce serveur est un profil importé, injecter les credentials comme stdinPayload
+    // (jamais écrits sur disque — passés uniquement en mémoire via le payload stdin)
+    const isImported = this.importedServer && server.id === this.importedServer.id;
+    if (isImported && this.importedUsername && this.importedPassword) {
+      mgmtPrep.stdinPayload = `${this.importedUsername}\n${this.importedPassword}\n`;
+      logger.info('[VPN Import] Credentials injectés en mémoire pour le profil importé.');
+    }
 
     return new Promise(async (resolve) => {
       let resolved = false;

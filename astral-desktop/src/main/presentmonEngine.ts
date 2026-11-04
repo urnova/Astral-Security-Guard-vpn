@@ -156,9 +156,8 @@ export class PresentMonEngine {
     const bin = this.findPresentMonBinary();
     if (!bin) {
       this.currentStatus = 'Indisponible';
-      this.statusMessage = 'FPS indisponibles — PresentMon v2.0.0 (Intel) non trouvé. ' +
-        'Pour activer la capture FPS : placer PresentMon-x64.exe dans le dossier bin/ de l\'application. ' +
-        'Téléchargement : github.com/GameTechDev/PresentMon/releases/tag/v2.0.0';
+      this.statusMessage = 'FPS indisponibles — PresentMon introuvable dans les chemins attendus. ' +
+        'Vérifiez que l\'installation n\'est pas corrompue (bin/PresentMon-x64.exe).';
       logger.info(`[PresentMon] ${this.statusMessage}`);
       if (onMetricsUpdate) onMetricsUpdate(this.getCurrentMetrics());
       return false;

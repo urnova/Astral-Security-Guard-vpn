@@ -456,15 +456,28 @@ export default function GamingTab({
         // Appliquer aussi le QoS si un débit est défini et qu'un chemin de jeu est disponible
         const targetGame = games.find(g => g.name === gameName);
         const throttle = editingProfile.throttleKbps ?? 0;
+        let qosWarning: string | null = null;
         if (throttle > 0 && targetGame?.path) {
-          api?.setQos?.({ name: gameName, appPath: targetGame.path, throttleKbps: throttle })
-            .catch(() => {}); // Non bloquant : QoS peut nécessiter élévation
+          try {
+            const qosRes = await api?.setQos?.({ name: gameName, appPath: targetGame.path, throttleKbps: throttle });
+            if (qosRes && !qosRes.success) {
+              qosWarning = qosRes.error || 'droits administrateur requis pour la règle QoS';
+            }
+          } catch (qe: any) {
+            qosWarning = qe.message || 'échec application QoS';
+          }
         } else if (throttle === 0) {
           api?.removeQos?.(gameName).catch(() => {});
         }
         setGameProfilesMap(prev => ({ ...prev, [gameName]: { ...editingProfile } }));
         setOpenProfileFor(null);
-        flash(`Profil de "${gameName}" enregistré.`, 'success');
+        if (qosWarning) {
+          flash(`Profil enregistré, mais limitation QoS non appliquée : ${qosWarning}`, 'error');
+        } else if (res?.notApplied && res.notApplied.length > 0) {
+          flash(`Profil enregistré (en attente : ${res.notApplied.join(', ')})`, 'info');
+        } else {
+          flash(`Profil de "${gameName}" enregistré avec succès.`, 'success');
+        }
       } else {
         flash(res?.error || 'Erreur lors de l\'enregistrement du profil.', 'error');
       }
