@@ -1,6 +1,6 @@
 {
   "name": "vanguard-core",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Vanguard Core - Outil de Sauvetage, Nettoyage & Optimisation PC par Astral Security",
   "author": "Astral Security",
   "private": true,
@@ -22,7 +22,7 @@
     "win": {
       "target": "nsis",
       "icon": "public/icon.ico",
-      "requestedExecutionLevel": "requireAdministrator"
+      "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
       "oneClick": false,
@@ -58,6 +58,7 @@
     "@fontsource/jetbrains-mono": "^5.3.0",
     "@fontsource/space-grotesk": "^5.3.0",
     "electron-updater": "^6.1.7",
+    "libsodium-wrappers-sumo": "0.8.4",
     "motion": "^14.0.0",
     "node-fetch": "^2.7.0"
   },
@@ -93,6 +94,8 @@
     "@replit/vite-plugin-cartographer": "*",
     "@replit/vite-plugin-runtime-error-modal": "*",
     "@tailwindcss/vite": "*",
+    "@types/libsodium-wrappers": "^0.7.14",
+    "@types/libsodium-wrappers-sumo": "^0.7.8",
     "@types/node": "*",
     "@types/react": "*",
     "@types/react-dom": "*",

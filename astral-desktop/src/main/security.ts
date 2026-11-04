@@ -22,6 +22,8 @@ import { clamAvEngine, ClamAvStatus, ClamAvScanResult } from './clamavEngine';
 import { localSecurityDiagnostics, SecurityDiagnosis } from './aiDiagnostics';
 import { multiEngineReportAggregator, MultiEngineScanReport } from './multiEngineReport';
 import { getTopProcesses } from './telemetry';
+import { dailyBriefEngine } from './dailyBriefEngine';
+import { userProfileManager } from './profile';
 
 export interface ThreatInfo {
   ThreatID?: number | string;
@@ -410,109 +412,54 @@ export function setupSecurityIPC(win: BrowserWindow, notifyFn?: (title: string, 
   });
 
   // ── 5bis. Brief Quotidien IA Local (Déterministe & Télémétrie Réelle) ────────
-  ipcMain.handle('security:get-daily-brief', async () => {
+  ipcMain.handle('security:get-daily-brief', async (_evt, forceRefresh?: boolean) => {
     try {
-      const [defenderStatus, activeThreats] = await Promise.all([
-        defenderOrchestrator.getStatus().catch(() => null),
-        defenderOrchestrator.getDetectionHistory(10).catch(() => []),
-      ]);
-
-      const defThreats: DefenderThreat[] = activeThreats || [];
-      const isDefenderActive = defenderStatus ? defenderStatus.antivirusEnabled : true;
-      const isRealTimeActive = defenderStatus ? defenderStatus.realTimeProtectionEnabled : true;
-      const sigVer = defenderStatus?.signatureVersion || '1.419.120.0';
-      const threatsCount = defThreats.length;
-
-      // Real OS metrics
-      const upHours = Math.floor(os.uptime() / 3600);
-      const upMins = Math.floor((os.uptime() % 3600) / 60);
-      const totalMem = os.totalmem();
-      const freeMem = os.freemem();
-      const usedMemGB = ((totalMem - freeMem) / (1024 ** 3)).toFixed(1);
-      const totalMemGB = (totalMem / (1024 ** 3)).toFixed(1);
-      const memRatio = (totalMem - freeMem) / totalMem;
-
-      // Authentic, deterministic Security Score calculation (0 mock data)
-      let score = 100;
-      if (threatsCount > 0) score -= Math.min(60, threatsCount * 25);
-      if (!isDefenderActive) score -= 25;
-      if (!isRealTimeActive) score -= 15;
-      if (memRatio > 0.92) score -= 5;
-      score = Math.max(15, Math.min(100, score));
-
-      const actionReasons: string[] = [];
-      if (!isDefenderActive) actionReasons.push('Service antivirus Microsoft Defender arrêté');
-      if (!isRealTimeActive) actionReasons.push('Protection résidente en temps réel désactivée');
-      if (threatsCount > 0) actionReasons.push(`${threatsCount} élément(s) suspect(s) identifié(s) nécessitant une remédiation`);
-
-      const bullets: string[] = [];
-      if (isDefenderActive && isRealTimeActive) {
-        bullets.push(`Protection Microsoft Defender active — Signatures v${sigVer} à jour.`);
-      } else {
-        bullets.push('Attention : La protection en temps réel nécessite d\'être réactivée.');
-      }
-
-      if (threatsCount === 0) {
-        bullets.push('Zéro menace ou charge virale active détectée sur votre système.');
-      } else {
-        bullets.push(`${threatsCount} élément(s) suspect(s) identifié(s) nécessitant une remédiation.`);
-      }
-
-      bullets.push(`Système en cours d'exécution depuis ${upHours}h ${upMins}m · Mémoire vive : ${usedMemGB} Go / ${totalMemGB} Go.`);
-      bullets.push('Disques de stockage vérifiés avec volumes NTFS intègres.');
-      bullets.push('Contrôle d\'intégrité des processus et passerelle de sécurité opérationnels.');
-
-      const headline = threatsCount === 0
-        ? (score >= 90 ? 'Votre système est parfaitement opérationnel et sécurisé' : 'Système sous surveillance active')
-        : 'Menaces détectées nécessitant une action';
-
-      const conversationalNowBrief = threatsCount === 0
-        ? `Bonjour ! Tout fonctionne de manière optimale aujourd'hui. Vos modules de protection Microsoft Defender et Sentinelle Heuristique sont actifs. La mémoire vive est stable avec ${usedMemGB} Go utilisés sur ${totalMemGB} Go, vos volumes de stockage sont intègres, et votre carte graphique est prête pour vos sessions de jeu.`
-        : `Attention : ${threatsCount} élément(s) suspect(s) ont été identifiés par le moteur de sécurité. Une analyse et une remédiation sont recommandées pour rétablir une sécurité maximale.`;
-
-      const summary = threatsCount === 0
-        ? `Protection globale opérationnelle à ${score}% sans anomalie détectée sur le poste.`
-        : `${threatsCount} menace(s) active(s) isolée(s) par le moteur multi-niveaux.`;
-
-      return {
-        success: true,
-        brief: {
-          score,
-          riskLevel: threatsCount === 0 && actionReasons.length === 0 ? 'Sain' : 'Attention requise',
-          summary,
-          headline,
-          conversationalNowBrief,
-          actionRequiredReasons: actionReasons,
-          bulletPoints: bullets,
-          recommendations: threatsCount === 0 && actionReasons.length === 0
-            ? ['Maintenir la protection résidente active', 'Effectuer une analyse hebdomadaire']
-            : ['Activer la protection en temps réel', 'Lancer la remédiation sécurisée'],
-          threatsCount,
-          lastCheck: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-        },
-      };
+      const brief = await dailyBriefEngine.getDailyBrief(Boolean(forceRefresh));
+      return { success: true, brief };
     } catch (err: any) {
-      const upHours = Math.floor(os.uptime() / 3600);
-      const upMins = Math.floor((os.uptime() % 3600) / 60);
-      return {
-        success: true,
-        brief: {
-          score: 95,
-          riskLevel: 'Sain',
-          summary: 'Système sain : Télémétrie Windows nominale.',
-          headline: 'Votre système est parfaitement sécurisé',
-          bulletPoints: [
-            'Protection Microsoft Defender opérationnelle.',
-            `Système actif depuis ${upHours}h ${upMins}m sans incident.`,
-            '6 disques physiques sains et vérifiés.',
-          ],
-          recommendations: ['Maintenir Windows Update à jour.'],
-          threatsCount: 0,
-          lastCheck: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-        },
-      };
+      logger.error('[Security] Erreur récupération DailyBrief :', err.message);
+      return { success: false, error: err.message };
     }
   });
+
+  ipcMain.handle('security:get-ai-consent', () => {
+    const profile = userProfileManager.getProfile();
+    return {
+      consent: profile.aiBriefConsent || 'unprompted',
+      provider: 'OVHcloud AI Endpoints',
+      model: 'Mistral-Nemo-Instruct-2407',
+      endpoint: 'https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions',
+      quota: '2 requêtes par minute par IP',
+      minimizedFields: [
+        'Uptime système (heures)',
+        'RAM totale & utilisée (Go, arrondi)',
+        'Espace disque C: total & libre (Go, %)',
+        'Statut antivirus Defender (booléen)',
+        'Protection temps réel (booléen)',
+        'Nombre de menaces actives (entier)',
+        'Latence réseau vers 1.1.1.1 (ms)',
+      ],
+      excludedFields: [
+        "Nom et prénom de l'utilisateur",
+        "Chemins et noms de fichiers",
+        "Adresses IP dans le prompt",
+        "Jetons, mots de passe et clés",
+        "Métadonnées ou données Vault",
+        "Journaux bruts Windows",
+      ],
+    };
+  });
+
+  ipcMain.handle('security:set-ai-consent', (_evt, consent: string) => {
+    if (consent !== 'granted' && consent !== 'declined') {
+      return { success: false, error: 'Consentement invalide' };
+    }
+    userProfileManager.saveProfile({ aiBriefConsent: consent as 'granted' | 'declined' });
+    dailyBriefEngine.clearCache();
+    return { success: true, consent };
+  });
+
+
 
   // ── 6. Moteur YARA-X Local ────────────────────────────────────────────────
   ipcMain.handle('security:scan-yara', async (_, filePath: string): Promise<YaraScanResult> => {

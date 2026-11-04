@@ -3,6 +3,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 // Explicit whitelist of authorized renderer event channels (Phase 1 Security Hardening)
 const ALLOWED_EVENT_CHANNELS = new Set([
   'notification:trigger',
+  'notification:toast',
+  'notifications:updated',
   'security:status-changed',
   'security:scan-event',
   'security:scan-progress',
@@ -26,6 +28,7 @@ const ALLOWED_EVENT_CHANNELS = new Set([
   'perf:trigger-clean-ram',
   'perf:metrics-update',
   'perf:maintenance-progress',
+  'perf:gpu-download-progress',
   'updater:status',
   'updater:state-changed',
   'doctor:ping-update',
@@ -36,6 +39,8 @@ const ALLOWED_EVENT_CHANNELS = new Set([
   'hud:state-changed',
   'profile:updated',
   'theme:changed',
+  'vault:status-changed',
+  'vault:progress',
 ]);
 
 const api = {
@@ -60,6 +65,7 @@ const api = {
   checkUpdate: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),
   installUpdate: () => ipcRenderer.invoke('updater:install'),
+  deferUpdate: () => ipcRenderer.invoke('updater:defer'),
   getUpdaterState: () => ipcRenderer.invoke('updater:get-state'),
   setPreviewChannel: (enabled: boolean) => ipcRenderer.invoke('updater:set-preview-channel', enabled),
   getPreviewChannel: () => ipcRenderer.invoke('updater:get-preview-channel'),
@@ -73,6 +79,7 @@ const api = {
   fullScan: () => ipcRenderer.invoke('security:start-scan', 'full'),
   toggleRealTime: (enabled: boolean) => ipcRenderer.invoke('security:toggle-realtime', enabled),
   getSecurityStatus: () => ipcRenderer.invoke('security:get-status'),
+  getDefenderStatus: () => ipcRenderer.invoke('security:get-status'),
   aiAnalyze: (threats: any[]) => ipcRenderer.invoke('security:ai-analyze', threats),
   addExclusion: (path: string) => ipcRenderer.invoke('security:add-exclusion', path),
   removeExclusion: (path: string) => ipcRenderer.invoke('security:remove-exclusion', path),
@@ -83,7 +90,9 @@ const api = {
   scanYara: (targetPath: string) => ipcRenderer.invoke('security:scan-yara', targetPath),
   getClamAvStatus: () => ipcRenderer.invoke('security:get-clamav-status'),
   scanClamAv: (targetPath: string) => ipcRenderer.invoke('security:scan-clamav', targetPath),
-  getDailyBrief: () => ipcRenderer.invoke('security:get-daily-brief'),
+  getDailyBrief: (forceRefresh?: boolean) => ipcRenderer.invoke('security:get-daily-brief', forceRefresh),
+  getAiConsent: () => ipcRenderer.invoke('security:get-ai-consent'),
+  setAiConsent: (consent: 'granted' | 'declined') => ipcRenderer.invoke('security:set-ai-consent', consent),
   selectScanTarget: (type?: 'folder' | 'file') => ipcRenderer.invoke('security:select-target', type),
   applyRemediation: () => ipcRenderer.invoke('security:apply-remediation'),
   getScheduledScans: () => ipcRenderer.invoke('security:get-scheduled-scans'),
@@ -127,7 +136,10 @@ const api = {
       return res?.items || [];
     } catch { return []; }
   },
-  setStartupApp: (payload: { name: string; enabled: boolean; rawName?: string; location?: string }) => ipcRenderer.invoke('perf:disable-startup', payload),
+  setStartupApp: (payload: { name: string; enabled: boolean; rawName?: string; location?: string; command?: string }) =>
+    ipcRenderer.invoke('perf:set-startup-app', payload),
+  getMaintenanceSchedule: () => ipcRenderer.invoke('perf:get-maintenance-schedule'),
+  saveMaintenanceSchedule: (schedule: any) => ipcRenderer.invoke('perf:save-maintenance-schedule', schedule),
   getCleanupItems: async () => {
     try {
       const res = await ipcRenderer.invoke('perf:analyze-disk-cleanup');
@@ -156,7 +168,9 @@ const api = {
   networkGamingOn: () => ipcRenderer.invoke('network:gaming-mode-on'),
   networkGamingOff: () => ipcRenderer.invoke('network:gaming-mode-off'),
   setDns: (dns: 'cloudflare' | 'google' | 'quad9' | 'opendns' | 'auto' | string) => ipcRenderer.invoke('network:set-dns', dns),
-  restorePreviousDns: () => ipcRenderer.invoke('network:restore-previous-dns'),
+  restorePreviousDns: (opts?: { force?: boolean }) => ipcRenderer.invoke('network:restore-previous-dns', opts),
+  restoreTcpStack: (opts?: { force?: boolean }) => ipcRenderer.invoke('network:restore-tcp-stack', opts),
+  flushDnsCache: () => ipcRenderer.invoke('network:flush-dns-cache'),
   testDnsLatencies: () => ipcRenderer.invoke('network:test-dns-latencies'),
   getNetworkProcesses: () => ipcRenderer.invoke('network:get-processes'),
   wifiInterference: () => ipcRenderer.invoke('network:wifi-interference'),
@@ -178,7 +192,7 @@ const api = {
   getPingWatchdog: () => ipcRenderer.invoke('doctor:get-watchdog'),
 
   // VPN
-  vpnFetchServers: () => ipcRenderer.invoke('vpn:fetch-servers'),
+  vpnFetchServers: (forceRefresh?: boolean) => ipcRenderer.invoke('vpn:fetch-servers', forceRefresh),
   vpnConnect: (serverId: string) => ipcRenderer.invoke('vpn:connect', serverId),
   vpnDisconnect: () => ipcRenderer.invoke('vpn:disconnect'),
   vpnGetKillSwitch: () => ipcRenderer.invoke('vpn:get-killswitch'),
@@ -189,6 +203,13 @@ const api = {
   vpnSetProtocol: (proto: string) => ipcRenderer.invoke('vpn:set-protocol', proto),
   vpnGetProtocol: () => ipcRenderer.invoke('vpn:get-protocol'),
   vpnGetStatus: () => ipcRenderer.invoke('vpn:get-status'),
+  vpnGetEngineStatus: () => ipcRenderer.invoke('vpn:get-engine-status'),
+  vpnGetInstallerInfo: () => ipcRenderer.invoke('vpn:get-installer-info'),
+  vpnVerifyPackage: () => ipcRenderer.invoke('vpn:verify-package'),
+  vpnExecuteMsiInstaller: (payload: { consentGiven: boolean }) =>
+    ipcRenderer.invoke('vpn:execute-msi-installer', payload),
+  vpnGetAutoFailover: () => ipcRenderer.invoke('vpn:get-auto-failover'),
+  vpnSetAutoFailover: (cfg: any) => ipcRenderer.invoke('vpn:set-auto-failover', cfg),
 
 
   // Gaming & Overlay
@@ -215,7 +236,12 @@ const api = {
   setGamingSetting: (payload: { key: string; value: boolean }) => ipcRenderer.invoke('gaming:set-setting', payload),
   applyGameProfile: (payload: { game: string; profile: string }) => ipcRenderer.invoke('gaming:apply-game-profile', payload),
   suspendBrowsers: (suspend: boolean) => ipcRenderer.invoke('gaming:suspend-browsers', suspend),
+  confirmDetection: (payload: { pid: number; name: string; startTime?: string }) => ipcRenderer.invoke('gaming:confirm-detection', payload),
+  rejectDetection: () => ipcRenderer.invoke('gaming:reject-detection'),
   getHardwareInfo: () => ipcRenderer.invoke('gaming:get-hardware-info'),
+  checkGpuDriverUpdate: (gpuInfo: any) => ipcRenderer.invoke('perf:check-gpu-driver-update', gpuInfo),
+  downloadGpuDriver: (opts: { downloadUrl: string; version: string }) => ipcRenderer.invoke('perf:download-gpu-driver', opts),
+  launchGpuDriverInstaller: (opts: { filePath: string }) => ipcRenderer.invoke('perf:launch-gpu-driver-installer', opts),
   launchGame: (game: any) => ipcRenderer.invoke('gaming:launch-game', game),
   uninstallGame: (game: any) => ipcRenderer.invoke('gaming:uninstall-game', game),
   openExternal: (url: string) => ipcRenderer.invoke('app:open-external', url),
@@ -239,6 +265,8 @@ const api = {
   openScannedFolder: (scanId: string) =>
     ipcRenderer.invoke('download-scanner:open-folder', { scanId }),
   getScannerHistory: () => ipcRenderer.invoke('download-scanner:get-history'),
+  getScannerQueueState: () => ipcRenderer.invoke('download-scanner:get-queue-state'),
+  acknowledgeScannerOverflow: () => ipcRenderer.invoke('download-scanner:acknowledge-overflow'),
   createEicarTestFile: () => ipcRenderer.invoke('download-scanner:create-test-file'),
 
   // User Profile
@@ -246,11 +274,44 @@ const api = {
   saveUserProfile: (profile: any) => ipcRenderer.invoke('profile:save', profile),
   savePreferences: (prefs: any) => ipcRenderer.invoke('profile:save', prefs),
 
-  // Notifications
+  // Notifications (Central Dispatcher & History)
+  notifications: {
+    getHistory: () => ipcRenderer.invoke('notifications:get-history'),
+    markRead: (ids?: string[]) => ipcRenderer.invoke('notifications:mark-read', ids),
+    clearHistory: () => ipcRenderer.invoke('notifications:clear-history'),
+    getPrefs: () => ipcRenderer.invoke('notifications:get-prefs'),
+    savePrefs: (prefs: any) => ipcRenderer.invoke('notifications:save-prefs', prefs),
+    emit: (payload: any) => ipcRenderer.invoke('notifications:emit', payload),
+  },
   testNotification: (payload?: any) =>
     ipcRenderer.invoke('notification:test', typeof payload === 'string' ? { title: payload } : payload),
   sendNotification: (options: { title: string; body: string; critical?: boolean; type?: string }) =>
     ipcRenderer.invoke('notification:send', options),
+
+  // Vanguard Vault (Moteur de Coffre Transactionnel Local)
+  vault: {
+    getStatus: () => ipcRenderer.invoke('vault:get-status'),
+    selectFolder: (options?: { title?: string }) => ipcRenderer.invoke('vault:select-folder', options),
+    selectImportFiles: () => ipcRenderer.invoke('vault:select-import-files'),
+    selectExtractDest: (options: { defaultFilename: string }) => ipcRenderer.invoke('vault:select-extract-dest', options),
+    create: (params: { vaultRoot: string; password: string; withRecoveryKey?: boolean }) => ipcRenderer.invoke('vault:create', params),
+    open: (params: { vaultRoot: string; password?: string; recoveryKeyString?: string; forceBreakStaleLock?: boolean }) => ipcRenderer.invoke('vault:open', params),
+    lock: () => ipcRenderer.invoke('vault:lock'),
+    close: () => ipcRenderer.invoke('vault:close'),
+    importFiles: (params: { sourcePaths: string[] }) => ipcRenderer.invoke('vault:import-files', params),
+    extractFile: (params: { virtualPath: string; destDiskPath: string; overwrite?: boolean }) => ipcRenderer.invoke('vault:extract-file', params),
+    deleteFile: (params: { virtualPath: string }) => ipcRenderer.invoke('vault:delete-file', params),
+    cancelOperation: () => ipcRenderer.invoke('vault:cancel-operation'),
+    changePassword: (params: { newPassword: string }) => ipcRenderer.invoke('vault:change-password', params),
+    configureRecovery: (params: { action: 'add' | 'remove' }) => ipcRenderer.invoke('vault:configure-recovery', params),
+    exportRecoveryKit: (params: { vaultId: string; recoveryKeyFormatted: string }) => ipcRenderer.invoke('vault:export-recovery-kit', params),
+    setAutoLockDelay: (params: { minutes: number }) => ipcRenderer.invoke('vault:set-autolock-delay', params),
+    selectExportDest: (options?: { title?: string; defaultPath?: string }) => ipcRenderer.invoke('vault:select-export-dest', options),
+    selectArchiveSavePath: (options?: { defaultFilename?: string }) => ipcRenderer.invoke('vault:select-archive-save-path', options),
+    selectArchiveFile: () => ipcRenderer.invoke('vault:select-archive-file'),
+    importArchive: (params: { archivePath: string; targetVaultDir: string }) => ipcRenderer.invoke('vault:import-archive', params),
+    exportVault: (params: { destPath: string; mode: 'backup_encrypted' | 'extract_all_plaintext' | 'archive_portable_vgv'; overwrite?: boolean }) => ipcRenderer.invoke('vault:export', params),
+  },
 
   // Hardened Event Listeners with Strict Whitelist
   on: (channel: string, fn: (...args: any[]) => void) => {

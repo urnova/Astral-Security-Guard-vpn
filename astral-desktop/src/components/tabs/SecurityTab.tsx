@@ -889,7 +889,7 @@ export default function SecurityTab() {
                     <Shield size={18} style={{ color: 'var(--muted)' }} />
                     <div>
                       <span style={{ fontSize: 12, fontWeight: 600 }}>0 fichier actif en quarantaine</span>
-                      <p style={{ fontSize: 11, color: 'var(--dim)', margin: 0 }}>Les menaces isolées sont neutralisées et ne peuvent pas s'exécuter.</p>
+                      <p style={{ fontSize: 11, color: 'var(--dim)', margin: 0 }}>Les fichiers suspects sont isolés avec une extension inerte (.vanguard_quarantine) pour empêcher leur exécution accidentelle. Restauration possible.</p>
                     </div>
                   </div>
                   <span className="chip idle">Sécurisé</span>

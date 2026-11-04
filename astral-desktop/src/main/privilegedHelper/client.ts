@@ -7,18 +7,18 @@
 
 import cp from 'node:child_process';
 import crypto from 'node:crypto';
-import { logger } from '../logger';
-import { isAdmin } from '../adminHelper';
-import {
+import { logger } from '../logger.ts';
+import { isAdmin } from '../adminHelper.ts';
+import type {
   PrivilegedActionId,
   HelperRequest,
   HelperResponse,
-} from './types';
+} from './types.ts';
 import {
   getHelperExecutablePath,
   verifyHelperBinary,
   generateSecurePipeName,
-} from './pipeSecurity';
+} from './pipeSecurity.ts';
 
 const ALLOWED_ACTIONS: Set<PrivilegedActionId> = new Set([
   'GET_HELPER_STATUS',

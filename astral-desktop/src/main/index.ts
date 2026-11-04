@@ -1,3 +1,4 @@
+import { lifecycleOrchestrator } from './lifecycle';
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut, Notification, session, shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
@@ -5,16 +6,42 @@ import { logger } from './logger';
 import { isAdmin, getWindowsBuildInfo, relaunchElevated, ensurePersistentAdminTask, getAdminPrivilegeRecord } from './adminHelper';
 import { setupAutoUpdater } from './updater';
 import { setupSecurityIPC } from './security';
-import { setupVpnIPC, cleanupAstralFirewallRules, performVpnConnect, performVpnDisconnect, isVpnConnected, getActiveVpnNodeName } from './vpn';
+import { setupVpnIPC, performVpnConnect, performVpnDisconnect, isVpnConnected, getActiveVpnNodeName } from './vpn';
 import { setupPerformanceIPC } from './performance';
 import { setupNetworkIPC } from './network';
 import { setupGamingIPC, startGameDetection } from './gaming';
 import { gamingManager } from './gamingManager';
 import { setupRollbackIPC } from './rollback';
 import { setupDoctorIPC, executeSosPing } from './doctor';
-import { setupDownloadScannerIPC } from './downloadScanner';
+import { setupDownloadScannerIPC, stopDownloadScanner } from './downloadScanner';
+import { communityVpnEngine } from './communityVpnEngine';
 import { setupProfileIPC, loadPreferences, savePreferences } from './profile';
 import { executePrivilegedAction } from './privilegedHelper';
+import { startMaintenanceScheduler, stopMaintenanceScheduler } from './maintenanceScheduler';
+import { VaultManager } from './vault/vaultManager';
+import { registerVaultIpc } from './vault/vaultIpc';
+import { notificationManager, setupNotificationIPC, NotificationCategory, NotificationSeverity } from './notificationManager';
+
+let lastVaultIsOpen = false;
+export const vaultManager = new VaultManager({
+  onStatusChanged: (status) => {
+    if (mainWin && !mainWin.isDestroyed()) {
+      mainWin.webContents.send('vault:status-changed', status);
+    }
+    updateTrayState({ vaultOpen: status.isOpen, vaultConfigured: Boolean(status.vaultRoot) });
+    if (!status.isOpen && lastVaultIsOpen) {
+      notificationManager.emit({
+        category: 'vault',
+        severity: 'info',
+        title: 'Coffre Vanguard verrouillé',
+        message: 'Le coffre local a été verrouillé pour préserver la sécurité de vos données.',
+        dedupKey: 'vault-autolocked',
+        actionTarget: { tab: 'vault' },
+      });
+    }
+    lastVaultIsOpen = status.isOpen;
+  },
+});
 
 // ── Single Instance Lock ───────────────────────────────────────────────────────
 let gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -64,7 +91,7 @@ const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 
 import { showAvastStyleToast } from './notificationWindow';
 
-// ── Avast-Style & Native Windows Notification Dispatcher ─────────────────────
+// ── Avast-Style & Native Windows Notification Dispatcher (Centralized) ────────
 export function notifyUser(
   title: string,
   body: string,
@@ -73,55 +100,44 @@ export function notifyUser(
     type?: 'info' | 'threat' | 'gaming' | 'success' | 'network' | 'ping' | 'stability' | 'vpn' | 'performance' | 'security';
     soundEnabled?: boolean;
     volume?: number;
+    category?: NotificationCategory;
+    actionTarget?: { tab: 'dashboard' | 'security' | 'performance' | 'gaming' | 'network' | 'vpn' | 'vault' | 'settings' };
   } | boolean
 ) {
   let isCritical = false;
   let notifType: 'info' | 'threat' | 'gaming' | 'success' | 'network' | 'ping' | 'stability' | 'vpn' | 'performance' | 'security' = 'info';
+  let category: NotificationCategory = 'system';
+  let actionTarget = undefined;
 
   if (typeof options === 'boolean') {
     isCritical = options;
     notifType = isCritical ? 'threat' : 'info';
+    category = isCritical ? 'security' : 'system';
   } else if (options && typeof options === 'object') {
     isCritical = Boolean(options.isCritical);
     notifType = options.type || (isCritical ? 'threat' : 'info');
+    if (options.category) {
+      category = options.category;
+    } else {
+      if (['threat', 'security'].includes(notifType)) category = 'security';
+      else if (['vpn'].includes(notifType)) category = 'vpn';
+      else if (['network', 'ping', 'stability'].includes(notifType)) category = 'network';
+      else if (['performance'].includes(notifType)) category = 'maintenance';
+      else if (['gaming'].includes(notifType)) category = 'system';
+      else category = 'system';
+    }
+    actionTarget = options.actionTarget;
   }
 
-  const prefs = loadPreferences();
-  if (prefs.notificationsEnabled === false) return;
+  const severity: NotificationSeverity = isCritical ? 'critical' : (['threat'].includes(notifType) ? 'alert' : 'info');
 
-  const soundEnabled = prefs.soundEnabled ?? true;
-  const volume = typeof (prefs as any).soundVolume === 'number' ? (prefs as any).soundVolume / 100 : 0.8;
-
-  let desktopToastShown = false;
-  try {
-    showAvastStyleToast({
-      title,
-      message: body,
-      type: notifType,
-      soundEnabled,
-      volume,
-      onClickFocus: () => {
-        if (mainWin && !mainWin.isDestroyed()) {
-          if (mainWin.isMinimized()) mainWin.restore();
-          mainWin.show();
-          mainWin.focus();
-        }
-      },
-    });
-    desktopToastShown = true;
-  } catch (err: any) {
-    logger.warn('[Notification] Error showing Avast-style popup, falling back:', err.message);
-  }
-
-  if (mainWin && !mainWin.isDestroyed()) {
-    mainWin.webContents.send('notification:trigger', {
-      type: notifType,
-      title,
-      message: body,
-      critical: isCritical,
-      desktopToastShown,
-    });
-  }
+  notificationManager.emit({
+    category,
+    severity,
+    title,
+    message: body,
+    actionTarget,
+  });
 }
 
 // ── Main Window ──────────────────────────────────────────────────────────────
@@ -192,6 +208,7 @@ function createMainWindow() {
   });
 
   // Setup all IPC modules
+  setupNotificationIPC(mainWin);
   setupSecurityIPC(mainWin, notifyUser);
   setupVpnIPC(mainWin, (opts) => updateTrayState(opts), notifyUser);
   setupPerformanceIPC(mainWin, notifyUser);
@@ -201,6 +218,10 @@ function createMainWindow() {
   setupDoctorIPC(mainWin);
   setupDownloadScannerIPC(mainWin);
   setupProfileIPC();
+  registerVaultIpc(vaultManager);
+
+  // M2: Start the automated maintenance scheduler after all IPC handlers are registered
+  startMaintenanceScheduler(mainWin, notifyUser);
 
   if (VITE_DEV_SERVER_URL) {
     mainWin.loadURL(VITE_DEV_SERVER_URL);
@@ -214,10 +235,24 @@ function createMainWindow() {
     windowShown = true;
     logger.info('[App] Revealing main window...');
     mainWin.show();
-    setupAutoUpdater(mainWin, () => {
+    setupAutoUpdater(mainWin, async () => {
       logger.info('[App] Preparing clean shutdown for update installation...');
       isQuitting = true;
       minimizeToTray = false;
+      try {
+        const shutdownRes = await gracefulShutdown({ skipAppQuit: true, forceExitTimeoutMs: 6000 });
+        if (!shutdownRes.success || !shutdownRes.vaultClosed || !shutdownRes.vpnDisconnected) {
+          logger.warn('[App] Shutdown ordonné incomplet pour mise à jour :', shutdownRes);
+          return {
+            success: false,
+            error: 'Opérations sensibles (Vault ou VPN) non confirmées closes.',
+            details: shutdownRes,
+          };
+        }
+      } catch (err: any) {
+        logger.warn('[App] Error during graceful shutdown for updater:', err?.message);
+        return { success: false, error: err?.message };
+      }
       try {
         tray?.destroy();
         tray = null;
@@ -228,9 +263,7 @@ function createMainWindow() {
       } catch (err: any) {
         logger.warn('[App] Error releasing single instance lock:', err?.message);
       }
-      try {
-        cleanupAstralFirewallRules();
-      } catch {}
+      return { success: true };
     });
     startGameDetection(mainWin, () => overlayWin, setOverlayWin);
 
@@ -239,20 +272,12 @@ function createMainWindow() {
     const osInfo = getWindowsBuildInfo();
     logger.info(`[App] Running with admin rights: ${admin}, OS: ${osInfo.edition} (${osInfo.buildNumber})`);
     
-    if (admin) {
-      ensurePersistentAdminTask().catch((err) => {
-        logger.warn('[App] ensurePersistentAdminTask error:', err);
-      });
-    } else {
-      const record = getAdminPrivilegeRecord();
-      if (!record && app.isPackaged) {
-        logger.info('[App] First run without administrator privileges: requesting initial UAC elevation...');
-        relaunchElevated();
-      }
+    if (!admin) {
+      logger.info('[App] Running with standard user privileges. Advanced actions will prompt elevation on demand.');
     }
     mainWin.webContents.send('admin:status', {
       isAdmin: admin,
-      isPersistent: Boolean(admin || getAdminPrivilegeRecord()?.granted),
+      isPersistent: false,
       osInfo,
     });
   };
@@ -271,9 +296,12 @@ function createMainWindow() {
   }, 2000);
 
   mainWin.on('close', (e) => {
-    if (minimizeToTray && !isQuitting) {
+    if (minimizeToTray && !lifecycleOrchestrator.getIsQuitting()) {
       e.preventDefault();
       mainWin?.hide();
+    } else if (!lifecycleOrchestrator.isShutdownCompleted()) {
+      e.preventDefault();
+      gracefulShutdown();
     }
   });
 }
@@ -367,6 +395,8 @@ let trayGamingActive = false;
 let trayRealTimeShield = true;
 let trayVpnConnected = false;
 let trayVpnNodeName = '';
+let trayVaultOpen = false;
+let trayVaultConfigured = false;
 
 function getTrayIconImage(): Electron.NativeImage {
   const possiblePaths = [
@@ -396,11 +426,15 @@ export function updateTrayState(opts: {
   realTimeShield?: boolean;
   vpnConnected?: boolean;
   vpnNodeName?: string;
+  vaultOpen?: boolean;
+  vaultConfigured?: boolean;
 }) {
   if (opts.gamingActive !== undefined) trayGamingActive = opts.gamingActive;
   if (opts.realTimeShield !== undefined) trayRealTimeShield = opts.realTimeShield;
   if (opts.vpnConnected !== undefined) trayVpnConnected = opts.vpnConnected;
   if (opts.vpnNodeName !== undefined) trayVpnNodeName = opts.vpnNodeName;
+  if (opts.vaultOpen !== undefined) trayVaultOpen = opts.vaultOpen;
+  if (opts.vaultConfigured !== undefined) trayVaultConfigured = opts.vaultConfigured;
 
   if (!tray) return;
 
@@ -416,7 +450,7 @@ export function updateTrayState(opts: {
 
   const menu = Menu.buildFromTemplate([
     {
-      label: `⚡ Vanguard Core v${currentAppVersion} (Bêta)`,
+      label: `⚡ Vanguard Core v${currentAppVersion}`,
       enabled: false,
     },
     {
@@ -428,76 +462,69 @@ export function updateTrayState(opts: {
       label: '🛡️ Sécurité & Antivirus',
       submenu: [
         {
-          label: trayRealTimeShield
-            ? '✓ Bouclier Temps Réel : ACTIF (Suspendre)'
-            : '⚠ Bouclier Temps Réel : SUSPENDU (Réactiver)',
-          click: () => {
-            trayRealTimeShield = !trayRealTimeShield;
-            mainWin?.webContents.send('security:status-changed', {
-              realTimeProtection: trayRealTimeShield,
-              antivirusEnabled: trayRealTimeShield,
-            });
-            updateTrayState({ realTimeShield: trayRealTimeShield });
-          },
+          label: `Protection Defender : ${trayRealTimeShield ? 'Active' : 'Attention requise'}`,
+          enabled: false,
         },
         { type: 'separator' },
         {
-          label: '⚡ Lancer une Analyse Rapide',
+          label: '🔍 Lancer une analyse rapide',
           click: () => {
             showAndFocus();
             mainWin?.webContents.send('navigation:go-to', 'security');
-            mainWin?.webContents.send('action:trigger-scan', 'quick');
+            mainWin?.webContents.send('action:trigger-scan');
           },
         },
         {
-          label: '🔍 Lancer une Analyse Approfondie Multi-Disques',
+          label: 'Ouvrir le module Sécurité',
           click: () => {
             showAndFocus();
             mainWin?.webContents.send('navigation:go-to', 'security');
-            mainWin?.webContents.send('action:trigger-scan', 'full');
           },
         },
       ],
     },
     {
-      label: '🌐 VPN & Anonymat',
+      label: '🔒 Vanguard Vault',
       submenu: [
         {
-          label: `Statut : ${trayVpnConnected ? `Connecté (${trayVpnNodeName || 'Tunnel Chiffré'})` : 'Déconnecté'}`,
+          label: `Statut : ${trayVaultOpen ? 'Coffre déverrouillé' : (trayVaultConfigured ? 'Coffre verrouillé' : 'Aucun coffre actif')}`,
           enabled: false,
         },
         { type: 'separator' },
         {
-          label: '⚡ Connexion Rapide (Paris · Core Alpha #1)',
+          label: 'Ouvrir Vanguard Vault',
           click: () => {
-            performVpnConnect('Paris · Core Alpha #1', mainWin ?? undefined);
+            showAndFocus();
+            mainWin?.webContents.send('navigation:go-to', 'vault');
           },
         },
-        {
-          label: '🇩🇪 Francfort · DE-CIX Ultra (15ms)',
-          click: () => {
-            performVpnConnect('Francfort · DE-CIX Ultra', mainWin ?? undefined);
+        ...(trayVaultOpen ? [{
+          label: '🔒 Verrouiller le Coffre',
+          click: async () => {
+            try {
+              await vaultManager.lockVault();
+            } catch (err: any) {
+              logger.warn('[Tray] Erreur lors du verrouillage du coffre :', err?.message);
+            }
           },
-        },
+        }] : []),
+      ],
+    },
+    {
+      label: '🌐 Vanguard VPN',
+      submenu: [
         {
-          label: '🇳🇱 Amsterdam · AMS-IX Gigabit (17ms)',
-          click: () => {
-            performVpnConnect('Amsterdam · AMS-IX Gigabit', mainWin ?? undefined);
-          },
-        },
-        {
-          label: '🇨🇭 Zurich · Bunker Privacy (22ms)',
-          click: () => {
-            performVpnConnect('Zurich · Bunker Privacy', mainWin ?? undefined);
-          },
-        },
-        {
-          label: '🇺🇸 New York · NYIIX Core (86ms)',
-          click: () => {
-            performVpnConnect('New York · NYIIX Core', mainWin ?? undefined);
-          },
+          label: `Statut : ${trayVpnConnected ? `Connecté (${trayVpnNodeName || 'Relais actif'})` : 'Déconnecté'}`,
+          enabled: false,
         },
         { type: 'separator' },
+        {
+          label: 'Ouvrir le module VPN',
+          click: () => {
+            showAndFocus();
+            mainWin?.webContents.send('navigation:go-to', 'vpn');
+          },
+        },
         {
           label: '🔴 Déconnecter le VPN',
           enabled: trayVpnConnected,
@@ -508,27 +535,15 @@ export function updateTrayState(opts: {
       ],
     },
     {
-      label: trayGamingActive ? '🎮 Désactiver le Mode Gaming' : '🎮 Activer le Mode Gaming',
-      click: () => {
-        mainWin?.webContents.send('gaming:toggle-manual');
-      },
-    },
-    {
-      label: '👁️ Afficher / Masquer HUD (Ctrl+Shift+O)',
-      click: () => toggleOverlay(),
-    },
-    {
-      label: '🚀 Lancer la Maintenance & Nettoyage Système',
+      label: '🚀 Centre de Maintenance',
       click: () => {
         showAndFocus();
         mainWin?.webContents.send('navigation:go-to', 'performance');
       },
     },
     {
-      label: '💾 Purger la Mémoire RAM & le Cache',
-      click: () => {
-        mainWin?.webContents.send('perf:trigger-clean-ram');
-      },
+      label: `🎮 Afficher / masquer le HUD : ${hudEnabled ? 'Affiché' : 'Masqué'} (Ctrl+Shift+O)`,
+      click: () => toggleOverlay(),
     },
     { type: 'separator' },
     {
@@ -539,10 +554,9 @@ export function updateTrayState(opts: {
       },
     },
     {
-      label: 'Quitter Définitivement Vanguard Core',
+      label: 'Quitter Vanguard Core',
       click: () => {
-        minimizeToTray = false;
-        app.exit(0);
+        gracefulShutdown();
       },
     },
   ]);
@@ -592,8 +606,7 @@ app.on('second-instance', () => {
 
 // ── Boot Sequence ─────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
-  // Purge any stale firewall rules left by prior sessions or crashes
-  await cleanupAstralFirewallRules();
+  
 
   // Enforce Restrictive Content Security Policy (CSP) & Security Headers (Phase 1)
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
@@ -637,15 +650,26 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('before-quit', () => {
-  isQuitting = true;
-  minimizeToTray = false;
-  try {
-    tray?.destroy();
-    tray = null;
-  } catch {}
-  gamingManager.restorePreviousState();
-  cleanupAstralFirewallRules();
+lifecycleOrchestrator.registerHandlers({
+  stopScheduler: () => stopMaintenanceScheduler(),
+  stopScanner: () => stopDownloadScanner(),
+  disconnectVpn: () => communityVpnEngine.disconnect(),
+  closeVault: () => vaultManager.shutdown(),
+  restoreGaming: () => gamingManager.restorePreviousState(),
+  destroyTray: () => { tray?.destroy(); tray = null; },
+  destroyOverlay: () => destroyOverlay(),
+});
+
+export const gracefulShutdown = (options?: { forceExitTimeoutMs?: number; skipAppQuit?: boolean }) =>
+  lifecycleOrchestrator.gracefulShutdown(options);
+
+app.on('before-quit', (e) => {
+  if (!lifecycleOrchestrator.isShutdownCompleted()) {
+    e.preventDefault();
+    isQuitting = true;
+    minimizeToTray = false;
+    gracefulShutdown();
+  }
 });
 
 app.on('will-quit', () => {
@@ -655,18 +679,13 @@ app.on('will-quit', () => {
     tray = null;
   } catch {}
   gamingManager.restorePreviousState();
-  cleanupAstralFirewallRules();
 });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     // Keep running in system tray on Windows if minimizeToTray is enabled
-    if (!minimizeToTray) {
-      try {
-        tray?.destroy();
-        tray = null;
-      } catch {}
-      app.quit();
+    if (!minimizeToTray && !lifecycleOrchestrator.isShutdownCompleted()) {
+      gracefulShutdown();
     }
   }
 });
@@ -683,10 +702,10 @@ ipcMain.handle('admin:get-status', () => {
   };
 });
 
-ipcMain.handle('admin:relaunch-elevated', () => {
+ipcMain.handle('admin:relaunch-elevated', async () => {
   logger.info('[App] User requested elevated relaunch');
-  relaunchElevated();
-  return { success: true };
+  const result = await relaunchElevated();
+  return result;
 });
 
 // Privileged Helper IPC (Phase 3)
@@ -702,7 +721,9 @@ ipcMain.handle('overlay:status', () => Boolean(overlayWin));
 ipcMain.handle('hud:get-state', () => ({ active: hudEnabled, enabled: hudEnabled }));
 ipcMain.handle('hud:toggle', () => {
   toggleOverlay();
-  return { active: hudEnabled, enabled: hudEnabled };
+  // Return state AFTER the toggle, not the pre-change value
+  const newState = { active: hudEnabled, enabled: hudEnabled };
+  return newState;
 });
 ipcMain.handle('hud:set-state', (_event, enabled: boolean) => {
   if (enabled) createOverlay();
@@ -714,13 +735,9 @@ ipcMain.on('overlay:set-ignore-mouse-events', (_event, ignore: boolean, options?
     overlayWin?.setIgnoreMouseEvents(ignore, options);
   } catch {}
 });
-ipcMain.handle('app:quit', () => {
-  minimizeToTray = false;
-  try {
-    tray?.destroy();
-    tray = null;
-  } catch {}
-  app.exit(0);
+ipcMain.handle('app:quit', async () => {
+  await gracefulShutdown();
+  return { success: true };
 });
 ipcMain.handle('app:minimize', () => mainWin?.minimize());
 ipcMain.handle('app:toggle-maximize', () => {
@@ -733,16 +750,12 @@ ipcMain.handle('app:toggle-maximize', () => {
     return true;
   }
 });
-ipcMain.handle('app:close', () => {
+ipcMain.handle('app:close', async () => {
   if (minimizeToTray) {
     mainWin?.hide();
   } else {
     minimizeToTray = false;
-    try {
-      tray?.destroy();
-      tray = null;
-    } catch {}
-    app.exit(0);
+    await gracefulShutdown();
   }
 });
 ipcMain.handle('app:hide-to-tray', () => mainWin?.hide());

@@ -3,7 +3,7 @@ import {
   User, Palette, Sliders, Shield, Gamepad2,
   Bell, RefreshCw, Cpu, Info, Check, CheckCircle2,
   AlertTriangle, X, Save, ExternalLink, Monitor,
-  Wifi, Download, Activity, Lock, Volume2, Zap, FlaskConical
+  Wifi, Download, Activity, Lock, Volume2, Zap, FlaskConical, Sparkles
 } from 'lucide-react';
 
 const api = (window as any).vanguard;
@@ -27,6 +27,7 @@ type Section =
   | 'notifications'
   | 'updates'
   | 'diagnostic'
+  | 'aibrief'
   | 'profile'
   | 'about';
 
@@ -34,6 +35,7 @@ const SECTIONS: { id: Section; label: string; icon: any }[] = [
   { id: 'appearance',    label: 'Apparence',        icon: Palette },
   { id: 'general',       label: 'Général & Système',icon: Sliders },
   { id: 'security',      label: 'Sécurité & Defender', icon: Shield },
+  { id: 'aibrief',       label: 'Brief IA & Synthèse', icon: Sparkles },
   { id: 'downloads',     label: 'Scanner de fichiers', icon: Download },
   { id: 'gaming',        label: 'Gaming & Overlay', icon: Gamepad2 },
   { id: 'network',       label: 'Réseau & DNS',     icon: Wifi },
@@ -88,6 +90,8 @@ export default function SettingsTab({
   onThemeChange,
 }: SettingsTabProps) {
   const [activeSection, setActiveSection] = useState<Section>('appearance');
+  const [aiConsent, setAiConsent] = useState<'granted' | 'declined' | 'unprompted'>('unprompted');
+  const [aiConsentInfo, setAiConsentInfo] = useState<any>(null);
 
   // Profile
   const [firstName, setFirstName]         = useState('');
@@ -100,11 +104,11 @@ export default function SettingsTab({
   const [minimizeToTray, setMinimizeToTray]     = useState(true);
   const [reduceAnimations, setReduceAnimations] = useState(false);
 
-  // Security & Defender
-  const [realtimeProtection, setRealtimeProtection] = useState(true);
-  const [cloudProtection, setCloudProtection]       = useState(true);
-  const [controlledFolderAccess, setControlledFolderAccess] = useState(false);
-  const [firewallProfiles, setFirewallProfiles]     = useState(true);
+  // Security & Defender (statuts mesurés factuels en lecture seule)
+  type SecurityStatusValue = 'active' | 'disabled' | 'unknown' | 'unavailable';
+  const [realtimeStatus, setRealtimeStatus] = useState<SecurityStatusValue>('unknown');
+  const [antivirusStatus, setAntivirusStatus] = useState<SecurityStatusValue>('unknown');
+  const [defenderAvailable, setDefenderAvailable] = useState<boolean | null>(null);
 
   // Downloads Scanner
   const [scanDownloads, setScanDownloads]     = useState(true);
@@ -113,6 +117,7 @@ export default function SettingsTab({
   const [downloadSound, setDownloadSound]     = useState(true);
   const [showModalEvenIfSafe, setShowModalEvenIfSafe] = useState(false);
   const [watchDirs, setWatchDirs]             = useState<string[]>([]);
+  const [discreteMode, setDiscreteMode]       = useState<'window' | 'mini' | 'notification'>('window');
 
   // Gaming / Overlay
   const [hudEnabled, setHudEnabled]           = useState(false);
@@ -131,6 +136,16 @@ export default function SettingsTab({
   const [notifEnabled, setNotifEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [soundVolume, setSoundVolume]   = useState(70);
+  const [categories, setCategories]     = useState<Record<string, boolean>>({
+    security: true,
+    scanner: true,
+    maintenance: true,
+    network: true,
+    vpn: true,
+    vault: true,
+    updater: true,
+    system: true,
+  });
 
   // Updates
   const [autoUpdate, setAutoUpdate]         = useState(true);
@@ -187,6 +202,10 @@ export default function SettingsTab({
         if (p.lastName) setLastName(p.lastName);
         if (typeof p.soundEnabled === 'boolean') setSoundEnabled(p.soundEnabled);
         if (typeof p.notificationsEnabled === 'boolean') setNotifEnabled(p.notificationsEnabled);
+        if (typeof p.reduceAnimations === 'boolean') {
+          setReduceAnimations(p.reduceAnimations);
+          document.documentElement.classList.toggle('reduce-motion', p.reduceAnimations);
+        }
         if (p.network) {
           if (typeof p.network.dnsOverHttps === 'boolean') setDohEnabled(p.network.dnsOverHttps);
           if (typeof p.network.ipv6Disabled === 'boolean') setDisableIpv6(p.network.ipv6Disabled);
@@ -205,12 +224,28 @@ export default function SettingsTab({
       if (res && typeof res.minimizeToTray === 'boolean') setMinimizeToTray(res.minimizeToTray);
     }).catch(() => {});
 
-    // Check system Defender status
+    // Check system Defender status (lecture seule factuelle)
     api.getDefenderStatus?.().then((res: any) => {
       if (res?.data) {
-        if (typeof res.data.realTimeProtection === 'boolean') setRealtimeProtection(res.data.realTimeProtection);
+        const available = Boolean(res.data.AMServiceEnabled);
+        setDefenderAvailable(available);
+        if (!available) {
+          setRealtimeStatus('unavailable');
+          setAntivirusStatus('unavailable');
+        } else {
+          setRealtimeStatus(res.data.RealTimeProtectionEnabled === true ? 'active' : (res.data.RealTimeProtectionEnabled === false ? 'disabled' : 'unknown'));
+          setAntivirusStatus(res.data.AntivirusEnabled === true ? 'active' : (res.data.AntivirusEnabled === false ? 'disabled' : 'unknown'));
+        }
+      } else {
+        setRealtimeStatus('unavailable');
+        setAntivirusStatus('unavailable');
+        setDefenderAvailable(false);
       }
-    }).catch(() => {});
+    }).catch(() => {
+      setRealtimeStatus('unavailable');
+      setAntivirusStatus('unavailable');
+      setDefenderAvailable(false);
+    });
 
     // Load preview channel state from electron-updater
     api.getPreviewChannel?.().then((res: any) => {
@@ -248,7 +283,20 @@ export default function SettingsTab({
         if (typeof res.config.usbScanEnabled === 'boolean') setUsbScanEnabled(res.config.usbScanEnabled);
         if (typeof res.config.soundEnabled === 'boolean') setDownloadSound(res.config.soundEnabled);
         if (typeof res.config.showModalEvenIfSafe === 'boolean') setShowModalEvenIfSafe(res.config.showModalEvenIfSafe);
+        if (res.config.discreteMode) setDiscreteMode(res.config.discreteMode);
         if (Array.isArray(res.config.watchDirs)) setWatchDirs(res.config.watchDirs);
+      }
+    }).catch(() => {});
+
+    // Sync notification preferences & categories from central notificationManager
+    api.notifications?.getPrefs?.().then((res: any) => {
+      if (res) {
+        if (typeof res.soundVolume === 'number') setSoundVolume(res.soundVolume);
+        if (typeof res.soundEnabled === 'boolean') setSoundEnabled(res.soundEnabled);
+        if (typeof res.notificationsEnabled === 'boolean') setNotifEnabled(res.notificationsEnabled);
+        if (res.categories && typeof res.categories === 'object') {
+          setCategories(prev => ({ ...prev, ...res.categories }));
+        }
       }
     }).catch(() => {});
 
@@ -303,10 +351,29 @@ export default function SettingsTab({
     }
   };
 
-  const handleToggleReduceMotion = (val: boolean) => {
+  const handleToggleReduceMotion = async (val: boolean) => {
     setReduceAnimations(val);
     document.documentElement.classList.toggle('reduce-motion', val);
+    await api?.saveUserProfile?.({ reduceAnimations: val });
     showToast(val ? 'Animations réduites' : 'Animations standard rétablies');
+  };
+
+  const handleToggleCategory = async (catKey: string, val: boolean) => {
+    const next = { ...categories, [catKey]: val };
+    setCategories(next);
+    await api?.notifications?.savePrefs?.({ categories: next });
+    showToast(`Catégorie « ${catKey} » ${val ? 'activée' : 'désactivée'}`);
+  };
+
+  const handleVolumeChange = async (vol: number) => {
+    setSoundVolume(vol);
+    await api?.notifications?.savePrefs?.({ soundVolume: vol });
+  };
+
+  const handleDiscreteModeChange = async (mode: 'window' | 'mini' | 'notification') => {
+    setDiscreteMode(mode);
+    await api?.saveScannerConfig?.({ discreteMode: mode });
+    showToast(`Mode sentinelle : ${mode === 'window' ? 'Fenêtre modale' : (mode === 'mini' ? 'Miniature' : 'Discret toast')}`);
   };
 
   const handleToggleOverlay = async () => {
@@ -387,28 +454,92 @@ export default function SettingsTab({
   const handleRunDiagnostic = async () => {
     setRunningDiag(true);
     setDiagResults([]);
-    const checks = [
-      { name: 'Microsoft Defender Antivirus', status: 'Vérification…', ok: true },
-      { name: 'Pare-feu Windows Avancé',      status: 'Vérification…', ok: true },
-      { name: 'Pilote Wintun & WireGuard',    status: 'Vérification…', ok: true },
-      { name: 'Droits Administrateur',       status: 'Vérification…', ok: true },
-      { name: 'Télémétrie Windows désactivée', status: 'Vérification…', ok: true },
-      { name: 'Capteurs Disque SMART',        status: 'Vérification…', ok: true },
-    ];
 
-    for (let i = 0; i < checks.length; i++) {
-      await new Promise(r => setTimeout(r, 300));
-      let ok = true;
-      let status = 'Actif / Conforme';
-      if (i === 3 && api?.getAdminStatus) {
-        const adm = await api.getAdminStatus();
-        ok = adm?.isAdmin ?? true;
-        status = ok ? 'Accordé' : 'Mode Restreint';
-      }
-      setDiagResults(prev => [...prev, { name: checks[i].name, status, ok }]);
+    const items: { name: string; status: string; ok: boolean }[] = [];
+
+    // 1. Defender Antivirus
+    try {
+      const def = await api.getDefenderStatus?.();
+      const isActive = def?.data?.realTimeProtection ?? def?.antivirusEnabled ?? false;
+      items.push({
+        name: 'Protection Microsoft Defender',
+        status: isActive ? 'Protection temps réel active' : 'Service arrêté ou non détecté',
+        ok: Boolean(isActive),
+      });
+    } catch {
+      items.push({ name: 'Protection Microsoft Defender', status: 'Vérification non disponible', ok: false });
     }
+
+    // 2. Privilèges Administrateur
+    try {
+      const adm = await api.getAdminStatus?.();
+      items.push({
+        name: 'Privilèges Administrateur',
+        status: adm?.isAdmin ? 'Session Administrateur active' : 'Session Standard (Mode restreint)',
+        ok: true,
+      });
+    } catch {
+      items.push({ name: 'Privilèges Administrateur', status: 'Non évalué', ok: false });
+    }
+
+    // 3. Espace disque C:
+    try {
+      const d = await api.getDiskInfo?.();
+      const freeGB = d?.freeGB || 0;
+      const pct = d?.usedPercent || 0;
+      const isOk = pct < 90 && freeGB > 15;
+      items.push({
+        name: 'Espace Disque Système C:',
+        status: `${freeGB} Go disponibles (${pct}% utilisé)`,
+        ok: isOk,
+      });
+    } catch {
+      items.push({ name: 'Espace Disque Système C:', status: 'Non mesuré', ok: false });
+    }
+
+    // 4. Latence réseau (Cloudflare 1.1.1.1)
+    try {
+      const p = await api.getPing?.();
+      const pingMs = p?.ping || 0;
+      items.push({
+        name: 'Connectivité WAN & Latence (1.1.1.1)',
+        status: pingMs > 0 ? `Liaison active (${pingMs} ms)` : 'Passerelle non jointe',
+        ok: pingMs > 0,
+      });
+    } catch {
+      items.push({ name: 'Connectivité WAN & Latence', status: 'Non mesuré', ok: false });
+    }
+
+    // 5. Service Interactif OpenVPN
+    try {
+      const vpnInfo = await api.vpnGetInstallerInfo?.();
+      const svcRunning = vpnInfo?.components?.serviceRunning;
+      const svcInstalled = vpnInfo?.components?.serviceInstalled;
+      items.push({
+        name: 'Service Interactif OpenVPN',
+        status: svcRunning ? 'Service actif (démarré)' : svcInstalled ? 'Installé mais arrêté' : 'Non installé sur l\'hôte',
+        ok: Boolean(svcRunning),
+      });
+    } catch {
+      items.push({ name: 'Service Interactif OpenVPN', status: 'Non vérifié', ok: false });
+    }
+
+    // 6. Sentinelle de Téléchargements
+    try {
+      const sc = await api.getScannerConfig?.();
+      const isEnabled = sc?.config?.enabled;
+      items.push({
+        name: 'Scanner Téléchargements & Sentinelle',
+        status: isEnabled ? 'Surveillance active (%USERPROFILE%\\Downloads)' : 'Désactivé',
+        ok: Boolean(isEnabled),
+      });
+    } catch {
+      items.push({ name: 'Scanner Téléchargements & Sentinelle', status: 'Non configuré', ok: false });
+    }
+
+    setDiagResults(items);
     setRunningDiag(false);
-    showToast('Diagnostic système terminé');
+    showToast('Diagnostic factuel terminé');
   };
 
   return (
@@ -680,51 +811,167 @@ export default function SettingsTab({
               <div>
                 <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Sécurité & Microsoft Defender</h2>
                 <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-                  Pilotage direct des modules de défense natifs de Windows.
+                  État réel des protections système observé sans altération unilatérale des politiques Windows.
                 </p>
               </div>
 
               <div className="list">
-                <div className="setting-row">
+                <div className="setting-row" style={{ alignItems: 'center', padding: '14px 0' }}>
                   <div className="setting-info">
-                    <div className="setting-title">Protection en temps réel</div>
-                    <div className="setting-desc">Surveillance active des fichiers et processus par Microsoft Defender</div>
+                    <div className="setting-title" style={{ fontSize: 13.5, fontWeight: 600 }}>Protection en temps réel</div>
+                    <div className="setting-desc" style={{ marginTop: 4, lineHeight: 1.4 }}>
+                      Surveillance continue des fichiers et processus. État lu via l'API système de Microsoft Defender.
+                    </div>
                   </div>
-                  <div
-                    className={`sw ${realtimeProtection ? 'on' : ''}`}
-                    onClick={() => setRealtimeProtection(!realtimeProtection)}
-                    role="switch"
-                    aria-checked={realtimeProtection}
-                    tabIndex={0}
-                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                    <span className={`badge ${
+                      realtimeStatus === 'active' ? 'badge-ok' :
+                      realtimeStatus === 'disabled' ? 'badge-danger' :
+                      'badge-neutral'
+                    }`}>
+                      {realtimeStatus === 'active' ? 'Protection active' :
+                       realtimeStatus === 'disabled' ? 'Désactivée' :
+                       realtimeStatus === 'unavailable' ? 'Service indisponible' :
+                       'État non déterminé'}
+                    </span>
+                    <button
+                      className="btn btn-sm btn-ghost"
+                      style={{ fontSize: 11, padding: '4px 10px' }}
+                      onClick={() => api?.openExternal?.('windowsdefender:')}
+                      title="Ouvrir les paramètres dans la Sécurité Windows"
+                    >
+                      Sécurité Windows ↗
+                    </button>
+                  </div>
                 </div>
 
-                <div className="setting-row">
+                <div className="setting-row" style={{ alignItems: 'center', padding: '14px 0' }}>
                   <div className="setting-info">
-                    <div className="setting-title">Pare-feu Windows Avancé</div>
-                    <div className="setting-desc">Filtrage réseau actif sur tous les profils (Domaine, Privé, Public)</div>
+                    <div className="setting-title" style={{ fontSize: 13.5, fontWeight: 600 }}>Antivirus résident Defender</div>
+                    <div className="setting-desc" style={{ marginTop: 4, lineHeight: 1.4 }}>
+                      Service système de protection contre les logiciels malveillants (AMService).
+                    </div>
                   </div>
-                  <div
-                    className={`sw ${firewallProfiles ? 'on' : ''}`}
-                    onClick={() => setFirewallProfiles(!firewallProfiles)}
-                    role="switch"
-                    aria-checked={firewallProfiles}
-                    tabIndex={0}
-                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                    <span className={`badge ${
+                      antivirusStatus === 'active' ? 'badge-ok' :
+                      antivirusStatus === 'disabled' ? 'badge-danger' :
+                      'badge-neutral'
+                    }`}>
+                      {antivirusStatus === 'active' ? 'Moteur actif' :
+                       antivirusStatus === 'disabled' ? 'Moteur arrêté' :
+                       antivirusStatus === 'unavailable' ? 'Service indisponible' :
+                       'État non déterminé'}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="setting-row">
+                <div className="setting-row" style={{ alignItems: 'center', padding: '14px 0' }}>
                   <div className="setting-info">
-                    <div className="setting-title">Protection Ransomware (Dossiers contrôlés)</div>
-                    <div className="setting-desc">Empêche les processus non autorisés de modifier vos documents et photos</div>
+                    <div className="setting-title" style={{ fontSize: 13.5, fontWeight: 600 }}>Pare-feu & Dossiers protégés</div>
+                    <div className="setting-desc" style={{ marginTop: 4, lineHeight: 1.4 }}>
+                      Pour éviter tout blocage réseau ou conflit d'administration, les règles de pare-feu et l'accès contrôlé aux dossiers se pilotent directement dans la console Sécurité Windows.
+                    </div>
                   </div>
-                  <div
-                    className={`sw ${controlledFolderAccess ? 'on' : ''}`}
-                    onClick={() => setControlledFolderAccess(!controlledFolderAccess)}
-                    role="switch"
-                    aria-checked={controlledFolderAccess}
-                    tabIndex={0}
-                  />
+                  <div style={{ flexShrink: 0 }}>
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      style={{ fontSize: 11, padding: '4px 12px' }}
+                      onClick={() => api?.openExternal?.('windowsdefender:')}
+                    >
+                      Gérer dans Windows ↗
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          
+          {/* ── Brief Quotidien & IA ── */}
+          {activeSection === 'aibrief' && (
+            <div className="stack" style={{ gap: 20 }}>
+              <div>
+                <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Brief Quotidien & Synthèse IA</h2>
+                <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                  Configuration du moteur de synthèse du Brief Quotidien affiché sur l'écran d'accueil.
+                </p>
+              </div>
+
+              <div className="list">
+                <div className="setting-row" style={{ alignItems: 'flex-start', padding: '16px 0' }}>
+                  <div className="setting-info">
+                    <div className="setting-title" style={{ fontSize: 13.5, fontWeight: 600 }}>Mode de synthèse du Brief</div>
+                    <div className="setting-desc" style={{ marginTop: 4, lineHeight: 1.5 }}>
+                      Choisissez entre l'interprétation par le modèle de langage distant ou la synthèse déterministe locale 100% hors-ligne.
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    <button
+                      className={`btn btn-sm ${aiConsent === 'granted' ? 'btn-primary' : 'btn-ghost'}`}
+                      style={{ fontSize: 11 }}
+                      onClick={async () => {
+                        await api?.setAiConsent?.('granted');
+                        setAiConsent('granted');
+                        showToast('Brief IA activé via OVHcloud AI Endpoints');
+                      }}
+                    >
+                      Brief IA (OVHcloud)
+                    </button>
+                    <button
+                      className={`btn btn-sm ${aiConsent === 'declined' ? 'btn-primary' : 'btn-ghost'}`}
+                      style={{ fontSize: 11 }}
+                      onClick={async () => {
+                        await api?.setAiConsent?.('declined');
+                        setAiConsent('declined');
+                        showToast('Synthèse locale déterministe activée (Hors-ligne)');
+                      }}
+                    >
+                      Synthèse locale hors-ligne
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Encadré d'information et de consentement */}
+              <div style={{
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid var(--line)',
+                borderRadius: 'var(--r-md)',
+                padding: 18,
+                fontSize: 12,
+                color: 'var(--text)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontWeight: 700 }}>
+                  <Sparkles size={16} style={{ color: 'var(--a1)' }} />
+                  <span>Transparence & Confidentialité des données</span>
+                </div>
+                <p style={{ color: 'var(--muted)', lineHeight: 1.5, margin: '0 0 12px' }}>
+                  Lorsque le Brief IA est activé, Vanguard interroge <strong>OVHcloud AI Endpoints</strong> (modèle <em>Mistral-Nemo-Instruct-2407</em>) en accès direct sans compte utilisateur ni clé API requise. Le quota public est de <strong>2 requêtes par minute par adresse IP</strong>.
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 10 }}>
+                  <div style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 'var(--r-sm)', padding: 12 }}>
+                    <b style={{ color: '#22c55e', display: 'block', marginBottom: 6 }}>✓ Données strictement minimisées transmises :</b>
+                    <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--text)', fontSize: 11.5, lineHeight: 1.5 }}>
+                      <li>Temps d'activité du système (heures)</li>
+                      <li>Mémoire vive totale et utilisée (Go, arrondi)</li>
+                      <li>Espace disque C: total et libre (Go, arrondi)</li>
+                      <li>Statut de l'antivirus Defender (booléen)</li>
+                      <li>Nombre de menaces actives isolées (entier)</li>
+                    </ul>
+                  </div>
+
+                  <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--r-sm)', padding: 12 }}>
+                    <b style={{ color: '#ef4444', display: 'block', marginBottom: 6 }}>✗ Données formellement exclues :</b>
+                    <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--text)', fontSize: 11.5, lineHeight: 1.5 }}>
+                      <li>Nom et prénom de l'utilisateur</li>
+                      <li>Chemins et noms de fichiers sur le disque</li>
+                      <li>Adresses IP dans le contenu du prompt</li>
+                      <li>Mots de passe, tokens et clés de chiffrement</li>
+                      <li>Fichiers et métadonnées du futur Astral Vault</li>
+                    </ul>
+                  </div>
                 </div>
               </div>
             </div>
@@ -815,6 +1062,41 @@ export default function SettingsTab({
                     aria-checked={showModalEvenIfSafe}
                     tabIndex={0}
                   />
+                </div>
+
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Style d'affichage de la Sentinelle</div>
+                    <div className="setting-desc">Déterminez la visibilité lors de la détection ou l'analyse des téléchargements</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {(
+                      [
+                        { id: 'window', label: 'Fenêtre modale', desc: 'Complète au centre' },
+                        { id: 'mini', label: 'Miniature', desc: 'Bannière coin inférieur' },
+                        { id: 'notification', label: 'Discret Toast', desc: 'Notification discrète' },
+                      ] as const
+                    ).map(item => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`btn btn-sm ${discreteMode === item.id ? 'btn-primary' : 'btn-ghost'}`}
+                        onClick={() => handleDiscreteModeChange(item.id)}
+                        style={{
+                          fontSize: 11,
+                          padding: '6px 12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'flex-start',
+                          gap: 2,
+                          borderRadius: 'var(--r-sm)',
+                        }}
+                      >
+                        <span style={{ fontWeight: 600 }}>{item.label}</span>
+                        <span style={{ fontSize: 9.5, opacity: 0.75 }}>{item.desc}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -1031,64 +1313,45 @@ export default function SettingsTab({
               <div>
                 <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Réseau & DNS</h2>
                 <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-                  Optimisation des piles TCP/IP et protection contre les fuites de requêtes.
+                  Paramètres de connectivité et configuration des résolveurs DNS.
                 </p>
               </div>
 
               <div className="list">
-                <div className="setting-row">
+                <div className="setting-row" style={{ alignItems: 'flex-start', padding: '14px 0' }}>
                   <div className="setting-info">
-                    <div className="setting-title">DNS sur HTTPS (DoH)</div>
-                    <div className="setting-desc">Chiffre vos résolutions DNS pour empêcher le traçage par le FAI</div>
+                    <div className="setting-title" style={{ fontSize: 13.5, fontWeight: 600 }}>DNS sur HTTPS (DoH)</div>
+                    <div className="setting-desc" style={{ marginTop: 4, lineHeight: 1.4 }}>
+                      La résolution DoH dépend de la prise en charge par les adaptateurs et la pile réseau du système d'exploitation Windows. Vanguard configure vos résolveurs IPv4 sans forcer de règle DoH unilatérale.
+                    </div>
                   </div>
-                  <div
-                    className={`sw ${dohEnabled ? 'on' : ''}`}
-                    onClick={async () => {
-                      const next = !dohEnabled;
-                      setDohEnabled(next);
-                      await api?.saveUserProfile?.({ network: { dnsOverHttps: next } }).catch(() => {});
-                    }}
-                    role="switch"
-                    aria-checked={dohEnabled}
-                    tabIndex={0}
-                  />
+                  <div style={{ flexShrink: 0 }}>
+                    <span className="badge badge-neutral">Géré par le système d'exploitation</span>
+                  </div>
                 </div>
 
-                <div className="setting-row">
+                <div className="setting-row" style={{ alignItems: 'flex-start', padding: '14px 0' }}>
                   <div className="setting-info">
-                    <div className="setting-title">Désactiver IPv6 lors des sessions sécurisées</div>
-                    <div className="setting-desc">Évite les fuites de paquets IPv6 non encapsulés hors du tunnel</div>
+                    <div className="setting-title" style={{ fontSize: 13.5, fontWeight: 600 }}>Pile réseau IPv6</div>
+                    <div className="setting-desc" style={{ marginTop: 4, lineHeight: 1.4 }}>
+                      Vanguard ne modifie pas la configuration physique IPv6 de vos interfaces réseau. Le tunnel VPN gère les flux IPv4.
+                    </div>
                   </div>
-                  <div
-                    className={`sw ${disableIpv6 ? 'on' : ''}`}
-                    onClick={async () => {
-                      const next = !disableIpv6;
-                      setDisableIpv6(next);
-                      await api?.saveUserProfile?.({ network: { ipv6Disabled: next } }).catch(() => {});
-                    }}
-                    role="switch"
-                    aria-checked={disableIpv6}
-                    tabIndex={0}
-                  />
+                  <div style={{ flexShrink: 0 }}>
+                    <span className="badge badge-neutral">Non altéré par Vanguard</span>
+                  </div>
                 </div>
 
-                <div className="setting-row">
+                <div className="setting-row" style={{ alignItems: 'flex-start', padding: '14px 0' }}>
                   <div className="setting-info">
-                    <div className="setting-title">Algorithme anti-bufferbloat</div>
-                    <div className="setting-desc">Régulation des files d'attente pour réduire la latence sous forte charge réseau</div>
+                    <div className="setting-title" style={{ fontSize: 13.5, fontWeight: 600 }}>Algorithme anti-bufferbloat</div>
+                    <div className="setting-desc" style={{ marginTop: 4, lineHeight: 1.4 }}>
+                      La régulation active des files d'attente réseau n'est pas implémentée dans cette pré-release. Le module Réseau fournit une mesure indicative de l'écart de latence sous charge.
+                    </div>
                   </div>
-                  <div
-                    className={`sw ${antiBufferbloat ? 'on' : ''}`}
-                    onClick={async () => {
-                      const next = !antiBufferbloat;
-                      setBufferbloat(next);
-                      await api?.saveUserProfile?.({ network: { antiBufferbloat: next } }).catch(() => {});
-                      await api?.setGamingSetting?.({ key: 'antiBufferbloat', value: next }).catch(() => {});
-                    }}
-                    role="switch"
-                    aria-checked={antiBufferbloat}
-                    tabIndex={0}
-                  />
+                  <div style={{ flexShrink: 0 }}>
+                    <span className="badge badge-neutral">Non implémenté</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1112,7 +1375,12 @@ export default function SettingsTab({
                   </div>
                   <div
                     className={`sw ${dndEnabled ? 'on' : ''}`}
-                    onClick={() => onDndChange?.(!dndEnabled)}
+                    onClick={async () => {
+                      const next = !dndEnabled;
+                      onDndChange?.(next);
+                      await api?.notifications?.savePrefs?.({ dndEnabled: next });
+                      showToast(next ? 'Mode Ne Pas Déranger activé' : 'Mode Ne Pas Déranger désactivé');
+                    }}
                     role="switch"
                     aria-checked={dndEnabled}
                     tabIndex={0}
@@ -1130,6 +1398,7 @@ export default function SettingsTab({
                       const next = !notifEnabled;
                       setNotifEnabled(next);
                       await api?.saveUserProfile?.({ notificationsEnabled: next });
+                      await api?.notifications?.savePrefs?.({ notificationsEnabled: next });
                       showToast(next ? 'Notifications système activées' : 'Notifications système désactivées');
                     }}
                     role="switch"
@@ -1149,6 +1418,7 @@ export default function SettingsTab({
                       const next = !soundEnabled;
                       setSoundEnabled(next);
                       await api?.saveUserProfile?.({ soundEnabled: next });
+                      await api?.notifications?.savePrefs?.({ soundEnabled: next });
                       showToast(next ? 'Effets sonores activés' : 'Effets sonores désactivés');
                     }}
                     role="switch"
@@ -1172,7 +1442,7 @@ export default function SettingsTab({
                         min="0"
                         max="100"
                         value={soundVolume}
-                        onChange={e => setSoundVolume(Number(e.target.value))}
+                        onChange={e => handleVolumeChange(Number(e.target.value))}
                         style={{ flex: 1, accentColor: 'var(--a1)', cursor: 'pointer' }}
                       />
                       <button
@@ -1189,109 +1459,185 @@ export default function SettingsTab({
                 )}
               </div>
 
+              {/* Filtrage par catégorie de notifications */}
+              <div style={{ borderTop: '1px solid var(--line)', paddingTop: 18 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>
+                  Catégories de notifications autorisées
+                </h3>
+                <p style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 14 }}>
+                  Activez ou désactivez individuellement les bannières selon leur provenance. Les alertes critiques contournent le filtrage.
+                </p>
+
+                <div className="list">
+                  {[
+                    { key: 'security', title: 'Sécurité & Détection de Menaces', desc: 'Alertes Defender, détections virales et neutralisations' },
+                    { key: 'scanner', title: 'Sentinelle Téléchargements & Clés USB', desc: 'Interception de fichiers suspects et contrôle amovible' },
+                    { key: 'maintenance', title: 'Maintenance & Nettoyage Disque', desc: 'Rapports d\'optimisation périodique et libération d\'espace' },
+                    { key: 'network', title: 'Réseau & Diagnostic Latence', desc: 'Alertes de déconnexion, instabilité WAN et calibrage TCP/IP' },
+                    { key: 'vpn', title: 'Vanguard VPN', desc: 'État du tunnel sécurisé, connexion et déconnexion' },
+                    { key: 'vault', title: 'Vanguard Vault', desc: 'Verrouillage automatique, sessions et sauvegardes chiffrées' },
+                    { key: 'updater', title: 'Mises à jour logicielles', desc: 'Nouvelles versions et correctifs de sécurité prêts à l\'installation' },
+                    { key: 'system', title: 'Événements système généraux', desc: 'Alertes matérielles, élévation et notifications de profil' },
+                  ].map(cat => {
+                    const isChecked = categories[cat.key] !== false;
+                    return (
+                      <div key={cat.key} className="setting-row">
+                        <div className="setting-info">
+                          <div className="setting-title" style={{ fontSize: 13 }}>{cat.title}</div>
+                          <div className="setting-desc" style={{ fontSize: 11 }}>{cat.desc}</div>
+                        </div>
+                        <div
+                          className={`sw ${isChecked ? 'on' : ''}`}
+                          onClick={() => handleToggleCategory(cat.key, !isChecked)}
+                          role="switch"
+                          aria-checked={isChecked}
+                          tabIndex={0}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Centre d'essai et de test des notifications */}
               <div style={{ borderTop: '1px solid var(--line)', paddingTop: 18 }}>
                 <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>
                   Centre d'essai & Validation des Notifications
                 </h3>
                 <p style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 14 }}>
-                  Testez instantanément les bannières visuelles et l'habillage sonore en conditions réelles.
+                  Testez instantanément la distribution centrale (in-app ou système), la déduplication et l'habillage sonore.
                 </p>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 10 }}>
                   <button
+                    type="button"
                     className="btn btn-ghost"
                     style={{ justifyContent: 'flex-start', padding: '10px 14px', textAlign: 'left', borderColor: 'rgba(239,68,68,0.3)' }}
                     onClick={() => {
-                      api?.sendNotification?.({
-                        type: 'threat',
-                        title: 'Menace détectée et neutralisée',
-                        body: 'Trojan:Win32/Wacatac.B!ml bloqué dans C:\\Users\\Temp\\agent.exe',
-                        critical: true,
+                      api?.notifications?.emit?.({
+                        category: 'security',
+                        severity: 'critical',
+                        title: 'Alerte Menace Critique',
+                        message: 'Fichier suspect bloqué : Trojan:Win32/TestThreat neutralisé.',
+                        actionTarget: { tab: 'security' },
                       });
-                      api?.testNotification?.('Menace détectée et neutralisée', 'Trojan:Win32/Wacatac.B!ml bloqué avec succès.');
+                      playTestNotificationSound();
                     }}
                   >
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--bad)', marginRight: 6, flexShrink: 0 }} />
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Alerte Menace Critique</div>
-                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Accent rouge · Alerte prioritaire</div>
+                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Sécurité · Priorité maximale</div>
                     </div>
                   </button>
 
                   <button
+                    type="button"
                     className="btn btn-ghost"
                     style={{ justifyContent: 'flex-start', padding: '10px 14px', textAlign: 'left', borderColor: 'rgba(var(--a1r),0.3)' }}
                     onClick={() => {
-                      api?.sendNotification?.({
-                        type: 'gaming',
-                        title: 'Mode Gaming Extrême Activé',
-                        body: 'Jeu détecté : Counter-Strike 2 — Priorité CPU & anti-lag réseau appliqués.',
-                        critical: false,
+                      api?.notifications?.emit?.({
+                        category: 'scanner',
+                        severity: 'warning',
+                        title: 'Sentinelle Téléchargements',
+                        message: 'Archive suspecte détectée dans Téléchargements.',
+                        actionTarget: { tab: 'dashboard' },
                       });
+                      playTestNotificationSound();
                     }}
                   >
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--a1)', marginRight: 6, flexShrink: 0 }} />
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Alerte Mode Gaming</div>
-                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Accent indigo · Confirmation jeu</div>
+                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Alerte Sentinelle Fichier</div>
+                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Scanner · Analyse entrante</div>
                     </div>
                   </button>
 
                   <button
+                    type="button"
                     className="btn btn-ghost"
                     style={{ justifyContent: 'flex-start', padding: '10px 14px', textAlign: 'left', borderColor: 'rgba(214,173,104,0.3)' }}
                     onClick={() => {
-                      api?.sendNotification?.({
-                        type: 'network',
-                        title: 'Latence réseau anormale détectée',
-                        body: 'Ping actuel : 182 ms (seuil dépassé). Correction anti-bufferbloat disponible.',
-                        critical: false,
+                      api?.notifications?.emit?.({
+                        category: 'network',
+                        severity: 'warning',
+                        title: 'Alerte Réseau & Diagnostic',
+                        message: 'Latence anormale observée vers les résolveurs publics.',
+                        actionTarget: { tab: 'network' },
                       });
+                      playTestNotificationSound();
                     }}
                   >
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--warn)', marginRight: 6, flexShrink: 0 }} />
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Alerte Réseau & Lag</div>
-                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Accent orange · Signal latence</div>
+                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Alerte Diagnostic Réseau</div>
+                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Réseau · Signal latence</div>
                     </div>
                   </button>
 
                   <button
+                    type="button"
                     className="btn btn-ghost"
                     style={{ justifyContent: 'flex-start', padding: '10px 14px', textAlign: 'left', borderColor: 'rgba(104,184,148,0.3)' }}
                     onClick={() => {
-                      api?.sendNotification?.({
-                        type: 'security',
-                        title: 'Analyse antivirus terminée',
-                        body: 'Moteur Microsoft Defender : Système sain, 0 menace détectée sur 4120 fichiers.',
-                        critical: false,
+                      api?.notifications?.emit?.({
+                        category: 'maintenance',
+                        severity: 'info',
+                        title: 'Maintenance Système Terminée',
+                        message: 'Nettoyage des fichiers temporaires complété avec succès.',
+                        actionTarget: { tab: 'performance' },
                       });
+                      playTestNotificationSound();
                     }}
                   >
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--ok)', marginRight: 6, flexShrink: 0 }} />
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Fin d'analyse système</div>
-                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Accent vert · Succès de scan</div>
+                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Rapport Maintenance</div>
+                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Maintenance · Succès</div>
                     </div>
                   </button>
 
                   <button
+                    type="button"
                     className="btn btn-ghost"
-                    style={{ justifyContent: 'flex-start', padding: '10px 14px', textAlign: 'left', borderColor: 'rgba(239,68,68,0.3)' }}
+                    style={{ justifyContent: 'flex-start', padding: '10px 14px', textAlign: 'left', borderColor: 'rgba(59,130,246,0.3)' }}
                     onClick={() => {
-                      api?.sendNotification?.({
-                        type: 'vpn',
-                        title: 'Alerte Tunnel VPN',
-                        body: 'Tunnel WireGuard déconnecté. Kill Switch engagé pour protéger votre IP.',
-                        critical: true,
+                      api?.notifications?.emit?.({
+                        category: 'vpn',
+                        severity: 'info',
+                        title: 'Vanguard VPN',
+                        message: 'Tunnel sécurisé OpenVPN établi avec succès.',
+                        actionTarget: { tab: 'vpn' },
                       });
+                      playTestNotificationSound();
                     }}
                   >
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--bad)', marginRight: 6, flexShrink: 0 }} />
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', marginRight: 6, flexShrink: 0 }} />
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Alerte VPN & Kill Switch</div>
-                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Accent rouge · Rupture de tunnel</div>
+                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Notification Vanguard VPN</div>
+                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>VPN · Connectivité</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ justifyContent: 'flex-start', padding: '10px 14px', textAlign: 'left', borderColor: 'rgba(168,85,247,0.3)' }}
+                    onClick={() => {
+                      api?.notifications?.emit?.({
+                        category: 'vault',
+                        severity: 'info',
+                        title: 'Vanguard Vault',
+                        message: 'Coffre local verrouillé sur inactivité prolongée.',
+                        actionTarget: { tab: 'vault' },
+                      });
+                      playTestNotificationSound();
+                    }}
+                  >
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#a855f7', marginRight: 6, flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Notification Vanguard Vault</div>
+                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Vault · Sécurité des données</div>
                     </div>
                   </button>
                 </div>

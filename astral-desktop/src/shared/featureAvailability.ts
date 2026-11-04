@@ -25,7 +25,7 @@ export const FEATURES: Record<string, FeatureDescriptor> = {
   // ── VPN & Confidentialité ──
   vpnConnection: {
     id: 'vpnConnection',
-    name: 'Tunnel Astral VPN',
+    name: 'Tunnel Vanguard VPN',
     status: 'available',
     reason: 'Moteur de tunnel VPN communautaire et détection de passerelles opérationnels.',
     actionDisabled: false,

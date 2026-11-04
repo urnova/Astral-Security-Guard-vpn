@@ -11,15 +11,16 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import cp from 'child_process';
-import { logger } from './logger';
-import { runPowerShell } from './psHelper';
-import { showAvastStyleDownloadScan, showAvastStyleToast } from './notificationWindow';
+import { logger } from './logger.ts';
+import { runPowerShell } from './psHelper.ts';
+import { showAvastStyleDownloadScan, showAvastStyleToast } from './notificationWindow.ts';
 import {
   createScanSession,
   quarantineSessionFile,
   deleteSessionFile,
   openSessionFolder,
-} from './scanSession';
+} from './scanSession.ts';
+import { notificationManager } from './notificationManager.ts';
 
 export interface DownloadScannerConfig {
   enabled: boolean;
@@ -38,7 +39,7 @@ export interface ScanResult {
   fileName: string;
   sizeBytes: number;
   ext: string;
-  status: 'safe' | 'suspect' | 'threat' | 'error' | 'unavailable';
+  status: 'safe' | 'suspect' | 'threat' | 'threat_remediated_by_defender' | 'error' | 'unavailable' | 'file_missing';
   threatName?: string;
   errorReason?: string;
   isUnsigned?: boolean;
@@ -47,20 +48,12 @@ export interface ScanResult {
 }
 
 
-const TEMP_DOWNLOAD_EXTS = new Set([
-  '.crdownload', // Chrome, Edge, Brave, Opera
-  '.part',       // Firefox
-  '.opdownload', // Opera
-  '.tmp',        // Windows / Browser Temp
-  '.download',   // Generic
-  '.partial',    // Generic
-]);
-
-const DEFAULT_IGNORED_EXTS = [
-  '.txt', '.log', '.md',
-  '.mp3', '.wav', '.flac', '.aac', '.ogg',
-  '.mp4', '.mkv', '.avi', '.mov', '.webm',
-];
+import {
+  SYSTEM_IGNORED_FILES,
+  TEMP_DOWNLOAD_EXTS,
+  DEFAULT_IGNORED_EXTS,
+  shouldIgnoreFile,
+} from './scannerExclusions.ts';
 
 const SPOOFED_SYSTEM_EXECUTABLES = new Set([
   'svchost.exe',
@@ -261,7 +254,7 @@ async function waitForFileStabilization(filePath: string, maxWaitMs = 20000): Pr
 function buildAndStoreScanResult(
   filePath: string,
   data: {
-    status: 'safe' | 'suspect' | 'threat' | 'unavailable' | 'error';
+    status: 'safe' | 'suspect' | 'threat' | 'threat_remediated_by_defender' | 'unavailable' | 'error' | 'file_missing';
     threatName?: string;
     errorReason?: string;
     isUnsigned?: boolean;
@@ -279,14 +272,12 @@ function buildAndStoreScanResult(
 
   let sessionScanId: string | null = null;
   try {
-    if (fs.existsSync(filePath)) {
-      const session = createScanSession(filePath, {
-        status: data.status,
-        threatName: data.threatName,
-        isUnsigned: data.isUnsigned,
-      });
-      sessionScanId = session.scanId;
-    }
+    const session = createScanSession(filePath, {
+      status: data.status,
+      threatName: data.threatName,
+      isUnsigned: data.isUnsigned,
+    });
+    sessionScanId = session.scanId;
   } catch (err: any) {
     logger.warn('[DownloadScanner] Could not register scan session:', err.message);
   }
@@ -319,6 +310,16 @@ function buildAndStoreScanResult(
 export async function scanSingleFile(filePath: string): Promise<ScanResult> {
   const fileName = path.basename(filePath);
   const ext = path.extname(filePath).toLowerCase();
+
+  if (!fs.existsSync(filePath)) {
+    logger.warn(`[DownloadScanner] Fichier introuvable avant scan : ${filePath}`);
+    return buildAndStoreScanResult(filePath, {
+      status: 'file_missing',
+      errorReason: "Fichier introuvable avant l'analyse.",
+      scanDurationMs: 0,
+    });
+  }
+
   let sizeBytes = 0;
   try {
     sizeBytes = fs.statSync(filePath).size;
@@ -339,7 +340,16 @@ export async function scanSingleFile(filePath: string): Promise<ScanResult> {
         });
       }
     }
-  } catch {}
+  } catch (readErr: any) {
+    if (readErr.errno === -4094 || readErr.code === 'UNKNOWN' || String(readErr.message).includes('virus')) {
+      logger.warn(`[DownloadScanner] Accès au fichier bloqué par Windows Defender (ERROR_VIRUS_INFECTED) : ${fileName}`);
+      return buildAndStoreScanResult(filePath, {
+        status: 'threat',
+        threatName: 'Menace active bloquée par Windows Defender (Real-Time Protection)',
+        scanDurationMs: Date.now() - startTime,
+      });
+    }
+  }
 
   logger.info(`[DownloadScanner] Initiating targeted Defender scan on: ${filePath} (${Math.round(sizeBytes / 1024)} KB)`);
 
@@ -366,11 +376,27 @@ export async function scanSingleFile(filePath: string): Promise<ScanResult> {
       clearTimeout(timeout);
       const scanDurationMs = Date.now() - startTime;
       const combinedOutput = `${stdout}\n${stderr}`.toLowerCase();
+      const fileStillExists = fs.existsSync(filePath);
 
-      logger.info(`[DownloadScanner] Scan completed in ${scanDurationMs}ms (exit code ${code})`);
+      logger.info(`[DownloadScanner] Scan completed in ${scanDurationMs}ms (exit code ${code}, exists: ${fileStillExists})`);
+
+      let threatName = 'Menace détectée par Windows Defender';
+      const match = stdout.match(/Threat\s*:\s*([^\r\n]+)/i);
+      if (match && match[1]) {
+        threatName = match[1].trim();
+      }
 
       // 1. Threat detected by Defender (Exit code 2 or explicit threat strings)
       if (code === 2 || combinedOutput.includes('threats detected') || combinedOutput.includes('found threats')) {
+        if (!fileStillExists) {
+          logger.info(`[DownloadScanner] Menace neutralisée en temps réel par Defender : ${fileName}`);
+          return resolve(buildAndStoreScanResult(filePath, {
+            status: 'threat_remediated_by_defender',
+            threatName: threatName || 'Menace neutralisée par Windows Defender',
+            scanDurationMs,
+          }));
+        }
+
         const puaCheck = checkAmbiguousDefenderOutput(combinedOutput);
         if (puaCheck.isAmbiguous) {
           return resolve(buildAndStoreScanResult(filePath, {
@@ -380,17 +406,29 @@ export async function scanSingleFile(filePath: string): Promise<ScanResult> {
           }));
         }
 
-        let threatName = 'Menace détectée par Windows Defender';
-        const match = stdout.match(/Threat\s*:\s*([^\r\n]+)/i);
-        if (match && match[1]) {
-          threatName = match[1].trim();
-        }
-
         return resolve(buildAndStoreScanResult(filePath, {
           status: 'threat',
           threatName,
           scanDurationMs,
         }));
+      }
+
+      // Check if file disappeared during scan
+      if (!fileStillExists) {
+        const wasRemediated = combinedOutput.includes('threat') || combinedOutput.includes('remediated') || combinedOutput.includes('quarantine');
+        if (wasRemediated) {
+          return resolve(buildAndStoreScanResult(filePath, {
+            status: 'threat_remediated_by_defender',
+            threatName: threatName || 'Menace neutralisée par Windows Defender',
+            scanDurationMs,
+          }));
+        } else {
+          return resolve(buildAndStoreScanResult(filePath, {
+            status: 'file_missing',
+            errorReason: "Fichier supprimé ou déplacé pendant l'analyse.",
+            scanDurationMs,
+          }));
+        }
       }
 
       // 2. Strong Suspicious Signals (Double extension, spoofed system binary, or PUA warning)
@@ -451,7 +489,7 @@ export async function scanSingleFile(filePath: string): Promise<ScanResult> {
         }));
       }
 
-      // 3. Clean File (Including unsigned indie dev software/tools)
+      // 3. Clean File ("Aucune menace détectée")
       return resolve(buildAndStoreScanResult(filePath, {
         status: 'safe',
         threatName: undefined,
@@ -475,8 +513,71 @@ export async function scanSingleFile(filePath: string): Promise<ScanResult> {
   });
 }
 
-let recentScanCount = 0;
-let lastScanReset = Date.now();
+interface ScannerQueueItem {
+  filePath: string;
+  fileName: string;
+  folderPath: string;
+  enqueuedAt: number;
+  needsRecheck?: boolean;
+}
+
+const scanQueue: ScannerQueueItem[] = [];
+const deferredSet = new Set<string>();
+const MAX_QUEUE_CAPACITY = 20;
+const MAX_DEFERRED_CAPACITY = 50;
+const MAX_OVERFLOW_SAMPLE_CAPACITY = 20;
+
+let unscannedOverflowCount = 0;
+const unscannedOverflowSample: string[] = [];
+let pendingReconciliation = false;
+let isProcessingQueue = false;
+let isQueueProcessingPausedForTesting = false;
+
+export function setPauseQueueProcessingForTesting(paused: boolean) {
+  isQueueProcessingPausedForTesting = paused;
+}
+
+export function acknowledgeScannerOverflow(): void {
+  unscannedOverflowCount = 0;
+  unscannedOverflowSample.length = 0;
+  pendingReconciliation = false;
+  logger.info('[DownloadScanner] Saturation et fichiers non analysés acquittés par l\'utilisateur.');
+}
+
+export function resetScannerStateForTesting() {
+  scanQueue.length = 0;
+  deferredSet.clear();
+  unscannedOverflowCount = 0;
+  unscannedOverflowSample.length = 0;
+  pendingReconciliation = false;
+  recentScannedFiles.clear();
+  isProcessingQueue = false;
+  isQueueProcessingPausedForTesting = false;
+}
+
+export async function handleFileEventForTesting(folderPath: string, filename: string) {
+  return handleFileEvent(folderPath, filename);
+}
+
+export function getScannerQueueState() {
+  const isIncomplete = pendingReconciliation || unscannedOverflowCount > 0;
+  const isBusy = scanQueue.length > 0 || deferredSet.size > 0 || isProcessingQueue;
+  const analysisStatus: 'complete' | 'analyse_en_cours' | 'analyse_incomplete' = isIncomplete
+    ? 'analyse_incomplete'
+    : (isBusy ? 'analyse_en_cours' : 'complete');
+
+  return {
+    queueLength: scanQueue.length,
+    isProcessing: isProcessingQueue,
+    deferredCount: deferredSet.size,
+    overflowCount: unscannedOverflowCount,
+    unscannedOverflowFiles: [...unscannedOverflowSample],
+    overflowSampleCapacity: MAX_OVERFLOW_SAMPLE_CAPACITY,
+    pendingReconciliation,
+    analysisStatus,
+    isFullyScanned: scanQueue.length === 0 && deferredSet.size === 0 && unscannedOverflowCount === 0 && !pendingReconciliation,
+  };
+}
 
 /**
  * Handles a newly created or renamed file event in a watched folder
@@ -490,17 +591,8 @@ async function handleFileEvent(folderPath: string, filename: string) {
   const ext = path.extname(filename).toLowerCase();
   const lowerName = filename.toLowerCase();
 
-  // 1. Ignore temporary download chunks and installer temp files
-  if (
-    TEMP_DOWNLOAD_EXTS.has(ext) ||
-    lowerName.startsWith('.') ||
-    lowerName.startsWith('~') ||
-    lowerName.startsWith('is-') || // Inno Setup
-    lowerName.startsWith('unconfirmed ') ||
-    lowerName.includes('.msi.tmp') ||
-    lowerName.includes('.nsis') ||
-    lowerName.endsWith('.tmp')
-  ) {
+  // 1. Filtrage strict et immédiat des fichiers système (desktop.ini) et temporaires
+  if (shouldIgnoreFile(filename, currentConfig.ignoredExtensions)) {
     return;
   }
 
@@ -511,18 +603,6 @@ async function handleFileEvent(folderPath: string, filename: string) {
     return;
   }
 
-  // Rate limiter ceiling to avoid notification avalanches during installer extractions
-  const now = Date.now();
-  if (now - lastScanReset > 10000) {
-    recentScanCount = 0;
-    lastScanReset = now;
-  }
-  if (recentScanCount >= 6) {
-    logger.info(`[DownloadScanner] Plafond anti-avalanche atteint (${recentScanCount} scans/10s), fichier ignoré: ${filename}`);
-    return;
-  }
-  recentScanCount++;
-
   // 3. Ignore configured ignored extensions (.txt, .jpg, etc.) unless it is an explicit test sentinel file
   const isSecurityTestFile = lowerName.includes('eicar') || lowerName.includes('vanguard-');
   const ignored = currentConfig.ignoredExtensions.map((e) => e.toLowerCase().trim());
@@ -530,12 +610,97 @@ async function handleFileEvent(folderPath: string, filename: string) {
     return;
   }
 
-  // Prevent multiple simultaneous queues for the same file (keyed on normalized path)
+  // 4. File d'attente FIFO bornée (capacité 20)
+  const existingQueueIndex = scanQueue.findIndex((item) => path.resolve(item.filePath).toLowerCase() === normPath);
+  if (existingQueueIndex !== -1) {
+    scanQueue[existingQueueIndex].needsRecheck = true;
+    logger.info(`[DownloadScanner] Fichier déjà dans la file d'attente, marqué pour revérification : ${filename}`);
+    return;
+  }
+
+  if (scanQueue.length >= MAX_QUEUE_CAPACITY) {
+    if (deferredSet.size < MAX_DEFERRED_CAPACITY) {
+      deferredSet.add(normPath);
+      logger.warn(`[DownloadScanner] File d'attente saturée (${scanQueue.length}/${MAX_QUEUE_CAPACITY}), différé : ${filename}`);
+      notificationManager.emit({
+        category: 'scanner',
+        severity: 'warning',
+        title: "File d'attente saturée",
+        message: `Volume de téléchargements élevé : ${filename} placé en attente différée pour analyse ultérieure.`,
+        dedupKey: 'scanner-queue-overflow',
+      });
+    } else {
+      unscannedOverflowCount++;
+      pendingReconciliation = true;
+      if (unscannedOverflowSample.length < MAX_OVERFLOW_SAMPLE_CAPACITY) {
+        if (!unscannedOverflowSample.includes(normPath)) {
+          unscannedOverflowSample.push(normPath);
+        }
+      }
+      logger.error(`[DownloadScanner] Saturation critique : capacité maximale atteinte (${MAX_DEFERRED_CAPACITY} différés). Total non analysé : ${unscannedOverflowCount}. Fichier : ${filename}`);
+      notificationManager.emit({
+        category: 'scanner',
+        severity: 'critical',
+        title: "Saturation critique de la sentinelle",
+        message: `Volume de téléchargements trop rapide : ${filename} n'a pas pu être analysé en temps réel (débordement n°${unscannedOverflowCount}). Une analyse manuelle du dossier est requise.`,
+        dedupKey: 'scanner-overflow-critical',
+      });
+    }
+    return;
+  }
+
+  scanQueue.push({
+    filePath,
+    fileName: filename,
+    folderPath,
+    enqueuedAt: Date.now(),
+  });
+
+  processQueue();
+}
+
+async function processQueue() {
+  if (isProcessingQueue || isQueueProcessingPausedForTesting) return;
+  isProcessingQueue = true;
+
+  try {
+    // Boucle continue de traitement : traite la file principale et draine progressivement les éléments différés
+    while (scanQueue.length > 0 || (deferredSet.size > 0 && scanQueue.length < MAX_QUEUE_CAPACITY)) {
+      if (scanQueue.length === 0 && deferredSet.size > 0) {
+        while (deferredSet.size > 0 && scanQueue.length < MAX_QUEUE_CAPACITY) {
+          const nextVal = deferredSet.values().next().value;
+          if (!nextVal) break;
+          deferredSet.delete(nextVal);
+          if (fs.existsSync(nextVal)) {
+            scanQueue.push({
+              filePath: nextVal,
+              fileName: path.basename(nextVal),
+              folderPath: path.dirname(nextVal),
+              enqueuedAt: Date.now(),
+            });
+          }
+        }
+      }
+      if (scanQueue.length === 0) break;
+      const item = scanQueue.shift()!;
+      await processScanItem(item);
+    }
+  } finally {
+    isProcessingQueue = false;
+  }
+}
+
+async function processScanItem(item: ScannerQueueItem) {
+  const { filePath, fileName: filename } = item;
+  const normPath = path.resolve(filePath).toLowerCase();
+  const ext = path.extname(filename).toLowerCase();
+
+  // Prevent multiple simultaneous queues for the same file
   if (pendingStabilization.has(normPath)) return;
   pendingStabilization.add(normPath);
 
   try {
-    // 4. Wait for file write stabilization
+    // 1. Wait for file write stabilization
     const stabilized = await waitForFileStabilization(filePath);
     if (!stabilized || !fs.existsSync(filePath)) {
       return;
@@ -547,7 +712,7 @@ async function handleFileEvent(folderPath: string, filename: string) {
       return;
     }
 
-    // 5. Check cache by path + mtime + size
+    // 2. Check cache by path + mtime + size
     let stat: fs.Stats;
     try {
       stat = fs.statSync(filePath);
@@ -563,7 +728,7 @@ async function handleFileEvent(folderPath: string, filename: string) {
       return;
     }
 
-    // 6. Notify renderer of scan start
+    // 3. Notify renderer of scan start
     if (activeMainWindow && !activeMainWindow.isDestroyed()) {
       activeMainWindow.webContents.send('download-scanner:scan-start', {
         filePath,
@@ -573,7 +738,7 @@ async function handleFileEvent(folderPath: string, filename: string) {
       });
     }
 
-    // 7. Open Avast-style scan window showing "Analyse en cours..." before execution
+    // 4. Open Avast-style scan window showing "Analyse en cours..." before execution
     if (currentConfig.discreteMode !== 'notification') {
       try {
         showAvastStyleDownloadScan({
@@ -588,7 +753,7 @@ async function handleFileEvent(folderPath: string, filename: string) {
       }
     }
 
-    // 8. Execute targeted scan
+    // 5. Execute targeted scan
     const result = await scanSingleFile(filePath);
 
     // Save in cache and record dedup timestamp
@@ -603,7 +768,45 @@ async function handleFileEvent(folderPath: string, filename: string) {
       }
     }
 
-    // Show Avast-style desktop popup window with final status (Fichier sain / Menace)
+    // 6. Central Notification Dispatcher integration
+    if (result.status === 'threat') {
+      notificationManager.emit({
+        category: 'scanner',
+        severity: 'alert',
+        title: 'Menace téléchargement bloquée',
+        message: `Fichier malveillant détecté : ${result.threatName || filename}`,
+        dedupKey: `threat-${normPath}`,
+        actionTarget: { tab: 'security' },
+      });
+    } else if (result.status === 'threat_remediated_by_defender') {
+      notificationManager.emit({
+        category: 'scanner',
+        severity: 'info',
+        title: 'Menace neutralisée par Windows Defender',
+        message: `Composant malveillant supprimé ou isolé par Defender : ${result.threatName || filename}`,
+        dedupKey: `remediated-${normPath}`,
+        actionTarget: { tab: 'security' },
+      });
+    } else if (result.status === 'suspect') {
+      notificationManager.emit({
+        category: 'scanner',
+        severity: 'warning',
+        title: 'Téléchargement suspect',
+        message: `Fichier suspect non signé : ${filename} (${result.threatName || 'Anomalie'})`,
+        dedupKey: `suspect-${normPath}`,
+        actionTarget: { tab: 'security' },
+      });
+    } else if (result.status === 'safe' && currentConfig.showModalEvenIfSafe) {
+      notificationManager.emit({
+        category: 'scanner',
+        severity: 'info',
+        title: 'Téléchargement vérifié',
+        message: `Aucune menace détectée : ${filename}`,
+        dedupKey: `safe-${normPath}`,
+      });
+    }
+
+    // 7. Show Avast-style desktop popup window with final status
     if (currentConfig.discreteMode === 'notification') {
       if (result.status === 'threat' || result.status === 'suspect') {
         showAvastStyleToast({
@@ -619,6 +822,7 @@ async function handleFileEvent(folderPath: string, filename: string) {
           fileName: filename,
           filePath,
           status: result.status === 'threat' ? 'threat' : result.status === 'suspect' ? 'suspect' : 'safe',
+          scanId: result.scanId,
           threatName: result.threatName,
           isUnsigned: result.isUnsigned,
           discreteMode: currentConfig.discreteMode || 'window',
@@ -629,11 +833,12 @@ async function handleFileEvent(folderPath: string, filename: string) {
       }
     }
 
-    // 9. Send scan result to renderer
+    // 8. Send scan result to renderer
     if (activeMainWindow && !activeMainWindow.isDestroyed()) {
       const shouldDisplayModal =
         result.status === 'threat' ||
         result.status === 'suspect' ||
+        result.status === 'threat_remediated_by_defender' ||
         currentConfig.showModalEvenIfSafe;
 
       activeMainWindow.webContents.send('download-scanner:scan-complete', {
@@ -642,19 +847,11 @@ async function handleFileEvent(folderPath: string, filename: string) {
         soundEnabled: currentConfig.soundEnabled,
       });
 
-      // Auto-unblock Windows Zone.Identifier ADS for verified clean files
-      if (result.status === 'safe') {
-        try {
-          const adsPath = `${filePath}:Zone.Identifier`;
-          if (fs.existsSync(adsPath)) {
-            fs.unlinkSync(adsPath);
-          }
-        } catch {}
-      }
+      // REMARQUE SÉCURITÉ : La suppression automatique du flux Zone.Identifier
+      // a été FORMELLEMENT SUPPRIMÉE afin de préserver les protections natives de Windows
+      // (SmartScreen et traçabilité de provenance Internet).
     }
   } finally {
-    // Retain in pendingStabilization for 5000ms so post-scan ADS removal or
-    // browser handle closure cannot trigger a secondary redundant scan
     setTimeout(() => {
       pendingStabilization.delete(normPath);
     }, 5000);
@@ -664,6 +861,16 @@ async function handleFileEvent(folderPath: string, filename: string) {
 /**
  * Initializes or updates directory watchers
  */
+export function stopDownloadScanner(): void {
+  for (const [dir, watcher] of activeWatchers.entries()) {
+    try {
+      watcher.close();
+    } catch {}
+    activeWatchers.delete(dir);
+  }
+  logger.info('[DownloadScanner] Tous les observateurs de répertoires ont été fermés.');
+}
+
 function updateWatchers() {
   // Close existing watchers
   for (const [dir, watcher] of activeWatchers.entries()) {
@@ -758,7 +965,7 @@ function setupUsbSentinel() {
     drives.forEach((d) => knownRemovableDrives.add(d.toUpperCase()));
   });
 
-  // Check every 12 seconds with minimal resource usage
+  // Check every 15 seconds with minimal resource usage
   usbWatchInterval = setInterval(async () => {
     if (!currentConfig.usbScanEnabled || !currentConfig.enabled) return;
     try {
@@ -772,19 +979,20 @@ function setupUsbSentinel() {
         .filter(Boolean);
 
       for (const drive of currentDrives) {
+        if (!fs.existsSync(drive)) continue;
+
         if (!knownRemovableDrives.has(drive)) {
           knownRemovableDrives.add(drive);
           logger.info(`[UsbSentinel] New USB drive connected: ${drive}`);
 
-          // Trigger discreet notification
-          if (activeMainWindow && !activeMainWindow.isDestroyed()) {
-            activeMainWindow.webContents.send('notification:trigger', {
-              type: 'info',
-              title: '🔌 Support amovible connecté',
-              message: `Lecteur ${drive} détecté. Analyse passive de sécurité en cours...`,
-              critical: false,
-            });
-          }
+          // Trigger discreet central notification
+          notificationManager.emit({
+            category: 'scanner',
+            severity: 'info',
+            title: '🔌 Support amovible connecté',
+            message: `Lecteur ${drive} détecté. Analyse passive de sécurité en cours...`,
+            dedupKey: `usb-sentinel-${drive}`,
+          });
 
           // Scan root for autorun.inf or suspicious executables
           const autorunPath = path.join(drive, 'autorun.inf');
@@ -810,7 +1018,7 @@ function setupUsbSentinel() {
         }
       }
     } catch {}
-  }, 12000);
+  }, 15000);
 }
 
 export function setupDownloadScannerIPC(win: BrowserWindow) {
@@ -856,6 +1064,17 @@ export function setupDownloadScannerIPC(win: BrowserWindow) {
     }
     const result = await scanSingleFile(targetPath);
     return { success: true, result };
+  });
+
+  // ── Get Scanner Queue State (Phase 1 Observable Queue) ────────────────────
+  ipcMain.handle('download-scanner:get-queue-state', () => {
+    return { success: true, ...getScannerQueueState() };
+  });
+
+  // ── Acknowledge Scanner Queue Overflow ────────────────────────────────────
+  ipcMain.handle('download-scanner:acknowledge-overflow', () => {
+    acknowledgeScannerOverflow();
+    return { success: true, ...getScannerQueueState() };
   });
 
   // ── Action: Delete File via scanId (Requires explicit confirmation) ──────

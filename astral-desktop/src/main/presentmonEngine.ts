@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ASTRAL VANGUARD v3.0 - INTÉGRATION OFFICIELLE PRESENTMON & MÉTRIQUES HUD (LOT 2 / PHASE 12)
  *
  * Moteur de capture et télémétrie de performance en jeu :
@@ -15,7 +15,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import cp from 'node:child_process';
-import { logger } from './logger';
+import { logger } from './logger.ts';
 
 export type PresentMonStatus =
   | 'Jeu détecté'
@@ -40,6 +40,7 @@ export interface PresentMonMetrics {
 
 export class PresentMonEngine {
   private customBinaryPath: string | null = null;
+  private cachedVersion: { binPath: string; version: string } | null = null;
   private captureProcess: cp.ChildProcess | null = null;
   private isCapturing = false;
   private currentStatus: PresentMonStatus = 'Indisponible';
@@ -68,8 +69,8 @@ export class PresentMonEngine {
       'C:\\Program Files\\Intel\\PresentMon\\PresentMon-x64.exe',
       'C:\\Program Files\\Intel\\PresentMon\\PresentMon.exe',
       'C:\\Program Files (x86)\\Intel\\PresentMon\\PresentMon-x64.exe',
-      path.resolve(__dirname, '../../../bin/PresentMon-x64.exe'),
-      path.resolve(__dirname, '../../bin/PresentMon-x64.exe'),
+      path.resolve(typeof __dirname !== 'undefined' ? __dirname : process.cwd(), '../../../bin/PresentMon-x64.exe'),
+      path.resolve(typeof __dirname !== 'undefined' ? __dirname : process.cwd(), '../../bin/PresentMon-x64.exe'),
     ];
 
     for (const p of candidatePaths) {
@@ -93,10 +94,38 @@ export class PresentMonEngine {
     license: string;
   } {
     const bin = this.findPresentMonBinary();
+    if (!bin) {
+      return {
+        isAvailable: false,
+        executablePath: null,
+        version: 'Non installé',
+        license: 'Intel PresentMon - BSD-3-Clause / MIT License. Découplé.',
+      };
+    }
+
+    if (this.cachedVersion && this.cachedVersion.binPath === bin) {
+      return {
+        isAvailable: true,
+        executablePath: bin,
+        version: this.cachedVersion.version,
+        license: 'Intel PresentMon - BSD-3-Clause / MIT License. Découplé.',
+      };
+    }
+
+    let detectedVersion = 'installé (version non déterminée)';
+    try {
+      const out = cp.execFileSync(bin, ['--version'], { timeout: 3000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      const match = /(\d+\.\d+[\.\d]*)/.exec(out);
+      if (match) detectedVersion = match[1];
+    } catch {
+      detectedVersion = 'installé (version non déterminée)';
+    }
+
+    this.cachedVersion = { binPath: bin, version: detectedVersion };
     return {
-      isAvailable: Boolean(bin),
+      isAvailable: true,
       executablePath: bin,
-      version: bin ? '2.0.0-official' : 'Non installé',
+      version: detectedVersion,
       license: 'Intel PresentMon - BSD-3-Clause / MIT License. Découplé.',
     };
   }

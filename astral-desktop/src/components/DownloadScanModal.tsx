@@ -13,7 +13,7 @@ interface ScanData {
   fileName:        string;
   sizeBytes:       number;
   ext:             string;
-  status:          'scanning' | 'safe' | 'suspect' | 'threat';
+  status:          'scanning' | 'safe' | 'suspect' | 'threat' | 'threat_remediated_by_defender' | 'file_missing';
   threatName?:     string;
   isUnsigned?:     boolean;
   scanDurationMs?: number;
@@ -79,9 +79,9 @@ export default function DownloadScanModal() {
     };
   }, []);
 
-  // Auto-dismiss after 3.5s when safe
+  // Auto-dismiss after 3.5s when safe or already remediated by Defender
   useEffect(() => {
-    if (!scan || scan.status !== 'safe') return;
+    if (!scan || (scan.status !== 'safe' && scan.status !== 'threat_remediated_by_defender')) return;
     const dur = 3500;
     const step = 50;
     let elapsed = 0;
@@ -103,8 +103,8 @@ export default function DownloadScanModal() {
     try {
       const res = await api.deleteScannedFile(scan.id, true);
       if (res?.success) {
-        setActionNotice('Fichier supprimé définitivement.');
-        setTimeout(() => setScan(null), 1800);
+        setActionNotice(res.message || 'Fichier supprimé définitivement.');
+        setTimeout(() => setScan(null), 2200);
       } else {
         setActionNotice(res?.error || 'Échec de la suppression.');
       }
@@ -116,10 +116,12 @@ export default function DownloadScanModal() {
   const handleQuarantine = async () => {
     if (!api || !scan) return;
     try {
-      const res = await api.quarantineFile?.(scan.id);
+      const res = api.quarantineScannedFile
+        ? await api.quarantineScannedFile(scan.id)
+        : await api.quarantineFile?.(scan.id);
       if (res?.success) {
-        setActionNotice('Fichier déplacé en zone de quarantaine.');
-        setTimeout(() => setScan(null), 1800);
+        setActionNotice(res.message || "Déplacé vers l'espace d'isolement Vanguard.");
+        setTimeout(() => setScan(null), 2200);
       } else {
         setActionNotice(res?.error || 'Échec de mise en quarantaine.');
       }
@@ -138,10 +140,24 @@ export default function DownloadScanModal() {
     },
     safe: {
       icon:    <ShieldCheck size={18} style={{ color: 'var(--ok)' }} />,
-      label:   'Fichier sain & certifié',
+      label:   'Aucune menace détectée',
       color:   'var(--ok)',
       bg:      'rgba(104, 184, 148, 0.08)',
       border:  'rgba(104, 184, 148, 0.20)',
+    },
+    threat_remediated_by_defender: {
+      icon:    <CheckCircle2 size={18} style={{ color: 'var(--ok)' }} />,
+      label:   'Menace neutralisée par Defender',
+      color:   'var(--ok)',
+      bg:      'rgba(104, 184, 148, 0.08)',
+      border:  'rgba(104, 184, 148, 0.20)',
+    },
+    file_missing: {
+      icon:    <AlertTriangle size={18} style={{ color: 'var(--warn)' }} />,
+      label:   'Fichier introuvable',
+      color:   'var(--warn)',
+      bg:      'rgba(214, 173, 104, 0.08)',
+      border:  'rgba(214, 173, 104, 0.20)',
     },
     suspect: {
       icon:    <AlertTriangle size={18} style={{ color: 'var(--warn)' }} />,

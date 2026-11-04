@@ -14,8 +14,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import cp from 'node:child_process';
-import { runPowerShell } from './psHelper';
-import { logger } from './logger';
+import { runPowerShell } from './psHelper.ts';
+import { logger } from './logger.ts';
 
 export interface DefenderStatus {
   engineName: 'Moteur Microsoft Defender';

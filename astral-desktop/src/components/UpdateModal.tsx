@@ -65,6 +65,13 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
     }
   };
 
+  const handleDefer = async () => {
+    if (api && typeof api.deferUpdate === 'function') {
+      await api.deferUpdate();
+    }
+    onClose();
+  };
+
   const handleInstallNow = async () => {
     if (gamingActive) {
       alert('Une session de jeu est en cours. L\'installation s\'effectuera après la fermeture de votre partie.');
@@ -397,8 +404,8 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
                 background: 'var(--bg)',
               }}
             >
-              <button className="btn s" onClick={onClose}>
-                Plus tard
+              <button className="btn s" onClick={isDownloaded ? handleDefer : onClose}>
+                {isDownloaded ? 'Reporter l\'installation' : 'Plus tard'}
               </button>
 
               {!isDownloaded ? (

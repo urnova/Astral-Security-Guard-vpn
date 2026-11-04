@@ -1,352 +1,351 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import https from 'https';
-import http from 'http';
+import dns from 'dns';
 import { runPowerShell } from './psHelper';
 import { logger } from './logger';
 import { detectThirdPartyVpn } from './vpn';
 import { executePrivilegedAction } from './privilegedHelper';
-import { measureNativePing } from './nativePing';
+import { measureTcpProbe } from './nativePing';
+import { loadPreferences, savePreferences } from './profile';
+import { SpeedtestExecutor } from './speedtestEngine';
 
-
-let activeSpeedtestCancelled = false;
+const speedtestExecutor = new SpeedtestExecutor();
+let currentRunToken = 0;
 
 export function setupNetworkIPC(win: BrowserWindow) {
+  // ── Annulation immédiate du Speedtest ──────────────────────────────────────
   ipcMain.handle('network:cancel-speedtest', () => {
-    activeSpeedtestCancelled = true;
-    logger.info('[Network] Speedtest annulé par l\'utilisateur');
+    currentRunToken++;
+    speedtestExecutor.cancel();
+    logger.info('[Network] Speedtest annulé par l\'utilisateur et sockets fermés.');
+    try {
+      win.webContents.send('network-event', { type: 'speedtest-cancelled' });
+    } catch {}
     return { success: true };
   });
 
-  // ── High-Fidelity Multi-Endpoint Speed Test (Cloudflare + OVH + Bouygues) ──
+  // ── High-Fidelity Speed Test via SpeedtestExecutor ─────────────────────────
   ipcMain.handle('network:speedtest', async () => {
-    activeSpeedtestCancelled = false;
-    logger.info('Démarrage du Speed Test multi-source haute fidélité...');
-    win.webContents.send('network-event', { type: 'speedtest-start' });
-
-    try {
-      // 1. Instant Latency & Jitter phase via fast TCP handshake (< 250ms)
-      let pingMs = 14;
-      let jitterMs = 1.2;
-
-      try {
-        const parsedPing = await measureNativePing('1.1.1.1', 443, 250);
-        if (parsedPing > 0) {
-          pingMs = parsedPing;
-          jitterMs = Number((Math.min(5, Math.abs(parsedPing - 12) * 0.15) + 0.6).toFixed(1));
-        }
-      } catch {}
-
-      win.webContents.send('network-event', {
-        type: 'speedtest-progress',
-        phase: 'ping',
-        ping: pingMs,
-        jitter: jitterMs,
-        progress: 10,
-      });
-
-      // 2. High-Capacity Multi-Stream Download Test with Central 200ms Sampler
-      const dlDurationMs = 5500;
-      const dlStartTime = performance.now();
-      let totalBytesDown = 0;
-      let peakDownloadMbps = 0;
-      let currentDlMbps = 0;
-
-      const dlAgent = new https.Agent({ keepAlive: true, maxSockets: 16 });
-
-      const downloadMirrors = [
-        'https://speed.cloudflare.com/__down?bytes=50000000',
-        'https://proof.ovh.net/files/100Mb.dat',
-        'https://proof.ovh.net/files/1Gb.dat',
-        'https://speed.cloudflare.com/__down?bytes=25000000',
-      ];
-
-      // Central Decoupled Sampler: computes exact throughput every 200ms with zero race conditions
-      let lastDlSampleTime = dlStartTime;
-      let lastDlSampleBytes = 0;
-      const dlSampler = setInterval(() => {
-        if (activeSpeedtestCancelled) return;
-        const now = performance.now();
-        const elapsedSec = (now - lastDlSampleTime) / 1000;
-        if (elapsedSec > 0.05) {
-          const deltaBytes = totalBytesDown - lastDlSampleBytes;
-          const instantMbps = Math.round((deltaBytes * 8) / (elapsedSec * 1000000));
-          currentDlMbps = Math.round(currentDlMbps * 0.25 + instantMbps * 0.75);
-          if (currentDlMbps > peakDownloadMbps) peakDownloadMbps = currentDlMbps;
-
-          const totalElapsed = now - dlStartTime;
-          const progress = Math.min(99, Math.round((totalElapsed / dlDurationMs) * 100));
-
-          win.webContents.send('network-event', {
-            type: 'speedtest-progress',
-            phase: 'download',
-            currentMbps: currentDlMbps,
-            progress,
-            ping: pingMs,
-            jitter: jitterMs,
-          });
-
-          lastDlSampleTime = now;
-          lastDlSampleBytes = totalBytesDown;
-        }
-      }, 200);
-
-      const runDownloadWorker = async (workerIndex: number) => {
-        let mirrorIdx = workerIndex % downloadMirrors.length;
-
-        while (!activeSpeedtestCancelled && (performance.now() - dlStartTime) < dlDurationMs) {
-          const targetUrl = downloadMirrors[mirrorIdx % downloadMirrors.length];
-          mirrorIdx++;
-
-          await new Promise<void>((resolve) => {
-            try {
-              const req = https.get(
-                targetUrl,
-                { agent: dlAgent, timeout: 5000 },
-                (res) => {
-                  if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
-                    res.resume();
-                    return resolve();
-                  }
-
-                  res.on('data', (chunk) => {
-                    totalBytesDown += chunk.length;
-                    if (activeSpeedtestCancelled || (performance.now() - dlStartTime) >= dlDurationMs) {
-                      req.destroy();
-                      resolve();
-                    }
-                  });
-                  res.on('end', () => resolve());
-                  res.on('error', () => resolve());
-                }
-              );
-              req.on('error', () => resolve());
-              req.on('timeout', () => { req.destroy(); resolve(); });
-            } catch {
-              resolve();
-            }
-          });
-        }
-      };
-
-      // 4 concurrent download workers
-      const dlWorkers = [
-        runDownloadWorker(0),
-        runDownloadWorker(1),
-        runDownloadWorker(2),
-        runDownloadWorker(3),
-      ];
-
-      await Promise.race([
-        Promise.all(dlWorkers),
-        new Promise(r => setTimeout(r, dlDurationMs + 500)),
-      ]);
-
-      clearInterval(dlSampler);
-
-      const dlElapsedTotal = (performance.now() - dlStartTime) / 1000;
-      const avgDlMbps = totalBytesDown > 0 && dlElapsedTotal > 0
-        ? Math.round((totalBytesDown * 8) / (dlElapsedTotal * 1000000))
-        : 0;
-
-      let finalDlMbps = Math.max(avgDlMbps, Math.round(peakDownloadMbps * 0.9));
-      if (finalDlMbps <= 0) {
-        finalDlMbps = peakDownloadMbps > 0 ? peakDownloadMbps : 100;
-      }
-
-      // Broadcast finalized download result so renderer locks the reception metric immediately
-      win.webContents.send('network-event', {
-        type: 'speedtest-progress',
-        phase: 'download-complete',
-        downloadMbps: finalDlMbps,
-        finalDownMbps: finalDlMbps,
-        currentMbps: finalDlMbps,
-        progress: 100,
-        ping: pingMs,
-        jitter: jitterMs,
-      });
-
-      // 3. Upload Test (~4.5s sustained with multi streams and decoupled sampler)
-      const ulDurationMs = 4500;
-      const ulStartTime = performance.now();
-      let totalBytesUp = 0;
-      let peakUploadMbps = 0;
-      let currentUlMbps = 0;
-
-      const uploadBuffer = Buffer.alloc(1024 * 1024); // 1MB buffer
-
-      let lastUlSampleTime = ulStartTime;
-      let lastUlSampleBytes = 0;
-      const ulSampler = setInterval(() => {
-        if (activeSpeedtestCancelled) return;
-        const now = performance.now();
-        const elapsedSec = (now - lastUlSampleTime) / 1000;
-        if (elapsedSec > 0.05) {
-          const deltaBytes = totalBytesUp - lastUlSampleBytes;
-          const instantMbps = Math.round((deltaBytes * 8) / (elapsedSec * 1000000));
-          currentUlMbps = Math.round(currentUlMbps * 0.3 + instantMbps * 0.7);
-          if (currentUlMbps > peakUploadMbps) peakUploadMbps = currentUlMbps;
-
-          const totalElapsed = now - ulStartTime;
-          const progress = Math.min(99, Math.round((totalElapsed / ulDurationMs) * 100));
-
-          win.webContents.send('network-event', {
-            type: 'speedtest-progress',
-            phase: 'upload',
-            currentMbps: currentUlMbps,
-            finalDownMbps: finalDlMbps,
-            progress,
-            ping: pingMs,
-            jitter: jitterMs,
-          });
-
-          lastUlSampleTime = now;
-          lastUlSampleBytes = totalBytesUp;
-        }
-      }, 200);
-
-      const runUploadWorker = async () => {
-        while (!activeSpeedtestCancelled && (performance.now() - ulStartTime) < ulDurationMs) {
-          await new Promise<void>((resolve) => {
-            try {
-              const req = https.request(
-                'https://speed.cloudflare.com/__up',
-                {
-                  method: 'POST',
-                  agent: dlAgent,
-                  timeout: 3500,
-                  headers: {
-                    'Content-Type': 'application/octet-stream',
-                    'Content-Length': uploadBuffer.length,
-                  },
-                },
-                (res) => {
-                  res.resume();
-                  res.on('end', () => {
-                    totalBytesUp += uploadBuffer.length;
-                    resolve();
-                  });
-                  res.on('error', () => resolve());
-                }
-              );
-              req.on('error', () => resolve());
-              req.on('timeout', () => { req.destroy(); resolve(); });
-              req.write(uploadBuffer);
-              req.end();
-            } catch {
-              resolve();
-            }
-          });
-        }
-      };
-
-      const ulWorkers = [
-        runUploadWorker(),
-        runUploadWorker(),
-        runUploadWorker(),
-        runUploadWorker(),
-      ];
-
-      await Promise.race([
-        Promise.all(ulWorkers),
-        new Promise(r => setTimeout(r, ulDurationMs + 500)),
-      ]);
-
-      clearInterval(ulSampler);
-
-      const ulElapsedTotal = (performance.now() - ulStartTime) / 1000;
-      const avgUlMbps = totalBytesUp > 0 && ulElapsedTotal > 0
-        ? Math.round((totalBytesUp * 8) / (ulElapsedTotal * 1000000))
-        : 0;
-
-      let finalUlMbps = Math.max(avgUlMbps, Math.round(peakUploadMbps * 0.9));
-      if (finalUlMbps <= 0) {
-        finalUlMbps = Math.round(finalDlMbps * 0.4);
-      }
-
-      const resultPayload = {
-        downloadMbps: finalDlMbps,
-        uploadMbps: finalUlMbps,
-        pingMs,
-        jitterMs,
-        bytesTransferredMB: Number(((totalBytesDown + totalBytesUp) / (1024 * 1024)).toFixed(1)),
-        timestamp: new Date().toLocaleTimeString('fr-FR'),
-      };
-
-      win.webContents.send('network-event', {
-        type: 'speedtest-complete',
-        result: resultPayload,
-      });
-
-      return {
-        success: true,
-        result: resultPayload,
-        down: finalDlMbps,
-        up: finalUlMbps,
-        ping: pingMs,
-        jitter: jitterMs,
-      };
-    } catch (error: any) {
-      logger.error('Erreur lors du Speed Test', error.message);
-      win.webContents.send('network-event', {
-        type: 'speedtest-error',
-        error: error.message || 'Test de débit indisponible.',
-      });
+    if (speedtestExecutor.getRunning()) {
       return {
         success: false,
-        error: error.message || 'Test de débit indisponible.',
+        error: 'Un test de débit est déjà en cours d\'exécution.',
         result: null,
+      };
+    }
+
+    const runToken = ++currentRunToken;
+    logger.info('[Network] Démarrage du Speed Test multi-flux via exécuteur...');
+    try {
+      win.webContents.send('network-event', { type: 'speedtest-start' });
+    } catch {}
+
+    const outcome = await speedtestExecutor.run({
+      onProgress: (event) => {
+        // Ignorer les événements d'une exécution obsolète ou annulée
+        if (runToken !== currentRunToken) return;
+        try {
+          win.webContents.send('network-event', event);
+        } catch {}
+      },
+      checkCancelled: () => runToken !== currentRunToken,
+    });
+
+    if (runToken !== currentRunToken || outcome.cancelled) {
+      try {
+        win.webContents.send('network-event', { type: 'speedtest-cancelled' });
+      } catch {}
+      return { success: false, cancelled: true, result: null };
+    }
+
+    if (!outcome.success || !outcome.result) {
+      try {
+        win.webContents.send('network-event', {
+          type: 'speedtest-error',
+          error: outcome.error || 'Test de débit indisponible.',
+        });
+      } catch {}
+      return {
+        success: false,
+        error: outcome.error || 'Test de débit indisponible.',
+        result: null,
+      };
+    }
+
+    // Sauvegarde du résultat réel dans le profil utilisateur uniquement si non annulé
+    try {
+      savePreferences({ lastSpeedResult: outcome.result });
+    } catch (err: any) {
+      logger.warn('[Network] Erreur sauvegarde lastSpeedResult:', err.message);
+    }
+
+    try {
+      win.webContents.send('network-event', {
+        type: 'speedtest-complete',
+        result: outcome.result,
+      });
+    } catch {}
+
+    return outcome;
+  });
+
+  // ── TCP Stack Status & Telemetry (Sans aucune valeur inventée) ─────────────
+  ipcMain.handle('network:get-stack-status', async () => {
+    try {
+      const script = `
+        $tcp = netsh int tcp show global
+        $dnsCount = (Get-DnsClientCache -ErrorAction SilentlyContinue | Measure-Object).Count
+        $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        [PSCustomObject]@{
+          autotuning = if ($tcp -match 'Receive Window Auto-Tuning Level\\s*:\\s*(.+)') { $matches[1].Trim() } else { $null }
+          rss = if ($tcp -match 'Receive-Side Scaling State\\s*:\\s*(.+)') { $matches[1].Trim() } else { $null }
+          heuristics = if ($tcp -match 'RFC 1323 Timestamps\\s*:\\s*(.+)') { $matches[1].Trim() } else { $null }
+          dnsCacheEntries = $dnsCount
+          isElevated = $isAdmin
+        } | ConvertTo-Json -Compress
+      `;
+      const res = await runPowerShell(script, { asJson: true, timeout: 4000 });
+      if (res.success && res.data) {
+        return {
+          success: true,
+          stack: res.data,
+        };
+      }
+      return {
+        success: false,
+        error: res.error || 'Impossible de lire les paramètres de la pile TCP/IP Windows.',
+        stack: null,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || 'Échec de la commande de diagnostic TCP/IP.',
+        stack: null,
       };
     }
   });
 
-  // ── Network Optimization (TCP stack tuning, DNS flush, QoS) ────────────────
+  // ── Network Optimization (Sauvegarde préalable, vérification élévation) ────
   ipcMain.handle('network:optimize', async () => {
-    logger.info('[Network] Exécution des optimisations réseau (Stack TCP/IP, QoS, DNS)...');
+    logger.info('[Network] Exécution des optimisations réseau (Stack TCP/IP, DNS)...');
     try {
-      const script = `
-        netsh int tcp set global autotuninglevel=normal 2>$null | Out-Null
-        netsh int tcp set global rss=enabled 2>$null | Out-Null
-        netsh int tcp set heuristics disabled 2>$null | Out-Null
-        Clear-DnsClientCache -ErrorAction SilentlyContinue
-        ipconfig /flushdns | Out-Null
-        [PSCustomObject]@{ optimized = $true } | ConvertTo-Json -Compress
+      const readScript = `
+        $tcp = netsh int tcp show global
+        $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        [PSCustomObject]@{
+          autotuning = if ($tcp -match 'Receive Window Auto-Tuning Level\\s*:\\s*(.+)') { $matches[1].Trim() } else { 'normal' }
+          rss = if ($tcp -match 'Receive-Side Scaling State\\s*:\\s*(.+)') { $matches[1].Trim() } else { 'enabled' }
+          heuristics = if ($tcp -match 'RFC 1323 Timestamps\\s*:\\s*(.+)') { $matches[1].Trim() } else { 'disabled' }
+          isElevated = $isAdmin
+        } | ConvertTo-Json -Compress
       `;
-      const res = await runPowerShell(script, { asJson: true, timeout: 5000 });
-      return {
-        success: true,
-        message: 'Optimisation réseau réussie : pile TCP/IP calibrée et cache DNS purgé.',
-      };
+      const curRes = await runPowerShell(readScript, { asJson: true, timeout: 4000 });
+      const curData = curRes.data || {};
+
+      if (!curData.isElevated) {
+        return {
+          success: false,
+          error: 'Élévation administrateur requise pour calibrer les paramètres TCP/IP globaux Windows.',
+        };
+      }
+
+      const currentPrefs = loadPreferences();
+      if (!currentPrefs.network?.tcpBackup) {
+        savePreferences({
+          network: {
+            ...(currentPrefs.network || {}),
+            tcpBackup: {
+              autotuning: curData.autotuning || 'normal',
+              rss: curData.rss || 'enabled',
+              heuristics: curData.heuristics || 'disabled',
+              backedUpAt: new Date().toISOString(),
+            },
+          },
+        });
+        logger.info('[Network] Sauvegarde de la pile TCP/IP créée dans user-profile.json.');
+      }
+
+      const applyScript = `
+        $errs = @()
+        try { netsh int tcp set global autotuninglevel=normal } catch { $errs += $_.Exception.Message }
+        try { netsh int tcp set global rss=enabled } catch { $errs += $_.Exception.Message }
+        try { netsh int tcp set heuristics disabled } catch { $errs += $_.Exception.Message }
+        try { Clear-DnsClientCache -ErrorAction SilentlyContinue } catch {}
+        try { ipconfig /flushdns | Out-Null } catch {}
+        [PSCustomObject]@{
+          success = ($errs.Count -eq 0)
+          errors = $errs
+        } | ConvertTo-Json -Compress
+      `;
+      const res = await runPowerShell(applyScript, { asJson: true, timeout: 6000 });
+      if (res.data?.success) {
+        try {
+          const pCurrent = loadPreferences();
+          savePreferences({
+            network: {
+              ...(pCurrent.network || {}),
+              lastAppliedTcp: {
+                autotuning: 'normal',
+                rss: 'enabled',
+                heuristics: 'disabled',
+                appliedAt: new Date().toISOString(),
+              },
+            },
+          });
+        } catch {}
+        return {
+          success: true,
+          message: 'Optimisation réseau réussie : autotuning normal, RSS activé, cache DNS purgé.',
+        };
+      } else {
+        return {
+          success: false,
+          error: res.data?.errors?.join(', ') || res.error || 'Erreur lors du calibrage TCP.',
+        };
+      }
     } catch (err: any) {
       logger.warn('[Network] Erreur lors de l\'optimisation réseau :', err.message);
       return { success: false, error: err.message };
     }
   });
 
-  // ── TCP Stack Status & Telemetry ───────────────────────────────────────────
-  ipcMain.handle('network:get-stack-status', async () => {
+  // ── Restauration de la pile TCP/IP d'origine (Protection anti-conflit) ──────
+  ipcMain.handle('network:restore-tcp-stack', async (_, opts?: { force?: boolean }) => {
+    logger.info('[Network] Restauration de la pile TCP/IP d\'origine...');
     try {
-      const script = `
+      const prefs = loadPreferences();
+      const backup = prefs.network?.tcpBackup;
+
+      if (!backup) {
+        return {
+          success: false,
+          error: 'Aucune sauvegarde TCP/IP trouvée dans le profil.',
+        };
+      }
+
+      // Lecture préalable de l'état actuel pour détecter une modification extérieure
+      const detectCurScript = `
         $tcp = netsh int tcp show global
-        $dnsCount = (Get-DnsClientCache -ErrorAction SilentlyContinue | Measure-Object).Count
+        $autotuning = if ($tcp -match 'Receive Window Auto-Tuning Level\\s*:\\s*(\\w+)') { $matches[1].ToLower() } else { 'unknown' }
+        $rss = if ($tcp -match 'Receive-Side Scaling State\\s*:\\s*(\\w+)') { $matches[1].ToLower() } else { 'unknown' }
+        $heuristics = if ($tcp -match 'RFC 1323 Timestamps\\s*:\\s*(\\w+)') { $matches[1].ToLower() } else { 'unknown' }
+        [PSCustomObject]@{ autotuning = $autotuning; rss = $rss; heuristics = $heuristics } | ConvertTo-Json -Compress
+      `;
+      const curTcpRes = await runPowerShell(detectCurScript, { asJson: true, timeout: 3500 });
+      const curTcpData = curTcpRes.data;
+
+      if (!curTcpData || curTcpData.autotuning === 'unknown') {
+        if (!opts?.force) {
+          return {
+            success: false,
+            conflict: true,
+            reason: 'read_failed',
+            message: 'Impossible de lire les paramètres TCP/IP actuels. Restauration suspendue par précaution sans confirmation explicite.',
+          };
+        }
+      } else {
+        const lastApplied = prefs.network?.lastAppliedTcp;
+        if (lastApplied && !opts?.force) {
+          const hasConflict = curTcpData.autotuning !== lastApplied.autotuning ||
+            curTcpData.rss !== lastApplied.rss ||
+            curTcpData.heuristics !== lastApplied.heuristics;
+
+          if (hasConflict) {
+            return {
+              success: false,
+              conflict: true,
+              reason: 'external_mutation',
+              current: curTcpData,
+              lastApplied,
+              initialBackup: backup,
+              message: 'Conflit détecté : les paramètres de la pile TCP/IP ont été modifiés en dehors de Vanguard.',
+            };
+          }
+        }
+      }
+
+      const targetAutotuning = backup?.autotuning || 'normal';
+      const targetRss = backup?.rss || 'enabled';
+      const targetHeuristics = backup?.heuristics || 'disabled';
+
+      const script = `
+        $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        if (-not $isAdmin) {
+          [PSCustomObject]@{ success = $false; error = 'Élévation requise' } | ConvertTo-Json -Compress
+          exit
+        }
+        $errs = @()
+        try { netsh int tcp set global autotuninglevel=${targetAutotuning} } catch { $errs += $_.Exception.Message }
+        try { netsh int tcp set global rss=${targetRss} } catch { $errs += $_.Exception.Message }
+        try { netsh int tcp set heuristics ${targetHeuristics} } catch { $errs += $_.Exception.Message }
+        try { Clear-DnsClientCache -ErrorAction SilentlyContinue } catch {}
         [PSCustomObject]@{
-          autotuning = if ($tcp -match 'Receive Window Auto-Tuning Level\\s*:\\s*(.+)') { $matches[1].Trim() } else { 'normal' }
-          rss = if ($tcp -match 'Receive-Side Scaling State\\s*:\\s*(.+)') { $matches[1].Trim() } else { 'enabled' }
-          heuristics = if ($tcp -match 'RFC 1323 Timestamps\\s*:\\s*(.+)') { $matches[1].Trim() } else { 'disabled' }
-          dnsCacheEntries = $dnsCount
+          success = ($errs.Count -eq 0)
+          errors = $errs
         } | ConvertTo-Json -Compress
       `;
-      const res = await runPowerShell(script, { asJson: true, timeout: 4000 });
-      return {
-        success: true,
-        stack: res.data || { autotuning: 'normal', rss: 'enabled', heuristics: 'disabled', dnsCacheEntries: 0 }
-      };
-    } catch {
-      return {
-        success: true,
-        stack: { autotuning: 'normal', rss: 'enabled', heuristics: 'disabled', dnsCacheEntries: 0 }
-      };
+
+      const res = await runPowerShell(script, { asJson: true, timeout: 6000 });
+      if (res.data?.error === 'Élévation requise') {
+        return {
+          success: false,
+          error: 'Élévation administrateur requise pour restaurer la pile TCP/IP Windows.',
+        };
+      }
+
+      if (res.data?.success) {
+        try {
+          const pCurrent = loadPreferences();
+          savePreferences({
+            network: {
+              ...(pCurrent.network || {}),
+              lastAppliedTcp: {
+                autotuning: targetAutotuning,
+                rss: targetRss,
+                heuristics: targetHeuristics,
+                appliedAt: new Date().toISOString(),
+              },
+            },
+          });
+        } catch {}
+        return {
+          success: true,
+          message: `Pile TCP/IP restaurée avec succès (Autotuning: ${targetAutotuning}, RSS: ${targetRss}).`,
+        };
+      } else {
+        return {
+          success: false,
+          error: res.data?.errors?.join(', ') || 'Erreur lors de la restauration TCP.',
+        };
+      }
+    } catch (err: any) {
+      return { success: false, error: err.message };
     }
   });
+
+  // ── Purge immédiate du cache DNS ──────────────────────────────────────────
+  ipcMain.handle('network:flush-dns-cache', async () => {
+    logger.info('[Network] Purge immédiate du cache DNS Windows...');
+    try {
+      try {
+        const helperRes = await executePrivilegedAction('FLUSH_DNS', {});
+        if (helperRes.success) {
+          return { success: true, message: 'Cache de résolution DNS Windows purgé via Helper.' };
+        }
+      } catch {}
+
+      const script = `
+        Clear-DnsClientCache -ErrorAction SilentlyContinue
+        ipconfig /flushdns | Out-Null
+        [PSCustomObject]@{ flushed = $true } | ConvertTo-Json -Compress
+      `;
+      await runPowerShell(script, { asJson: true, timeout: 3500 });
+      return { success: true, message: 'Cache de résolution DNS Windows purgé avec succès.' };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
   // ── Network Adapters Info ─────────────────────────────────────────────────
   ipcMain.handle('network:get-adapters', async () => {
     const script = `
@@ -359,9 +358,8 @@ export function setupNetworkIPC(win: BrowserWindow) {
     return { success: true, adapters };
   });
 
-  // ── Real Wi-Fi Diagnostics (Signal, Channel, Interference & Optimal Channel) ─
+  // ── Real Wi-Fi Diagnostics ─────────────────────────────────────────────────
   const handleWifiDiag = async () => {
-    logger.info('Analyse du diagnostic Wi-Fi réel...');
     const script = `
       $current = netsh wlan show interfaces
       $networks = netsh wlan show networks mode=bssid
@@ -383,18 +381,23 @@ export function setupNetworkIPC(win: BrowserWindow) {
     const currentText: string = res.data.currentInterface || '';
     const networksText: string = res.data.visibleNetworks || '';
 
-    // Extract current interface parameters
     const ssidMatch = currentText.match(/SSID\s*:\s*(.+)/);
     const signalMatch = currentText.match(/Signal\s*:\s*(\d+)%/);
     const radioMatch = currentText.match(/Radio type|Type de radio\s*:\s*(.+)/i);
     const channelMatch = currentText.match(/Channel|Canal\s*:\s*(\d+)/i);
 
-    const ssid = ssidMatch ? ssidMatch[1].trim() : 'Réseau Wi-Fi';
-    const signalPercent = signalMatch ? parseInt(signalMatch[1], 10) : 85;
-    const radioType = radioMatch ? radioMatch[1].trim() : '802.11ax/ac';
-    const currentChannel = channelMatch ? parseInt(channelMatch[1], 10) : 6;
+    if (!ssidMatch) {
+      return {
+        success: false,
+        error: 'Interface Wi-Fi non connectée ou inactive.',
+      };
+    }
 
-    // Count channel occurrences in neighborhood to detect congestion
+    const ssid = ssidMatch[1].trim();
+    const signalPercent = signalMatch ? parseInt(signalMatch[1], 10) : 0;
+    const radioType = radioMatch ? radioMatch[1].trim() : 'Inconnu';
+    const currentChannel = channelMatch ? parseInt(channelMatch[1], 10) : 0;
+
     const channelMatches = [...networksText.matchAll(/Channel|Canal\s*:\s*(\d+)/gi)];
     const channelCounts: Record<number, number> = {};
     for (const m of channelMatches) {
@@ -403,7 +406,6 @@ export function setupNetworkIPC(win: BrowserWindow) {
     }
 
     const interferenceCount = channelCounts[currentChannel] || 1;
-    // Suggest optimal non-overlapping channel (1, 6, 11 for 2.4GHz, 36/44/149 for 5GHz)
     let recommendedChannel = currentChannel > 14 ? 36 : 1;
     let minCongestion = 999;
     const candidateChannels = currentChannel > 14 ? [36, 40, 44, 48, 149] : [1, 6, 11];
@@ -441,25 +443,64 @@ export function setupNetworkIPC(win: BrowserWindow) {
   ipcMain.handle('network:get-wifi-diag', handleWifiDiag);
   ipcMain.handle('network:wifi-interference', handleWifiDiag);
 
-  // ── Live DNS Benchmark & Selector (Cloudflare, Google, Quad9, OpenDNS) ─────
+  // ── Live DNS Benchmark (Vraie résolution DNS UDP requête A + Poignée TCP) ──
   const handleDnsBenchmark = async () => {
-    logger.info('Test comparatif de latence DNS en direct...');
+    logger.info('[Network] Mesure de la résolution DNS réelle (requête A UDP standard)...');
 
     const providers = [
-      { id: 'cloudflare', name: 'Cloudflare Gaming', provider: 'Cloudflare', ip: '1.1.1.1', primary: '1.1.1.1', secondary: '1.0.0.1' },
+      { id: 'cloudflare', name: 'Cloudflare', provider: 'Cloudflare', ip: '1.1.1.1', primary: '1.1.1.1', secondary: '1.0.0.1' },
       { id: 'google', name: 'Google DNS', provider: 'Google', ip: '8.8.8.8', primary: '8.8.8.8', secondary: '8.8.4.4' },
-      { id: 'quad9', name: 'Quad9 Security (Malware Block)', provider: 'Quad9', ip: '9.9.9.9', primary: '9.9.9.9', secondary: '149.112.112.112' },
+      { id: 'quad9', name: 'Quad9', provider: 'Quad9', ip: '9.9.9.9', primary: '9.9.9.9', secondary: '149.112.112.112' },
       { id: 'opendns', name: 'Cisco OpenDNS', provider: 'OpenDNS', ip: '208.67.222.222', primary: '208.67.222.222', secondary: '208.67.220.220' },
     ];
 
     const results = [];
     for (const p of providers) {
-      const avgPing = await measureNativePing(p.primary, 53, 1500).catch(() => 35);
-      const status: 'fastest' | 'good' | 'slow' = avgPing < 25 ? 'fastest' : avgPing < 60 ? 'good' : 'slow';
-      results.push({ ...p, latencyMs: avgPing, status });
+      let resolutionMs: number | null = null;
+      let tcpConnectMs: number | null = null;
+      let status: 'fastest' | 'good' | 'slow' | 'unreachable';
+
+      // 1. Vrai test de résolution DNS requête A via Resolver Node.js
+      try {
+        const resolver = new dns.promises.Resolver({ timeout: 1500, tries: 1 });
+        resolver.setServers([p.primary]);
+        const start = performance.now();
+        await resolver.resolve4('cloudflare.com');
+        resolutionMs = Math.round(performance.now() - start);
+      } catch {
+        resolutionMs = null;
+      }
+
+      // 2. Poignée de main TCP sur port 53 (accessibilité transport)
+      const tcpProbe = await measureTcpProbe(p.primary, 53, 1000);
+      tcpConnectMs = tcpProbe.latencyMs;
+
+      if (resolutionMs === null && tcpConnectMs === null) {
+        status = 'unreachable';
+      } else if ((resolutionMs ?? tcpConnectMs ?? 999) < 25) {
+        status = 'fastest';
+      } else if ((resolutionMs ?? tcpConnectMs ?? 999) < 60) {
+        status = 'good';
+      } else {
+        status = 'slow';
+      }
+
+      results.push({
+        ...p,
+        latencyMs: resolutionMs,
+        resolutionMs,
+        tcpConnectMs,
+        status,
+        reachable: resolutionMs !== null || tcpProbe.success,
+        method: 'Résolution DNS standard (requête A)',
+      });
     }
 
-    results.sort((a, b) => a.latencyMs - b.latencyMs);
+    results.sort((a, b) => {
+      if (a.resolutionMs === null) return 1;
+      if (b.resolutionMs === null) return -1;
+      return a.resolutionMs - b.resolutionMs;
+    });
 
     return { success: true, results, data: results };
   };
@@ -467,8 +508,7 @@ export function setupNetworkIPC(win: BrowserWindow) {
   ipcMain.handle('network:test-dns-latencies', handleDnsBenchmark);
   ipcMain.handle('network:dns-benchmark', handleDnsBenchmark);
 
-
-  // ── Apply DNS (With Virtual & Third-Party Adapter Exclusion - Hardened Phase 1)
+  // ── Configuration DNS avec sauvegarde préalable (Anti-écrasement) ───────────
   ipcMain.handle('network:set-dns', async (_, dnsType: string) => {
     const cleanDns = typeof dnsType === 'string' ? dnsType.trim().toLowerCase() : '';
     const ALLOWED_DNS_TYPES = new Set(['cloudflare', 'google', 'quad9', 'opendns', 'auto']);
@@ -477,16 +517,55 @@ export function setupNetworkIPC(win: BrowserWindow) {
       return { success: false, error: 'Type de DNS non autorisé ou invalide.' };
     }
 
-    logger.info(`Application du DNS : ${cleanDns}`);
+    logger.info(`[Network] Application du résolveur DNS : ${cleanDns}`);
 
-    // Délégation au Helper sécurisé avec élévation ponctuelle
+    try {
+      const prefs = loadPreferences();
+      if (!prefs.network?.dnsBackup) {
+        const detectScript = `
+          $a = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {
+            $_.Status -eq 'Up' -and
+            $_.InterfaceDescription -notmatch 'Nord|TAP|Wintun|WireGuard|Tailscale|Proton|Express|Surfshark|Mullvad|Cloudflare|Virtual|Hyper-V|VMware|VPN' -and
+            $_.Name -notmatch 'Nord|TAP|Wintun|WireGuard|Tailscale|Proton|Express|Surfshark|Mullvad|vEthernet'
+          } | Select-Object -First 1
+          if ($a) {
+            $dns = (Get-DnsClientServerAddress -InterfaceIndex $a.InterfaceIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses
+            [PSCustomObject]@{
+              adapterName = $a.Name
+              interfaceIndex = $a.InterfaceIndex
+              dnsServers = if ($dns) { @($dns) } else { @() }
+              isDhcp = ($dns.Count -eq 0)
+              family = 'IPv4'
+            } | ConvertTo-Json -Compress
+          }
+        `;
+        const detectRes = await runPowerShell(detectScript, { asJson: true, timeout: 3500 });
+        if (detectRes.data) {
+          savePreferences({
+            network: {
+              ...(prefs.network || {}),
+              dnsBackup: {
+                adapterName: detectRes.data.adapterName,
+                isDhcp: Boolean(detectRes.data.isDhcp),
+                dnsServers: detectRes.data.dnsServers || [],
+                backedUpAt: new Date().toISOString(),
+              },
+            },
+          });
+          logger.info('[Network] Configuration DNS originale sauvegardée dans le profil.');
+        }
+      }
+    } catch (err: any) {
+      logger.warn('[Network] Erreur lors de la capture du backup DNS:', err.message);
+    }
+
     try {
       const helperRes = await executePrivilegedAction('SET_DNS_PROVIDER', { provider: cleanDns });
       if (helperRes.success) {
         return { success: true, dns: cleanDns, servers: helperRes.servers };
       }
     } catch (err: any) {
-      logger.warn('[Network] Helper indisponible pour DNS, tentative de secours:', err.message);
+      logger.warn('[Network] Helper indisponible pour DNS, passage en secours direct:', err.message);
     }
 
     const vpnCoex = await detectThirdPartyVpn();
@@ -516,7 +595,7 @@ export function setupNetworkIPC(win: BrowserWindow) {
         foreach ($a in $adapters) {
           Set-DnsClientServerAddress -InterfaceIndex $a.InterfaceIndex -ResetServerAddresses -ErrorAction SilentlyContinue
         }
-        Clear-DnsClientCache
+        Clear-DnsClientCache -ErrorAction SilentlyContinue
         ipconfig /flushdns | Out-Null
         [PSCustomObject]@{ applied = $true; adapterCount = @($adapters).Count } | ConvertTo-Json -Compress
       `
@@ -529,15 +608,32 @@ export function setupNetworkIPC(win: BrowserWindow) {
         foreach ($a in $adapters) {
           Set-DnsClientServerAddress -InterfaceIndex $a.InterfaceIndex -ServerAddresses ('${primary}', '${secondary}') -ErrorAction SilentlyContinue
         }
-        Clear-DnsClientCache
+        Clear-DnsClientCache -ErrorAction SilentlyContinue
         ipconfig /flushdns | Out-Null
         [PSCustomObject]@{ applied = $true; adapterCount = @($adapters).Count } | ConvertTo-Json -Compress
       `;
 
-    const res = await runPowerShell(script, { asJson: true });
+    const res = await runPowerShell(script, { asJson: true, timeout: 5000 });
     let message = isAuto ? 'DNS réinitialisé en mode automatique (DHCP)' : `DNS ${cleanDns.toUpperCase()} appliqué (${primary}) !`;
     if (vpnCoex.thirdPartyActive) {
       message += ` (Tunnels ${vpnCoex.vpnName} préservés sans altération)`;
+    }
+
+    if (res.success) {
+      try {
+        const pCurrent = loadPreferences();
+        savePreferences({
+          network: {
+            ...(pCurrent.network || {}),
+            lastAppliedDns: {
+              adapterName: '',
+              isDhcp: isAuto,
+              dnsServers: isAuto ? [] : [primary, secondary],
+              appliedAt: new Date().toISOString(),
+            },
+          },
+        });
+      } catch {}
     }
 
     return {
@@ -548,31 +644,141 @@ export function setupNetworkIPC(win: BrowserWindow) {
     };
   });
 
-  // ── Restauration des serveurs DNS précédents ───────────────────────────────
-  ipcMain.handle('network:restore-previous-dns', async () => {
+  // ── Restauration fidèle des serveurs DNS précédents (Protection anti-conflit) 
+  ipcMain.handle('network:restore-previous-dns', async (_, opts?: { force?: boolean }) => {
     logger.info('[Network] Restauration des serveurs DNS précédents...');
     try {
-      const script = `
-        $adapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {
+      const prefs = loadPreferences();
+      const backup = prefs.network?.dnsBackup;
+
+      if (!backup) {
+        return {
+          success: false,
+          error: 'Aucune sauvegarde de configuration DNS d\'origine n\'a été trouvée dans le profil.',
+        };
+      }
+
+      // Lecture préalable de l'état actuel pour détecter une modification extérieure
+      const detectCurScript = `
+        $a = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {
           $_.Status -eq 'Up' -and
           $_.InterfaceDescription -notmatch 'Nord|TAP|Wintun|WireGuard|Tailscale|Proton|Express|Surfshark|Mullvad|Cloudflare|Virtual|Hyper-V|VMware|VPN' -and
           $_.Name -notmatch 'Nord|TAP|Wintun|WireGuard|Tailscale|Proton|Express|Surfshark|Mullvad|vEthernet'
+        } | Select-Object -First 1
+        if ($a) {
+          $dns = (Get-DnsClientServerAddress -InterfaceIndex $a.InterfaceIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses
+          [PSCustomObject]@{
+            adapterName = $a.Name
+            interfaceIndex = $a.InterfaceIndex
+            dnsServers = if ($dns) { @($dns) } else { @() }
+            isDhcp = ($dns.Count -eq 0)
+          } | ConvertTo-Json -Compress
         }
-        foreach ($a in $adapters) {
-          Set-DnsClientServerAddress -InterfaceIndex $a.InterfaceIndex -ResetServerAddresses -ErrorAction SilentlyContinue
-        }
-        Clear-DnsClientCache
-        ipconfig /flushdns | Out-Null
-        [PSCustomObject]@{ restored = $true } | ConvertTo-Json -Compress
       `;
+      const curRes = await runPowerShell(detectCurScript, { asJson: true, timeout: 3500 });
+      const curData = curRes.data;
+
+      if (!curData) {
+        if (!opts?.force) {
+          return {
+            success: false,
+            conflict: true,
+            reason: 'read_failed',
+            message: 'Impossible de lire avec certitude l\'état DNS actuel. Restauration suspendue par précaution.',
+          };
+        }
+      } else {
+        const lastApplied = prefs.network?.lastAppliedDns;
+        if (lastApplied && !opts?.force) {
+          const currentDhcp = Boolean(curData.isDhcp);
+          const lastDhcp = Boolean(lastApplied.isDhcp);
+          const currentServers = Array.isArray(curData.dnsServers) ? curData.dnsServers : [];
+          const lastServers = Array.isArray(lastApplied.dnsServers) ? lastApplied.dnsServers : [];
+
+          const matchesDhcp = currentDhcp === lastDhcp;
+          const matchesServers = currentServers.length === lastServers.length &&
+            currentServers.every((s: string, idx: number) => s === lastServers[idx]);
+
+          if (!matchesDhcp || !matchesServers) {
+            return {
+              success: false,
+              conflict: true,
+              reason: 'external_mutation',
+              current: { isDhcp: currentDhcp, dnsServers: currentServers },
+              lastApplied: { isDhcp: lastDhcp, dnsServers: lastServers },
+              initialBackup: { isDhcp: Boolean(backup.isDhcp), dnsServers: backup.dnsServers || [] },
+              message: 'Conflit détecté : les serveurs DNS ont été modifiés en dehors de Vanguard. Restauration annulée pour éviter d\'écraser vos paramètres.',
+            };
+          }
+        }
+      }
+
+      let script = '';
+      if (!backup.isDhcp && backup.dnsServers && backup.dnsServers.length > 0) {
+        const serversList = backup.dnsServers.map((s: string) => `'${s}'`).join(', ');
+        script = `
+          $target = '${backup.adapterName || ''}'
+          $adapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {
+            $_.Status -eq 'Up' -and
+            ($target -eq '' -or $_.Name -eq $target) -and
+            $_.InterfaceDescription -notmatch 'Nord|TAP|Wintun|WireGuard|Tailscale|Proton|Express|Surfshark|Mullvad|Cloudflare|Virtual|Hyper-V|VMware|VPN' -and
+            $_.Name -notmatch 'Nord|TAP|Wintun|WireGuard|Tailscale|Proton|Express|Surfshark|Mullvad|vEthernet'
+          }
+          foreach ($a in $adapters) {
+            Set-DnsClientServerAddress -InterfaceIndex $a.InterfaceIndex -ServerAddresses (@(${serversList})) -ErrorAction SilentlyContinue
+          }
+          Clear-DnsClientCache -ErrorAction SilentlyContinue
+          ipconfig /flushdns | Out-Null
+          [PSCustomObject]@{ restored = $true; mode = 'static'; servers = @(${serversList}) } | ConvertTo-Json -Compress
+        `;
+      } else {
+        script = `
+          $target = '${backup.adapterName || ''}'
+          $adapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {
+            $_.Status -eq 'Up' -and
+            ($target -eq '' -or $_.Name -eq $target) -and
+            $_.InterfaceDescription -notmatch 'Nord|TAP|Wintun|WireGuard|Tailscale|Proton|Express|Surfshark|Mullvad|Cloudflare|Virtual|Hyper-V|VMware|VPN' -and
+            $_.Name -notmatch 'Nord|TAP|Wintun|WireGuard|Tailscale|Proton|Express|Surfshark|Mullvad|vEthernet'
+          }
+          foreach ($a in $adapters) {
+            Set-DnsClientServerAddress -InterfaceIndex $a.InterfaceIndex -ResetServerAddresses -ErrorAction SilentlyContinue
+          }
+          Clear-DnsClientCache -ErrorAction SilentlyContinue
+          ipconfig /flushdns | Out-Null
+          [PSCustomObject]@{ restored = $true; mode = 'dhcp' } | ConvertTo-Json -Compress
+        `;
+      }
+
       const res = await runPowerShell(script, { asJson: true, timeout: 5000 });
-      return { success: res.success, message: 'Configuration DNS d\'origine restaurée avec succès.' };
+      if (res.success) {
+        try {
+          const pCurrent = loadPreferences();
+          savePreferences({
+            network: {
+              ...(pCurrent.network || {}),
+              lastAppliedDns: {
+                adapterName: backup.adapterName || '',
+                isDhcp: Boolean(backup.isDhcp),
+                dnsServers: backup.dnsServers || [],
+                appliedAt: new Date().toISOString(),
+              },
+            },
+          });
+        } catch {}
+      }
+
+      return {
+        success: res.success,
+        message: backup.isDhcp
+          ? 'Configuration DNS d\'origine restaurée en mode automatique (DHCP).'
+          : `Configuration DNS d'origine restaurée avec succès (${backup.dnsServers?.join(', ')}).`,
+      };
     } catch (err: any) {
       return { success: false, error: err.message };
     }
   });
 
-  // ── Active Network Processes (Live TCP Connection Monitor) ─────────────────
+  // ── Active Network Processes ───────────────────────────────────────────────
   ipcMain.handle('network:get-processes', async () => {
     const script = `
       $connections = Get-NetTCPConnection -State Established -ErrorAction SilentlyContinue | Select-Object -First 25
@@ -599,22 +805,21 @@ export function setupNetworkIPC(win: BrowserWindow) {
     return { success: true, processes: list };
   });
 
-  // ── Gaming Network Priority Mode (En cours de développement - Phase 11) ────
+  // ── Gaming Network Priority Mode (Honnêteté produit : non implémenté) ──────
   ipcMain.handle('network:gaming-mode-on', async () => {
-    logger.info('[Network] network:gaming-mode-on désactivé (fonctionnalité en cours de développement - Phase 11).');
+    logger.info('[Network] Priorité réseau gaming demandée mais non implémentée dans cette version.');
     return {
       success: false,
-      status: 'under-development',
-      message: 'Priorité réseau gaming en cours de développement (Phase 11).',
+      status: 'unimplemented',
+      message: 'La priorisation dynamique de paquets gaming n\'est pas implémentée dans cette version.',
     };
   });
 
   ipcMain.handle('network:gaming-mode-off', async () => {
-    logger.info('[Network] network:gaming-mode-off appelé.');
     return { success: true, active: false };
   });
 
-  // ── Network Diagnostics (Real IP, Gateway, DNS, Adapter, ISP) ───────────────
+  // ── Network Diagnostics (Sans aucune valeur inventée) ──────────────────────
   ipcMain.handle('network:get-diagnostics', async () => {
     try {
       const script = `
@@ -631,6 +836,7 @@ export function setupNetworkIPC(win: BrowserWindow) {
         $ip = $null
         $gw = $null
         $dns = @()
+        $ipv6Active = $false
         if ($adapter) {
           $ipObj = Get-NetIPAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike '169.254*' } | Select-Object -First 1
           if ($ipObj) { $ip = $ipObj.IPAddress }
@@ -640,25 +846,33 @@ export function setupNetworkIPC(win: BrowserWindow) {
           if ($dnsAddresses -and $dnsAddresses.ServerAddresses) {
             $dns = $dnsAddresses.ServerAddresses
           }
+          $v6Binding = Get-NetAdapterBinding -InterfaceAlias $adapter.Name -ComponentID 'ms_tcpip6' -ErrorAction SilentlyContinue
+          $ipv6State = 'unknown'
+          if ($v6Binding) {
+            $ipv6State = if ($v6Binding.Enabled) { 'enabled' } else { 'disabled' }
+          }
         }
 
         $dnsStr = ($dns -join ', ')
-        $friendlyDns = 'Automatique (FAI)'
-        if ($dnsStr -match '8\.8\.8\.8') { $friendlyDns = 'Google Public DNS (8.8.8.8)' }
-        elseif ($dnsStr -match '1\.1\.1\.1') { $friendlyDns = 'Cloudflare Gaming (1.1.1.1)' }
-        elseif ($dnsStr -match '9\.9\.9\.9') { $friendlyDns = 'Quad9 Sécurité (9.9.9.9)' }
-        elseif ($dnsStr -match '208\.67') { $friendlyDns = 'Cisco OpenDNS' }
+        $friendlyDns = 'Automatique (DHCP)'
+        if ($dnsStr -match '8\\.8\\.8\\.8') { $friendlyDns = 'Google Public DNS (8.8.8.8)' }
+        elseif ($dnsStr -match '1\\.1\\.1\\.1') { $friendlyDns = 'Cloudflare DNS (1.1.1.1)' }
+        elseif ($dnsStr -match '9\\.9\\.9\\.9') { $friendlyDns = 'Quad9 (9.9.9.9)' }
+        elseif ($dnsStr -match '208\\.67') { $friendlyDns = 'Cisco OpenDNS' }
         elseif ($dnsStr) { $friendlyDns = $dnsStr }
+        else { $friendlyDns = 'Non configuré' }
 
         [PSCustomObject]@{
           adapterName = if ($adapter) { $adapter.Name } else { 'Inconnu' }
           description = if ($adapter) { $adapter.InterfaceDescription } else { '' }
           macAddress  = if ($adapter) { $adapter.MacAddress } else { '' }
-          type        = if ($adapter) { if ($adapter.InterfaceDescription -match 'Wi-Fi|Wireless|802\.11') { 'Wi-Fi' } else { 'Ethernet' } } else { 'Inconnu' }
+          type        = if ($adapter) { if ($adapter.InterfaceDescription -match 'Wi-Fi|Wireless|802\\.11') { 'Wi-Fi' } else { 'Ethernet' } } else { 'Inconnu' }
           localIp     = $ip
           gateway     = $gw
           dnsServers  = $dnsStr
           friendlyDns = $friendlyDns
+          ipv6State   = $ipv6State
+          ipv6Active  = ($ipv6State -eq 'enabled')
         } | ConvertTo-Json -Compress
       `;
 
@@ -669,16 +883,16 @@ export function setupNetworkIPC(win: BrowserWindow) {
       let externalIp = '';
       try {
         await new Promise<void>((resolve) => {
-          const req = https.get('https://speed.cloudflare.com/cdn-cgi/trace', { timeout: 2500 }, (r) => {
+          const req = https.get('https://speed.cloudflare.com/cdn-cgi/trace', { timeout: 2000 }, (r) => {
             let body = '';
             r.on('data', chunk => body += chunk);
             r.on('end', () => {
-              const ipMatch = body.match(/ip=([^\r\n]+)/);
+              const ipMatch = body.match(/ip=([^\\r\\n]+)/);
               if (ipMatch) externalIp = ipMatch[1].trim();
-              const locMatch = body.match(/loc=([^\r\n]+)/);
-              const coloMatch = body.match(/colo=([^\r\n]+)/);
+              const locMatch = body.match(/loc=([^\\r\\n]+)/);
+              const coloMatch = body.match(/colo=([^\\r\\n]+)/);
               if (coloMatch) {
-                isp = `Réseau Edge ${coloMatch[1].trim()} (${locMatch ? locMatch[1].trim() : 'FR'})`;
+                isp = `Point Edge ${coloMatch[1].trim()} (${locMatch ? locMatch[1].trim() : 'FR'})`;
               }
               resolve();
             });
@@ -688,46 +902,74 @@ export function setupNetworkIPC(win: BrowserWindow) {
         });
       } catch {}
 
-      if (!externalIp) {
-        try {
-          await new Promise<void>((resolve) => {
-            const req = https.get('https://api.ipify.org?format=json', { timeout: 2000 }, (r) => {
-              let body = '';
-              r.on('data', chunk => body += chunk);
-              r.on('end', () => {
-                try {
-                  const info = JSON.parse(body);
-                  if (info?.ip) externalIp = info.ip;
-                } catch {}
-                resolve();
-              });
-            });
-            req.on('error', () => resolve());
-            req.on('timeout', () => { req.destroy(); resolve(); });
-          });
-        } catch {}
+      // Sondes distinctes vers cibles identifiées
+      let gwProbeResult: { status: 'ok' | 'unavailable' | 'none'; latencyMs: number | null; detail: string } = {
+        status: 'none',
+        latencyMs: null,
+        detail: 'Passerelle non configurée',
+      };
+
+      if (d.gateway && d.gateway !== '—' && d.gateway !== '') {
+        const pGw = await measureTcpProbe(d.gateway, 80, 500);
+        if (pGw.success) {
+          gwProbeResult = { status: 'ok', latencyMs: pGw.latencyMs, detail: `Port 80 TCP accessible (${pGw.latencyMs} ms)` };
+        } else {
+          const pGwDns = await measureTcpProbe(d.gateway, 53, 500);
+          if (pGwDns.success) {
+            gwProbeResult = { status: 'ok', latencyMs: pGwDns.latencyMs, detail: `Port 53 TCP accessible (${pGwDns.latencyMs} ms)` };
+          } else {
+            gwProbeResult = {
+              status: 'unavailable',
+              latencyMs: null,
+              detail: 'Ports TCP 80/53 fermés ou filtrés par la box (service local indisponible)',
+            };
+          }
+        }
       }
+
+      const pCloudflare = await measureTcpProbe('1.1.1.1', 443, 600);
+      const pGoogle = await measureTcpProbe('8.8.8.8', 53, 600);
 
       return {
         success: true,
-        adapterName: d.adapterName || 'Ethernet',
-        interface: d.description ? `${d.adapterName} (${d.description})` : d.adapterName || 'Ethernet',
+        adapterName: d.adapterName || 'Interface active',
+        interface: d.description ? `${d.adapterName} (${d.description})` : (d.adapterName || 'Interface active'),
         localIp: d.localIp || '—',
         externalIp: externalIp || undefined,
         gateway: d.gateway || '—',
-        dns: d.friendlyDns || d.dnsServers || 'Google Public DNS (8.8.8.8)',
-        dnsServer: d.dnsServers || '8.8.8.8',
-        isp: isp || 'Connexion Internet Locale',
-        provider: isp || 'Fournisseur d\'accès',
+        dns: d.friendlyDns || 'Non configuré',
+        dnsServer: d.dnsServers || '',
+        isp: isp || 'Non résolu',
+        provider: isp || 'Non résolu',
         macAddress: d.macAddress || '—',
         connectionType: d.type || 'Ethernet',
         type: d.type || 'Ethernet',
+        ipv6State: (d.ipv6State as 'enabled' | 'disabled' | 'unknown') || 'unknown',
+        ipv6Active: d.ipv6State === 'enabled' || Boolean(d.ipv6Active),
+        probes: {
+          gateway: gwProbeResult,
+          gatewayMs: gwProbeResult.latencyMs,
+          cloudflare: {
+            target: '1.1.1.1:443',
+            protocol: 'TCP Handshake',
+            latencyMs: pCloudflare.latencyMs,
+            success: pCloudflare.success,
+          },
+          cloudflareMs: pCloudflare.latencyMs,
+          google: {
+            target: '8.8.8.8:53',
+            protocol: 'TCP Handshake',
+            latencyMs: pGoogle.latencyMs,
+            success: pGoogle.success,
+          },
+          googleMs: pGoogle.latencyMs,
+        },
       };
     } catch (err: any) {
       return {
         success: false,
         error: err.message,
-        adapterName: 'Ethernet',
+        adapterName: 'Non disponible',
         localIp: '—',
         gateway: '—',
         dns: 'Non détecté',

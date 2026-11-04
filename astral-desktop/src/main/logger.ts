@@ -1,6 +1,7 @@
-import fs from 'fs';
+﻿import fs from 'fs';
 import path from 'path';
-import { app } from 'electron';
+import * as electron from 'electron';
+const app = (electron as any)?.app || (electron as any)?.default?.app;
 
 class Logger {
   private logPath: string;

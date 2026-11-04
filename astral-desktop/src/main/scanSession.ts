@@ -13,7 +13,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { app, shell } from 'electron';
-import { logger } from './logger';
+import { logger } from './logger.ts';
 
 export interface ScanSession {
   scanId: string;
@@ -26,7 +26,7 @@ export interface ScanSession {
   createdAt: number;
   expiresAt: number;
   consumed: boolean;
-  status: 'safe' | 'suspect' | 'threat' | 'unavailable' | 'error';
+  status: 'safe' | 'suspect' | 'threat' | 'threat_remediated_by_defender' | 'unavailable' | 'error' | 'file_missing';
   threatName?: string;
   isUnsigned?: boolean;
 }
@@ -94,26 +94,44 @@ export function isSymlinkOrReparsePoint(filePath: string): boolean {
 export function createScanSession(
   inputPath: string,
   extraData: {
-    status?: 'safe' | 'suspect' | 'threat' | 'unavailable' | 'error';
+    status?: 'safe' | 'suspect' | 'threat' | 'threat_remediated_by_defender' | 'unavailable' | 'error' | 'file_missing';
     threatName?: string;
     isUnsigned?: boolean;
   } = {}
 ): ScanSession {
   // 1. Resolve canonical real path
-  const canonicalPath = fs.realpathSync(inputPath);
+  const normPath = path.resolve(inputPath);
+  const exists = fs.existsSync(normPath);
+  let canonicalPath = normPath;
+  let sizeBytes = 0;
+  let mtimeMs = 0;
+  let sha256 = '';
 
-  // 2. Reject symlinks, junctions, and reparse points
-  if (isSymlinkOrReparsePoint(inputPath) || isSymlinkOrReparsePoint(canonicalPath)) {
-    throw new Error('Refus de sécurité : les liens symboliques et points d’analyse sont strictement interdits.');
+  if (exists) {
+    try {
+      canonicalPath = fs.realpathSync(inputPath);
+      if (isSymlinkOrReparsePoint(inputPath) || isSymlinkOrReparsePoint(canonicalPath)) {
+        throw new Error('Refus de sécurité : les liens symboliques et points d’analyse sont strictement interdits.');
+      }
+      const lstat = fs.lstatSync(canonicalPath);
+      if (!lstat.isFile()) {
+        throw new Error('Refus de sécurité : la cible n’est pas un fichier régulier.');
+      }
+      sha256 = computeFileSha256(canonicalPath);
+      sizeBytes = lstat.size;
+      mtimeMs = lstat.mtimeMs;
+    } catch (fsErr: any) {
+      if (fsErr.errno === -4094 || fsErr.code === 'UNKNOWN' || String(fsErr.message).includes('virus')) {
+        logger.warn(`[ScanSession] Fichier verrouillé par Defender (ERROR_VIRUS_INFECTED) : ${inputPath}`);
+        sha256 = 'remediated-by-defender';
+        sizeBytes = 0;
+        mtimeMs = Date.now();
+        extraData.status = 'threat';
+      } else {
+        throw fsErr;
+      }
+    }
   }
-
-  // 3. Collect physical metadata
-  const lstat = fs.lstatSync(canonicalPath);
-  if (!lstat.isFile()) {
-    throw new Error('Refus de sécurité : la cible n’est pas un fichier régulier.');
-  }
-
-  const sha256 = computeFileSha256(canonicalPath);
   const now = Date.now();
   const scanId = crypto.randomUUID();
 
@@ -123,12 +141,12 @@ export function createScanSession(
     fileName: path.basename(canonicalPath),
     ext: path.extname(canonicalPath).toLowerCase(),
     sha256,
-    sizeBytes: lstat.size,
-    mtimeMs: lstat.mtimeMs,
+    sizeBytes,
+    mtimeMs,
     createdAt: now,
     expiresAt: now + SESSION_TTL_MS,
     consumed: false,
-    status: extraData.status || 'safe',
+    status: extraData.status || (exists ? 'safe' : 'file_missing'),
     threatName: extraData.threatName,
     isUnsigned: extraData.isUnsigned,
   };
@@ -223,6 +241,24 @@ export function getQuarantineDirectory(): string {
  * Moves a verified file to the secure quarantine repository
  */
 export async function quarantineSessionFile(scanId: string): Promise<QuarantineResult> {
+  const cachedSession = activeSessions.get(scanId);
+  if (cachedSession && !fs.existsSync(cachedSession.canonicalPath)) {
+    cachedSession.consumed = true;
+    const isDefenderRemediated =
+      (cachedSession.status as any) === 'threat_remediated_by_defender' ||
+      (cachedSession.status === 'threat' && Boolean(cachedSession.threatName && (cachedSession.threatName.includes(':') || cachedSession.threatName.includes('/'))));
+
+    if (isDefenderRemediated) {
+      return {
+        success: true,
+        message: 'Le fichier n’est plus présent (déjà neutralisé par Defender).',
+      };
+    }
+    return {
+      success: true,
+      message: 'Le fichier n’est plus présent sur le disque (introuvable / absence non confirmée par Defender).',
+    };
+  }
   const verification = verifyAndConsumeSession(scanId);
   if (!verification.valid || !verification.session) {
     return { success: false, error: verification.error || 'Vérification de session échouée.' };
@@ -263,7 +299,7 @@ export async function quarantineSessionFile(scanId: string): Promise<QuarantineR
     logger.info(`[ScanSession] Fichier mis en quarantaine : ${session.fileName} -> ${targetQuarantinePath}`);
     return {
       success: true,
-      message: `Fichier "${session.fileName}" isolé et placé en quarantaine sécurisée.`,
+      message: `Fichier "${session.fileName}" isolé et déplacé dans la quarantaine locale avec extension inerte (.vanguard_quarantine). Ce déplacement empêche l'exécution accidentelle ; restauration volontaire possible.`,
       quarantinePath: targetQuarantinePath,
     };
   } catch (err: any) {
@@ -283,6 +319,25 @@ export async function deleteSessionFile(scanId: string, confirmed: boolean): Pro
     return {
       success: false,
       error: 'Refus : confirmation explicite requise pour la suppression définitive.',
+    };
+  }
+
+  const cachedSession = activeSessions.get(scanId);
+  if (cachedSession && !fs.existsSync(cachedSession.canonicalPath)) {
+    cachedSession.consumed = true;
+    const isDefenderRemediated =
+      (cachedSession.status as any) === 'threat_remediated_by_defender' ||
+      (cachedSession.status === 'threat' && Boolean(cachedSession.threatName && (cachedSession.threatName.includes(':') || cachedSession.threatName.includes('/'))));
+
+    if (isDefenderRemediated) {
+      return {
+        success: true,
+        message: 'Le fichier n’est plus présent (déjà neutralisé par Defender).',
+      };
+    }
+    return {
+      success: true,
+      message: 'Le fichier n’est plus présent sur le disque (introuvable / absence non confirmée par Defender).',
     };
   }
 
@@ -329,6 +384,68 @@ export function openSessionFolder(scanId: string): { success: boolean; error?: s
     }
     return { success: false, error: 'Le fichier n’existe plus.' };
   } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Restores a quarantined file to an explicit destination path (requires user confirmation)
+ */
+export async function restoreQuarantinedFile(
+  quarantineFilePath: string,
+  targetDestinationPath?: string
+): Promise<{ success: boolean; restoredPath?: string; error?: string }> {
+  try {
+    if (!fs.existsSync(quarantineFilePath)) {
+      return { success: false, error: 'Fichier de quarantaine introuvable.' };
+    }
+    const metaPath = `${quarantineFilePath}.meta.json`;
+    let targetPath = targetDestinationPath;
+    if (!targetPath && fs.existsSync(metaPath)) {
+      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+      targetPath = meta.originalPath;
+    }
+    if (!targetPath) {
+      return { success: false, error: 'Destination de restauration indéterminée.' };
+    }
+    const targetDir = path.dirname(targetPath);
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    if (fs.existsSync(targetPath)) {
+      return { success: false, error: 'Un fichier existe déjà à l\'emplacement de destination.' };
+    }
+    fs.renameSync(quarantineFilePath, targetPath);
+    if (fs.existsSync(metaPath)) {
+      try { fs.unlinkSync(metaPath); } catch {}
+    }
+    logger.info(`[ScanSession] Fichier restauré de quarantaine vers : ${targetPath}`);
+    return { success: true, restoredPath: targetPath };
+  } catch (err: any) {
+    logger.error('[ScanSession] Échec de la restauration de quarantaine :', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Permanently deletes an item directly from the quarantine directory
+ */
+export async function deleteQuarantinedFile(
+  quarantineFilePath: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!fs.existsSync(quarantineFilePath)) {
+      return { success: true };
+    }
+    fs.unlinkSync(quarantineFilePath);
+    const metaPath = `${quarantineFilePath}.meta.json`;
+    if (fs.existsSync(metaPath)) {
+      try { fs.unlinkSync(metaPath); } catch {}
+    }
+    logger.info(`[ScanSession] Fichier de quarantaine définitivement purgé : ${quarantineFilePath}`);
+    return { success: true };
+  } catch (err: any) {
+    logger.error('[ScanSession] Échec de la suppression en quarantaine :', err.message);
     return { success: false, error: err.message };
   }
 }

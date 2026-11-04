@@ -5,6 +5,7 @@ import PerformanceTab from './components/tabs/PerformanceTab';
 import NetworkTab from './components/tabs/NetworkTab';
 import GamingTab from './components/tabs/GamingTab';
 import VpnTab from './components/tabs/VpnTab';
+import VaultTab from './components/tabs/VaultTab';
 import SettingsTab from './components/tabs/SettingsTab';
 import Sidebar from './components/Sidebar';
 import SplashScreen from './components/SplashScreen';
@@ -12,6 +13,7 @@ import AppTitlebar from './components/AppTitlebar';
 import OnboardingWizard, { OnboardingData } from './components/OnboardingWizard';
 import UpdateModal from './components/UpdateModal';
 import DownloadScanModal from './components/DownloadScanModal';
+import { NotificationSystem } from './components/NotificationSystem';
 import { ShieldAlert } from 'lucide-react';
 import { SystemProvider } from './context/SystemContext';
 import { playSound, unlockAudio, setMuted } from './lib/audioSynth';
@@ -30,14 +32,22 @@ export default function App() {
   const [theme, setTheme]                 = useState<'vanguard-dark' | 'cyber-cyan' | 'midnight-purple' | 'stealth-oled'>('vanguard-dark');
   const [splashDone, setSplashDone]       = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [profileData, setProfileData]       = useState<any>(null);
 
   // Refresh profile & preferences from main
   const refreshProfile = useCallback(() => {
     api?.getProfile?.().then((p: any) => {
       if (p) {
+        setProfileData(p);
         if (p.firstName !== undefined) setFirstName(p.firstName);
         if (p.lastName  !== undefined) setLastName(p.lastName);
         if (p.theme) setTheme(p.theme);
+        if (typeof p.dndEnabled === 'boolean') {
+          setDndEnabled(p.dndEnabled);
+        }
+        if (typeof p.reduceAnimations === 'boolean') {
+          document.documentElement.classList.toggle('reduce-motion', p.reduceAnimations);
+        }
         if (typeof p.soundEnabled === 'boolean') {
           setMuted(!p.soundEnabled);
         }
@@ -174,6 +184,11 @@ export default function App() {
     }
   };
 
+  const handleDndChange = (val: boolean) => {
+    setDndEnabled(val);
+    api?.notifications?.savePrefs?.({ dndEnabled: val });
+  };
+
   return (
     <SystemProvider>
       <div className="app-root" data-gaming={gamingModeActive} data-theme={theme}>
@@ -185,7 +200,10 @@ export default function App() {
           <OnboardingWizard
             initialFirstName={firstName}
             initialLastName={lastName}
+            initialTheme={theme}
+            initialData={profileData}
             onFinish={handleFinishOnboarding}
+            onCancel={() => setShowOnboarding(false)}
           />
         )}
 
@@ -240,10 +258,14 @@ export default function App() {
                 <VpnTab />
               </div>
 
+              <div className="tab-pane" style={{ height: '100%', display: activeTab === 'vault' ? 'block' : 'none' }}>
+                <VaultTab />
+              </div>
+
               <div className="tab-pane" style={{ height: '100%', display: activeTab === 'settings' ? 'block' : 'none' }}>
                 <SettingsTab
                   dndEnabled={dndEnabled}
-                  onDndChange={setDndEnabled}
+                  onDndChange={handleDndChange}
                   onProfileSaved={refreshProfile}
                   onRelaunchOnboarding={() => setShowOnboarding(true)}
                   currentTheme={theme}
@@ -255,6 +277,7 @@ export default function App() {
         </div>
 
         <DownloadScanModal />
+        <NotificationSystem dndEnabled={dndEnabled} onNavigateTab={setActiveTab} />
         {updateInfo && <UpdateModal info={updateInfo} onClose={() => setUpdateInfo(null)} />}
       </div>
     </SystemProvider>

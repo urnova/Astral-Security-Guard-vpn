@@ -1,5 +1,5 @@
 import cp from 'child_process';
-import { logger } from './logger';
+import { logger } from './logger.ts';
 
 export interface PSResult<T = any> {
   success: boolean;

@@ -1,13 +1,16 @@
 import { BrowserWindow, screen, app } from 'electron';
 import path from 'path';
 import fs from 'fs';
-import { logger } from './logger';
+import { logger } from './logger.ts';
 
 let popupWin: BrowserWindow | null = null;
 let hideTimer: NodeJS.Timeout | null = null;
 let currentClickFocusCallback: (() => void) | null = null;
 
 function getPopupPosition(width = 400, height = 150) {
+  if (!screen || typeof screen.getPrimaryDisplay !== 'function') {
+    return { x: 100, y: 100 };
+  }
   const primaryDisplay = screen.getPrimaryDisplay();
   const { workArea } = primaryDisplay;
   return {
@@ -37,7 +40,10 @@ function getLogoDataUrl(): string {
   return '';
 }
 
-export function createOrGetNotificationWindow(): BrowserWindow {
+export function createOrGetNotificationWindow(): BrowserWindow | null {
+  if (typeof BrowserWindow !== 'function') {
+    return null;
+  }
   if (popupWin && !popupWin.isDestroyed()) {
     return popupWin;
   }
@@ -85,10 +91,16 @@ export function createOrGetNotificationWindow(): BrowserWindow {
     } else if (url.includes('vanguard://delete')) {
       try {
         const u = new URL(url);
-        const targetPath = decodeURIComponent(u.searchParams.get('file') || '');
-        if (targetPath && fs.existsSync(targetPath)) {
-          fs.unlinkSync(targetPath);
-          logger.info(`[DownloadScanner] Fichier supprimé par l'utilisateur: ${targetPath}`);
+        const scanId = u.searchParams.get('scanId');
+        if (scanId) {
+          const { deleteSessionFile } = require('./scanSession');
+          deleteSessionFile(scanId, true).catch((e: any) => logger.warn('[DownloadScanner] Erreur deleteSessionFile:', e.message));
+        } else {
+          const targetPath = decodeURIComponent(u.searchParams.get('file') || '');
+          if (targetPath && fs.existsSync(targetPath)) {
+            fs.unlinkSync(targetPath);
+            logger.info(`[DownloadScanner] Fichier supprimé par l'utilisateur: ${targetPath}`);
+          }
         }
       } catch (err: any) {
         logger.warn('[DownloadScanner] Erreur suppression fichier:', err.message);
@@ -97,11 +109,17 @@ export function createOrGetNotificationWindow(): BrowserWindow {
     } else if (url.includes('vanguard://quarantine')) {
       try {
         const u = new URL(url);
-        const targetPath = decodeURIComponent(u.searchParams.get('file') || '');
-        if (targetPath && fs.existsSync(targetPath)) {
-          const quarPath = `${targetPath}.vanguard_quarantine`;
-          fs.renameSync(targetPath, quarPath);
-          logger.info(`[DownloadScanner] Fichier mis en quarantaine: ${quarPath}`);
+        const scanId = u.searchParams.get('scanId');
+        if (scanId) {
+          const { quarantineSessionFile } = require('./scanSession');
+          quarantineSessionFile(scanId).catch((e: any) => logger.warn('[DownloadScanner] Erreur quarantineSessionFile:', e.message));
+        } else {
+          const targetPath = decodeURIComponent(u.searchParams.get('file') || '');
+          if (targetPath && fs.existsSync(targetPath)) {
+            const quarPath = `${targetPath}.vanguard_quarantine`;
+            fs.renameSync(targetPath, quarPath);
+            logger.info(`[DownloadScanner] Fichier mis en quarantaine: ${quarPath}`);
+          }
         }
       } catch (err: any) {
         logger.warn('[DownloadScanner] Erreur mise en quarantaine:', err.message);
@@ -166,6 +184,7 @@ export function showAvastStyleToast({
   currentClickFocusCallback = onClickFocus || null;
 
   const win = createOrGetNotificationWindow();
+  if (!win) return;
   const { x, y } = getPopupPosition(400, 150);
   win.setBounds({ x, y, width: 400, height: 150 });
 
@@ -530,6 +549,7 @@ export function showAvastStyleDownloadScan({
   fileName,
   filePath,
   status = 'safe',
+  scanId,
   threatName,
   isUnsigned = false,
   discreteMode = 'window',
@@ -538,6 +558,7 @@ export function showAvastStyleDownloadScan({
   fileName: string;
   filePath: string;
   status: 'scanning' | 'safe' | 'suspect' | 'threat';
+  scanId?: string;
   threatName?: string;
   isUnsigned?: boolean;
   discreteMode?: 'window' | 'mini' | 'notification';
@@ -554,6 +575,7 @@ export function showAvastStyleDownloadScan({
   const popupHeight = isMini ? 110 : ((isThreat || isSuspect) ? 200 : 160);
 
   const win = createOrGetNotificationWindow();
+  if (!win) return;
   const { x, y } = getPopupPosition(popupWidth, popupHeight);
   win.setBounds({ x, y, width: popupWidth, height: popupHeight });
 
@@ -567,13 +589,13 @@ export function showAvastStyleDownloadScan({
     isScanning ? 'Analyse du téléchargement en cours…' :
     isThreat ? 'Menace bloquée dans le téléchargement' :
     isSuspect ? 'Fichier téléchargé suspect' :
-    'Fichier sain';
+    'Aucune menace détectée';
 
   const statusDesc =
     isScanning ? 'Vérification heuristique et intégrité des données...' :
     isThreat ? `Composant malveillant neutralisé : ${threatName || 'Malware'}` :
     isSuspect ? `${threatName || 'Anomalie de signature détectée'}` :
-    'Aucune charge hostile détectée. Le fichier est intègre et validé.';
+    'Aucune charge hostile détectée par Windows Defender.';
 
   const logoUrl = getLogoDataUrl();
 
@@ -586,13 +608,16 @@ export function showAvastStyleDownloadScan({
       ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`
       : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
 
+  const deleteUrl = scanId ? `vanguard://delete?scanId=${encodeURIComponent(scanId)}` : `vanguard://delete?file=${encodeURIComponent(filePath)}`;
+  const quarantineUrl = scanId ? `vanguard://quarantine?scanId=${encodeURIComponent(scanId)}` : `vanguard://quarantine?file=${encodeURIComponent(filePath)}`;
+
   const actionButtonsHtml = (isThreat || isSuspect) ? `
     <div class="action-bar">
-      <button class="btn btn-danger" onclick="window.location.href='vanguard://delete?file=${encodeURIComponent(filePath)}'">
+      <button class="btn btn-danger" onclick="window.location.href='${deleteUrl}'">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
         Supprimer
       </button>
-      <button class="btn btn-warning" onclick="window.location.href='vanguard://quarantine?file=${encodeURIComponent(filePath)}'">
+      <button class="btn btn-warning" onclick="window.location.href='${quarantineUrl}'">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         Quarantaine
       </button>

@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { app } from 'electron';
-import { logger } from '../logger';
+import { logger } from '../logger.ts';
 
 // Masque Client Minimal Strict : 0x00120183
 // Exclut rigoureusement le bit 0x0004 (FILE_CREATE_PIPE_INSTANCE / FILE_APPEND_DATA),

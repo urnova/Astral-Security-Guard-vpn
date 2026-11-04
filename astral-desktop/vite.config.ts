@@ -27,6 +27,22 @@ export default defineConfig({
         },
       },
       {
+        entry: "src/main/vault/vaultWorker.ts",
+        vite: {
+          build: {
+            outDir: "dist-electron/main",
+            minify: false,
+            rollupOptions: {
+              external: ['electron', 'worker_threads', 'chokidar', 'fs', 'path', 'util', 'child_process', 'url', 'crypto', 'os'],
+              output: {
+                format: 'cjs',
+                entryFileNames: 'vaultWorker.js'
+              }
+            }
+          },
+        },
+      },
+      {
         entry: "src/preload/index.ts",
         onstart(options) {
           options.reload()

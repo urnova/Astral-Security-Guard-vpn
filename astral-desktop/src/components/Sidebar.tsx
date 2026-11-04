@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import {
-  Home, Shield, Wrench, Gauge, Wifi, Lock, Settings, ChevronRight
+  Home, Shield, Wrench, Gauge, Wifi, Lock, Settings, ChevronRight, FolderLock
 } from 'lucide-react';
 
 const NAV = [
@@ -10,6 +10,7 @@ const NAV = [
   { id: 'gaming',      label: 'Performance',    Icon: Gauge },
   { id: 'network',     label: 'Réseau',         Icon: Wifi },
   { id: 'vpn',         label: 'VPN',            Icon: Lock },
+  { id: 'vault',       label: 'Vault',          Icon: FolderLock },
 ];
 
 interface Props {
@@ -92,7 +93,7 @@ export default function Sidebar({
         <div style={{ flex: 1, minWidth: 0 }}>
           <span className="user-name truncate">{fullName}</span>
           <span className="user-role">
-            {gamingActive && currentGame ? `Jeu : ${currentGame}` : 'Profil Joueur'}
+            {gamingActive && currentGame ? `Jeu : ${currentGame}` : 'Paramètres'}
           </span>
         </div>
         <ChevronRight size={14} style={{ color: 'var(--dim)', flexShrink: 0 }} />

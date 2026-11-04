@@ -193,6 +193,20 @@ export class StrictOvpnParser {
         };
       }
 
+      // Rejet formel des références à des fichiers externes (chemins UNC, traversée de répertoire, fichiers locaux)
+      const lineLower = line.toLowerCase();
+      if (
+        lineLower.includes('..') ||
+        lineLower.includes('\\\\') ||
+        /^(ca|cert|key|pkcs12|secret|askpass|crl-verify|dh)\s+/.test(lineLower)
+      ) {
+        return {
+          valid: false,
+          error: `Référence à un fichier externe non autorisée : "${directive}". Les certificats et clés doivent être strictement intégrés dans des blocs <ca>, <cert>, <key>.`,
+          rejectionReason: 'EXTERNAL_FILE_REFERENCE_FORBIDDEN',
+        };
+      }
+
       // 4. Validation par liste blanche stricte
       if (!ALLOWED_DIRECTIVES.has(directive)) {
         return {
@@ -203,7 +217,16 @@ export class StrictOvpnParser {
       }
 
       // 5. Validation spécifique des paramètres
-      if (directive === 'remote') {
+      if (directive === 'remote-cert-tls') {
+        const target = (args[0] || '').toLowerCase();
+        if (target !== 'server') {
+          return {
+            valid: false,
+            error: `La directive remote-cert-tls doit valider le rôle 'server' (reçu: "${target}").`,
+            rejectionReason: 'INSECURE_CERT_VERIFICATION',
+          };
+        }
+      } else if (directive === 'remote') {
         if (args.length >= 1) {
           const host = args[0];
           const port = args[1] ? parseInt(args[1], 10) : 1194;

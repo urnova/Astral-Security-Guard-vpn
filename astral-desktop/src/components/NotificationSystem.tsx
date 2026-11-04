@@ -4,15 +4,17 @@ import { CheckCircle2, AlertTriangle, Info, X, ShieldAlert } from 'lucide-react'
 const api = (window as any).vanguard;
 
 interface Toast {
-  id:       string;
-  type:     'ok' | 'warn' | 'bad' | 'info';
-  title:    string;
-  desc?:    string;
-  exiting?: boolean;
+  id:           string;
+  type:         'ok' | 'warn' | 'bad' | 'info';
+  title:        string;
+  desc?:        string;
+  actionTarget?: { tab: string };
+  exiting?:     boolean;
 }
 
 interface Props {
-  dndEnabled: boolean;
+  dndEnabled?: boolean;
+  onNavigateTab?: (tab: string) => void;
 }
 
 const ICONS = {
@@ -28,7 +30,7 @@ const COLORS = {
   info: 'var(--a1)',
 };
 
-export function NotificationSystem({ dndEnabled }: Props) {
+export function NotificationSystem({ dndEnabled, onNavigateTab }: Props) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const dismiss = useCallback((id: string) => {
@@ -38,9 +40,9 @@ export function NotificationSystem({ dndEnabled }: Props) {
 
   const add = useCallback((t: Omit<Toast, 'id' | 'exiting'>) => {
     if (dndEnabled) return;
-    const id = Date.now().toString();
+    const id = Date.now().toString() + '-' + Math.random().toString(36).slice(2, 6);
     setToasts(prev => [...prev.slice(-4), { ...t, id }]);
-    setTimeout(() => dismiss(id), 4000);
+    setTimeout(() => dismiss(id), 4500);
   }, [dndEnabled, dismiss]);
 
   useEffect(() => {
@@ -51,6 +53,36 @@ export function NotificationSystem({ dndEnabled }: Props) {
       const off = api.on(event, fn);
       if (typeof off === 'function') handlers.push(off);
     };
+
+    // NotificationManager central event channel
+    on('notification:toast', (d: any) => {
+      const severity = d.severity || 'info';
+      const type: 'ok' | 'warn' | 'bad' | 'info' =
+        severity === 'critical' || severity === 'alert' ? 'bad' :
+        severity === 'warning' ? 'warn' :
+        d.category === 'security' || d.category === 'scanner' ? 'ok' : 'info';
+
+      add({
+        type,
+        title: d.title || 'Vanguard Notification',
+        desc: d.message || d.desc || '',
+        actionTarget: d.actionTarget,
+      });
+    });
+
+    on('notification:trigger', (d: any) => {
+      const t = d.type || (d.critical ? 'threat' : 'info');
+      const mappedType: 'ok' | 'warn' | 'bad' | 'info' =
+        t === 'threat' || t === 'security_threat' || t === 'download_threat' ? 'bad' :
+        t === 'warn' || t === 'warning' || t === 'vpn_disconnected' || t === 'lag_alert' ? 'warn' :
+        t === 'security_clean' || t === 'download_safe' || t === 'success' || t === 'ok' ? 'ok' : 'info';
+
+      add({
+        type: mappedType,
+        title: d.title || 'Notification',
+        desc: d.message || d.desc || '',
+      });
+    });
 
     on('notification:show', (d: any) => {
       add({ type: d.type || 'info', title: d.title || d.message || '', desc: d.desc || d.body });
@@ -90,7 +122,17 @@ export function NotificationSystem({ dndEnabled }: Props) {
         <div
           key={t.id}
           className={`toast-item${t.exiting ? ' exiting' : ''}`}
-          style={{ borderLeftColor: COLORS[t.type], borderLeftWidth: 2 }}
+          style={{
+            borderLeftColor: COLORS[t.type],
+            borderLeftWidth: 2,
+            cursor: t.actionTarget?.tab ? 'pointer' : 'default',
+          }}
+          onClick={() => {
+            if (t.actionTarget?.tab && onNavigateTab) {
+              onNavigateTab(t.actionTarget.tab);
+              dismiss(t.id);
+            }
+          }}
         >
           <span className="toast-icon" style={{ color: COLORS[t.type] }}>
             {ICONS[t.type]}
@@ -99,7 +141,13 @@ export function NotificationSystem({ dndEnabled }: Props) {
             <div className="toast-title">{t.title}</div>
             {t.desc && <div className="toast-desc">{t.desc}</div>}
           </div>
-          <button className="toast-close" onClick={() => dismiss(t.id)}>
+          <button
+            className="toast-close"
+            onClick={(e) => {
+              e.stopPropagation();
+              dismiss(t.id);
+            }}
+          >
             <X size={13} />
           </button>
         </div>

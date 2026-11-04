@@ -1,18 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Wifi, Play, CheckCircle2, AlertTriangle,
-  Globe, Router, Activity, X, Zap, Shield, ArrowDown, ArrowUp, RefreshCw, Sparkles,
-  ShieldCheck, Cpu, Database, Check
+  Globe, Router, Activity, X, Zap, ArrowDown, ArrowUp, RefreshCw,
+  ShieldCheck, RotateCcw, Info, Lock, Server
 } from 'lucide-react';
 
 const api = (window as any).vanguard;
 
 const DNS_PRESETS = [
-  { id: 'google',     name: 'Google 8.8.8.8',     label: 'Ultra-rapide, mondial et hautement résilient', ip: '8.8.8.8', ping: 11 },
-  { id: 'cloudflare', name: 'Cloudflare 1.1.1.1', label: 'Latence gaming minimale · Confidentialité',  ip: '1.1.1.1', ping: 9 },
-  { id: 'quad9',      name: 'Quad9 9.9.9.9',      label: 'Blocage automatique des domaines malveillants',ip: '9.9.9.9', ping: 14 },
-  { id: 'opendns',    name: 'Cisco OpenDNS',      label: 'Filtrage de sécurité et stabilité d\'entreprise', ip: '208.67.222.222', ping: 16 },
-  { id: 'auto',       name: 'Automatique (FAI)',  label: 'Attribution dynamique par votre box (DHCP)',   ip: 'auto',    ping: null },
+  { id: 'cloudflare', name: 'Cloudflare', provider: 'Cloudflare', label: '1.1.1.1 / 1.0.0.1 · Anycast', ip: '1.1.1.1' },
+  { id: 'google',     name: 'Google DNS', provider: 'Google',     label: '8.8.8.8 / 8.8.4.4 · Anycast', ip: '8.8.8.8' },
+  { id: 'quad9',      name: 'Quad9',      provider: 'Quad9',      label: '9.9.9.9 / 149.112.112.112 · Sécurité', ip: '9.9.9.9' },
+  { id: 'opendns',    name: 'Cisco OpenDNS', provider: 'OpenDNS', label: '208.67.222.222 · Filtrage', ip: '208.67.222.222' },
+  { id: 'auto',       name: 'Automatique (DHCP)', provider: 'FAI', label: 'Attribution dynamique par votre box Internet', ip: 'auto' },
 ];
 
 interface NetworkInfo {
@@ -23,38 +23,73 @@ interface NetworkInfo {
   dns:           string;
   isp:           string;
   macAddress:    string;
-  wifiSsid?:     string;
-  wifiSignal?:   number;
   type:          string;
+  ipv6Active?:   boolean;
+  ipv6State?:    'enabled' | 'disabled' | 'unknown';
+  probes?: {
+    gateway?: { status: string; latencyMs: number | null; detail: string };
+    gatewayMs?: number | null;
+    cloudflare?: { target: string; protocol: string; latencyMs: number | null; success: boolean };
+    cloudflareMs?: number | null;
+    google?: { target: string; protocol: string; latencyMs: number | null; success: boolean };
+    googleMs?: number | null;
+  };
+}
+
+interface SpeedReportDimension {
+  status: string;
+  grade: string | null;
+  description: string;
+  [key: string]: any;
 }
 
 interface SpeedResult {
-  down: number;
-  up: number;
-  ping: number;
-  jitter: number;
+  downloadMbps: number | null;
+  uploadMbps: number | null;
+  down?: number | null;
+  up?: number | null;
+  pingMs: number | null;
+  jitterMs: number | null;
+  ping?: number | null;
+  jitter?: number | null;
+  loadedDownPingMs?: number | null;
+  loadedUpPingMs?: number | null;
+  bufferbloatDownMs?: number | null;
+  bufferbloatUpMs?: number | null;
+  bufferbloatDownProbeCount?: number;
+  bufferbloatUpProbeCount?: number;
+  probeFailureRatePct?: number | null;
+  bytesTransferredMB?: number;
   timestamp?: string;
+  report?: {
+    isComplete: boolean;
+    overallGrade: string;
+    statusLabel: string;
+    summary: string;
+    transfer: SpeedReportDimension;
+    reactivity: SpeedReportDimension;
+    stability: SpeedReportDimension;
+    conventionNotice?: string;
+  };
 }
 
 interface SpeedHistoryPoint {
   time: string;
   down: number;
   up: number;
+  grade?: string;
 }
 
 export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActive: boolean }) {
   const [netInfo, setNetInfo]         = useState<NetworkInfo | null>(null);
-  const [selectedDns, setSelectedDns] = useState('Google 8.8.8.8');
-  const [dnsOverHttps, setDnsOverHttps] = useState(false);
-  const [ipv6Disabled, setIpv6Disabled] = useState(false);
-  const [antiBufferbloat, setAntiBufferbloat] = useState(true);
+  const [selectedDns, setSelectedDns] = useState('auto');
   const [testing, setTesting]         = useState(false);
   const [speedResult, setSpeedResult] = useState<SpeedResult | null>(null);
-  const [gaugeVal, setGaugeVal]       = useState(0);
   const [livePhase, setLivePhase]     = useState<string>('');
   const [livePhaseType, setLivePhaseType] = useState<'ping' | 'download' | 'upload' | 'download-complete' | ''>('');
   const [liveDownMbps, setLiveDownMbps] = useState<number | null>(null);
   const [liveUpMbps, setLiveUpMbps]   = useState<number | null>(null);
+
   const [history, setHistory]         = useState<SpeedHistoryPoint[]>(() => {
     try {
       const raw = localStorage.getItem('astral_speedtest_history');
@@ -64,16 +99,17 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
     }
   });
 
-  const [livePing, setLivePing]       = useState<number | null>(14);
+  const [dnsBenchmarks, setDnsBenchmarks] = useState<Record<string, { latencyMs: number | null; resolutionMs?: number | null; tcpConnectMs?: number | null; status: string }>>({});
+  const [benchmarkingDns, setBenchmarkingDns] = useState(false);
+
   const [notice, setNotice]           = useState('');
   const [error, setError]             = useState('');
 
-  // Accélération Réseau Modal & Execution State
-  const [showAccelDrawer, setShowAccelDrawer] = useState(false);
-  const [stackStatus, setStackStatus] = useState<{ autotuning?: string; rss?: string; heuristics?: string; dnsCacheEntries?: number } | null>(null);
-  const [optimizing, setOptimizing]   = useState(false);
-  const [optStep, setOptStep]         = useState<number>(0);
-  const [optLogs, setOptLogs]         = useState<string[]>([]);
+  // TCP stack and in-page action states
+  const [stackStatus, setStackStatus] = useState<{ autotuning?: string; rss?: string; heuristics?: string; dnsCacheEntries?: number; isElevated?: boolean } | null>(null);
+  const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  const [actionLog, setActionLog]     = useState<string | null>(null);
+  const [conflictNotice, setConflictNotice] = useState<{ message: string } | null>(null);
 
   const loadStackStatus = async () => {
     try {
@@ -84,48 +120,51 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
     } catch {}
   };
 
+  const loadDiagnostics = () => {
+    api?.getNetworkDiagnostics?.().then((d: any) => {
+      if (!d) return;
+      setNetInfo({
+        interfaceName: d.interface || d.adapterName || 'Interface active',
+        ip:            d.localIp || '—',
+        externalIp:    d.externalIp,
+        gateway:       d.gateway || '—',
+        dns:           d.dns || d.friendlyDns || '—',
+        isp:           d.isp || d.provider || 'Non résolu',
+        macAddress:    d.macAddress || '—',
+        type:          d.connectionType || d.type || 'Ethernet',
+        ipv6Active:    d.ipv6Active,
+        ipv6State:     d.ipv6State,
+        probes:        d.probes,
+      });
+
+      if (d.dns?.includes('8.8.8.8')) setSelectedDns('google');
+      else if (d.dns?.includes('1.1.1.1')) setSelectedDns('cloudflare');
+      else if (d.dns?.includes('9.9.9.9')) setSelectedDns('quad9');
+      else if (d.dns?.includes('208.67')) setSelectedDns('opendns');
+      else setSelectedDns('auto');
+    }).catch(() => {});
+  };
+
   useEffect(() => {
     if (!api) return;
 
     loadDiagnostics();
     loadStackStatus();
 
-    // Load persisted settings & last speed result from profile
     api?.getProfile?.().then((prof: any) => {
       if (prof?.lastSpeedResult) {
-        const r = prof.lastSpeedResult;
-        setSpeedResult(r);
-        setGaugeVal(Math.min(100, (r.down / 1000) * 100));
-        setLiveDownMbps(r.down);
-        setLiveUpMbps(r.up);
+        setSpeedResult(prof.lastSpeedResult);
       }
-      if (prof?.network) {
-        if (typeof prof.network.antiBufferbloat === 'boolean') setAntiBufferbloat(prof.network.antiBufferbloat);
-        if (typeof prof.network.dnsOverHttps === 'boolean') setDnsOverHttps(prof.network.dnsOverHttps);
-        if (typeof prof.network.ipv6Disabled === 'boolean') setIpv6Disabled(prof.network.ipv6Disabled);
-        if (typeof prof.network.selectedDns === 'string') setSelectedDns(prof.network.selectedDns);
+      if (prof?.network?.selectedDns) {
+        setSelectedDns(prof.network.selectedDns);
       }
     }).catch(() => {});
 
-    // Background live latency monitor
-    const checkPing = async () => {
-      try {
-        const res = await api?.getPing?.();
-        const p = res?.ping ?? res?.currentPing ?? res?.ms;
-        if (typeof p === 'number' && p > 0) {
-          setLivePing(p);
-        }
-      } catch {}
-    };
-    checkPing();
-    const pingTimer = setInterval(checkPing, 4000);
-
-    const c2 = api.on?.('network-event', (d: any) => {
+    const unsub = api.on?.('network-event', (d: any) => {
       if (d?.type === 'speedtest-progress') {
         if (d.phase === 'download') {
           if (typeof d.currentMbps === 'number') {
             setLiveDownMbps(d.currentMbps);
-            setGaugeVal(Math.min(100, (d.currentMbps / 1000) * 100));
           }
         } else if (d.phase === 'download-complete') {
           const finalVal = d.finalDownMbps ?? d.downloadMbps ?? d.currentMbps;
@@ -138,44 +177,48 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
           }
           if (typeof d.currentMbps === 'number') {
             setLiveUpMbps(d.currentMbps);
-            setGaugeVal(Math.min(100, (d.currentMbps / 500) * 100));
           }
         }
 
         if (d.phase) {
           setLivePhaseType(d.phase as any);
           const phaseLabels: Record<string, string> = {
-            ping: 'Mesure de latence ICMP…',
-            download: 'Téléchargement multi-flux en cours…',
-            'download-complete': 'Téléchargement finalisé · Démarrage upload…',
-            upload: 'Test d\'envoi (upload) en cours…',
+            ping: 'Sondes de latence et gigue au repos (TCP direct 1.1.1.1:443)…',
+            download: 'Téléchargement multi-flux & sonde bufferbloat en cours…',
+            'download-complete': 'Réception finalisée · Début envoi multi-flux…',
+            upload: 'Envoi multi-flux & sonde bufferbloat en cours…',
           };
           setLivePhase(phaseLabels[d.phase] || d.phase);
         }
       } else if (d?.type === 'speedtest-complete' && d.result) {
         setTesting(false);
-        const r: SpeedResult = {
-          down: Math.round(d.result.downloadMbps || 0),
-          up: Math.round(d.result.uploadMbps || 0),
-          ping: d.result.pingMs || 14,
-          jitter: d.result.jitterMs || 1.2,
-          timestamp: d.result.timestamp || new Date().toLocaleTimeString('fr-FR'),
-        };
+        const r: SpeedResult = d.result;
         setSpeedResult(r);
-        setGaugeVal(Math.min(100, (r.down / 1000) * 100));
-        setLiveDownMbps(r.down);
-        setLiveUpMbps(r.up);
+        setLiveDownMbps(r.downloadMbps);
+        setLiveUpMbps(r.uploadMbps);
         setLivePhase('');
         setLivePhaseType('');
 
-        api?.saveUserProfile?.({ lastSpeedResult: r }).catch(() => {});
-
-        const newPoint = { time: r.timestamp || 'Maintenant', down: r.down, up: r.up };
-        setHistory(prev => {
-          const updated = [...prev.slice(-9), newPoint];
-          try { localStorage.setItem('astral_speedtest_history', JSON.stringify(updated)); } catch {}
-          return updated;
-        });
+        if (r.downloadMbps !== null && r.uploadMbps !== null) {
+          const newPoint: SpeedHistoryPoint = {
+            time: r.timestamp || new Date().toLocaleTimeString('fr-FR'),
+            down: r.downloadMbps,
+            up: r.uploadMbps,
+            grade: r.report?.overallGrade || '—',
+          };
+          setHistory(prev => {
+            const filtered = prev.filter(p => p.time !== newPoint.time);
+            const updated = [...filtered.slice(-9), newPoint];
+            try { localStorage.setItem('astral_speedtest_history', JSON.stringify(updated)); } catch {}
+            return updated;
+          });
+        }
+      } else if (d?.type === 'speedtest-cancelled') {
+        setTesting(false);
+        setLivePhase('');
+        setLivePhaseType('');
+        setNotice('Test de débit annulé par l\'utilisateur. Sockets libérés.');
+        setTimeout(() => setNotice(''), 4000);
       } else if (d?.type === 'speedtest-error') {
         setTesting(false);
         setLivePhase('');
@@ -185,32 +228,9 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
     });
 
     return () => {
-      clearInterval(pingTimer);
-      c2?.();
+      unsub?.();
     };
   }, []);
-
-  const loadDiagnostics = () => {
-    api?.getNetworkDiagnostics?.().then((d: any) => {
-      if (!d) return;
-      setNetInfo({
-        interfaceName: d.interface || d.adapterName || 'Interface active',
-        ip:            d.localIp || '—',
-        externalIp:    d.externalIp,
-        gateway:       d.gateway || '—',
-        dns:           d.friendlyDns || d.dns || d.dnsServer || '—',
-        isp:           d.isp || d.provider || 'Connexion locale',
-        macAddress:    d.macAddress || '—',
-        wifiSsid:      d.ssid || d.wifiName,
-        wifiSignal:    d.signalStrength,
-        type:          d.connectionType || d.type || 'Connexion réseau',
-      });
-
-      if (d.dns?.includes('8.8.8.8')) setSelectedDns('Google 8.8.8.8');
-      else if (d.dns?.includes('1.1.1.1')) setSelectedDns('Cloudflare 1.1.1.1');
-      else if (d.dns?.includes('9.9.9.9')) setSelectedDns('Quad9 9.9.9.9');
-    }).catch(() => {});
-  };
 
   const runSpeedTest = async () => {
     if (testing) return;
@@ -219,35 +239,19 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
     setNotice('');
     setLiveDownMbps(null);
     setLiveUpMbps(null);
-    setGaugeVal(10);
-    setLivePhase('Initialisation du test multi-flux…');
+    setLivePhase('Initialisation des sondes TCP multi-flux…');
 
     try {
       const res = await api?.runSpeedTest?.();
       if (res?.success && res.result) {
-        const r: SpeedResult = {
-          down: Math.round(res.result.downloadMbps || res.down || 0),
-          up: Math.round(res.result.uploadMbps || res.up || 0),
-          ping: res.result.pingMs || res.ping || 14,
-          jitter: res.result.jitterMs || res.jitter || 1.2,
-          timestamp: res.result.timestamp || new Date().toLocaleTimeString('fr-FR'),
-        };
-        setSpeedResult(r);
-        setGaugeVal(Math.min(100, (r.down / 1000) * 100));
-        setLiveDownMbps(r.down);
-        setLiveUpMbps(r.up);
-
-        api?.saveUserProfile?.({ lastSpeedResult: r }).catch(() => {});
-
-        const newPoint = { time: r.timestamp || 'Maintenant', down: r.down, up: r.up };
-        setHistory(prev => {
-          const updated = [...prev.slice(-9), newPoint];
-          try { localStorage.setItem('astral_speedtest_history', JSON.stringify(updated)); } catch {}
-          return updated;
-        });
+        setSpeedResult(res.result);
+      } else if (res?.cancelled) {
+        setNotice('Test de débit interrompu.');
+      } else if (res?.error) {
+        setError(res.error);
       }
     } catch (e: any) {
-      setError(e.message || 'Impossible de finaliser le test de débit.');
+      setError(e.message || 'Impossible d\'exécuter le test de débit.');
     } finally {
       setTesting(false);
       setLivePhase('');
@@ -255,148 +259,152 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
     }
   };
 
-  const applyDns = async (id: string, name: string) => {
-    setSelectedDns(name);
+  const cancelSpeedTest = async () => {
     try {
-      await api?.setDns?.(id);
-      setNotice(`Résolveur ${name} appliqué à votre adaptateur réseau.`);
-      setTimeout(() => setNotice(''), 3500);
-      loadDiagnostics();
-      api?.saveUserProfile?.({ network: { selectedDns: name } }).catch(() => {});
+      await api?.cancelSpeedtest?.();
+      setLivePhase('Annulation en cours…');
+    } catch {}
+  };
+
+  const applyDns = async (id: string, name: string) => {
+    setSelectedDns(id);
+    try {
+      const res = await api?.setDns?.(id);
+      if (res?.success) {
+        setNotice(res.message || `Résolveur ${name} appliqué.`);
+        setTimeout(() => setNotice(''), 4000);
+        loadDiagnostics();
+        api?.saveUserProfile?.({ network: { selectedDns: id } }).catch(() => {});
+      } else {
+        setError(res?.error || 'Échec lors de l\'application du DNS.');
+      }
     } catch (e: any) {
       setError(e.message || 'Erreur application DNS');
     }
   };
 
-  const handleToggleBufferbloat = (v: boolean) => {
-    setAntiBufferbloat(v);
-    api?.saveUserProfile?.({ network: { antiBufferbloat: v } }).catch(() => {});
-    api?.setGamingSetting?.({ key: 'antiBufferbloat', value: v }).catch(() => {});
-  };
-
-  const handleToggleDoH = (v: boolean) => {
-    setDnsOverHttps(v);
-    api?.saveUserProfile?.({ network: { dnsOverHttps: v } }).catch(() => {});
-  };
-
-  const handleToggleIpv6 = (v: boolean) => {
-    setIpv6Disabled(v);
-    api?.saveUserProfile?.({ network: { ipv6Disabled: v } }).catch(() => {});
-  };
-
-  const getGradeInfo = () => {
-    if ((!speedResult && liveDownMbps === null) || (testing && (!speedResult && (liveDownMbps === null || liveDownMbps === 0)))) {
-      return {
-        grade: 'A+',
-        scorePct: 98,
-        color: '#38bdf8',
-        label: testing ? 'Évaluation Multi-Flux en Cours…' : 'Prêt pour l\'Évaluation Multi-Flux',
-        summary: testing
-          ? 'Mesure en direct de la bande passante descendante et montante par les sondes haute capacité Vanguard.'
-          : 'Votre adaptateur réseau et votre passerelle sont actifs. Lancez le test multi-flux pour obtenir le bilan complet et certifié de votre ligne par l\'IA Vanguard.',
-        isPending: true,
-      };
-    }
-
-    const down = speedResult ? speedResult.down : (liveDownMbps ?? 0);
-    const ping = speedResult ? speedResult.ping : (livePing ?? 14);
-    const jitter = speedResult ? speedResult.jitter : 1.2;
-
-    if (down >= 200 && ping <= 25) {
-      return {
-        grade: 'A+',
-        scorePct: 99,
-        color: '#38bdf8',
-        label: 'Excellence Fibre Gigabit (E-Sport)',
-        summary: 'Qualité de ligne optimale. Latence ultra-faible, gigue quasi-nulle et bande passante Gigabit sans bufferbloat, idéale pour le jeu compétitif et le Cloud Gaming 4K.',
-        isPending: false,
-      };
-    }
-    if (down >= 80 && ping <= 35) {
-      return {
-        grade: 'A',
-        scorePct: 94,
-        color: '#22c55e',
-        label: 'Très Haut Débit Optimal',
-        summary: 'Excellente connexion Internet. Temps de réponse très rapide, supporte simultanément le streaming UHD 4K, les téléchargements lourds et le gaming sans saccades.',
-        isPending: false,
-      };
-    }
-    if (down >= 30 && ping <= 50) {
-      return {
-        grade: 'B',
-        scorePct: 82,
-        color: '#facc15',
-        label: 'Haut Débit Confortable',
-        summary: 'Connexion rapide et fluide pour la navigation quotidienne, les réunions vidéo et le streaming HD.',
-        isPending: false,
-      };
-    }
-    if (down > 0 && ping <= 80) {
-      return {
-        grade: 'C',
-        scorePct: 68,
-        color: '#fb923c',
-        label: 'Débit Standard ADSL / 4G',
-        summary: 'Liaison stable mais sujette aux variations en cas d\'usage intensif. L\'accélération TCP/IP et le filtrage DNS Astral sont recommandés.',
-        isPending: false,
-      };
-    }
-    return {
-      grade: 'D',
-      scorePct: 45,
-      color: '#ef4444',
-      label: 'Latence Critique / Instabilité',
-      summary: 'Temps de réponse élevé ou instabilité de routage. Lancez l\'Accélération Réseau pour purger le cache DNS et réinitialiser la pile TCP/IP.',
-      isPending: false,
-    };
-  };
-
-  const runNetworkAcceleration = async () => {
-    if (optimizing) return;
-    setOptimizing(true);
-    setOptStep(1);
-    setOptLogs(['[1/4] Purge immédiate du cache DNS Windows (ipconfig /flushdns)...']);
-
+  const handleBenchmarkDns = async () => {
+    if (benchmarkingDns) return;
+    setBenchmarkingDns(true);
     try {
-      await new Promise(r => setTimeout(r, 400));
-      setOptStep(2);
-      setOptLogs(prev => [...prev, '[2/4] Calibrage autotuning de la pile TCP/IP (Fenêtre dynamique 64k-16MB)...']);
-
-      await new Promise(r => setTimeout(r, 400));
-      setOptStep(3);
-      setOptLogs(prev => [...prev, '[3/4] Activation Receive-Side Scaling (RSS) multi-cœurs processeur...']);
-
-      const res = await api?.optimizeNetwork?.();
-
-      await new Promise(r => setTimeout(r, 350));
-      setOptStep(4);
-      setOptLogs(prev => [...prev, '[4/4] Priorisation des flux UDP directs et vérification anti-bufferbloat...']);
-
-      if (res?.success) {
-        setOptLogs(prev => [
-          ...prev,
-          `✓ ${res.message || 'Optimisation réseau réussie : pile TCP/IP calibrée et cache DNS purgé.'}`,
-          '✓ Latence réseau réinitialisée et gigue minimisée.'
-        ]);
-        try {
-          api?.sendNotification?.('Accélération Réseau Complète', 'Pile TCP/IP calibrée et cache DNS purgé avec succès.');
-        } catch {}
-      } else {
-        setOptLogs(prev => [...prev, `⚠️ ${res?.error || 'Optimisation partielle effectuée.'}`]);
+      const res = await api?.dnsBenchmark?.();
+      if (res?.success && Array.isArray(res.results)) {
+        const map: Record<string, { latencyMs: number | null; resolutionMs?: number | null; tcpConnectMs?: number | null; status: string }> = {};
+        for (const item of res.results) {
+          map[item.id] = {
+            latencyMs: item.resolutionMs ?? item.latencyMs,
+            resolutionMs: item.resolutionMs,
+            tcpConnectMs: item.tcpConnectMs,
+            status: item.status,
+          };
+        }
+        setDnsBenchmarks(map);
       }
-      loadDiagnostics();
-      loadStackStatus();
-    } catch (err: any) {
-      setOptLogs(prev => [...prev, `⚠️ Erreur : ${err.message}`]);
-    } finally {
-      setOptimizing(false);
+    } catch {}
+    finally {
+      setBenchmarkingDns(false);
     }
   };
 
-  const gaugeRadius = 125;
+  const handleFlushDns = async () => {
+    setActionInProgress('flushDns');
+    setActionLog(null);
+    try {
+      const res = await api?.flushDnsCache?.();
+      if (res?.success) {
+        setActionLog('✓ Cache DNS Windows purgé avec succès.');
+        loadStackStatus();
+      } else {
+        setActionLog(`⚠️ ${res?.error || 'Erreur lors de la purge DNS.'}`);
+      }
+    } catch (e: any) {
+      setActionLog(`⚠️ Erreur : ${e.message}`);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleOptimizeTcp = async () => {
+    setActionInProgress('optimizeTcp');
+    setActionLog(null);
+    try {
+      const res = await api?.optimizeNetwork?.();
+      if (res?.success) {
+        setActionLog(`✓ ${res.message || 'Pile TCP/IP Windows calibrée et sauvegarde conservée.'}`);
+        loadStackStatus();
+      } else {
+        setActionLog(`⚠️ ${res?.error || 'Échec du calibrage de la pile TCP/IP.'}`);
+      }
+    } catch (e: any) {
+      setActionLog(`⚠️ Erreur : ${e.message}`);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleRestoreDefaults = async (force = false) => {
+    setActionInProgress('restore');
+    setActionLog(null);
+    setConflictNotice(null);
+    try {
+      const resTcp = await api?.restoreTcpStack?.(force ? { force: true } : undefined);
+      const resDns = await api?.restorePreviousDns?.(force ? { force: true } : undefined);
+
+      if (resTcp?.conflict || resDns?.conflict) {
+        setConflictNotice({
+          message: resTcp?.conflict && resDns?.conflict
+            ? 'Les paramètres TCP/IP et serveurs DNS ont été modifiés en dehors de Vanguard depuis leur application. Restauration suspendue pour préserver vos réglages.'
+            : (resTcp?.message || resDns?.message || 'Conflit détecté : modification survenue en dehors de Vanguard.'),
+        });
+        setActionLog('⚠️ Conflit détecté : aucun écrasement automatique.');
+        return;
+      }
+
+      if (resTcp?.success || resDns?.success) {
+        setActionLog(`✓ Restauration terminée : ${resTcp?.message || ''} ${resDns?.message || ''}`);
+        loadStackStatus();
+        loadDiagnostics();
+      } else {
+        setActionLog(`⚠️ ${resTcp?.error || resDns?.error || 'Erreur lors de la restauration.'}`);
+      }
+    } catch (e: any) {
+      setActionLog(`⚠️ Erreur : ${e.message}`);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const currentGaugeValue = useMemo(() => {
+    if (livePhaseType === 'download') return liveDownMbps ?? 0;
+    if (livePhaseType === 'upload') return liveUpMbps ?? 0;
+    if (speedResult?.downloadMbps !== null && speedResult?.downloadMbps !== undefined) {
+      return speedResult.downloadMbps;
+    }
+    return 0;
+  }, [livePhaseType, liveDownMbps, liveUpMbps, speedResult]);
+
+  const maxGaugeScale = useMemo(() => {
+    if (currentGaugeValue > 2500) return 10000;
+    if (currentGaugeValue > 1000) return 2500;
+    if (currentGaugeValue > 500) return 1000;
+    if (currentGaugeValue > 100) return 500;
+    return 100;
+  }, [currentGaugeValue]);
+
+  const gaugeRadius = 120;
   const gaugeCircumference = Math.PI * gaugeRadius;
-  const gaugeOffset = gaugeCircumference - (gaugeCircumference * (gaugeVal / 100));
+  const gaugePercent = Math.min(100, (currentGaugeValue / maxGaugeScale) * 100);
+  const gaugeOffset = gaugeCircumference - (gaugeCircumference * (gaugePercent / 100));
+
+  const overallGrade = speedResult?.report?.overallGrade || '—';
+  const gradeColor = useMemo(() => {
+    if (overallGrade === 'A++' || overallGrade === 'A+') return 'var(--a1)';
+    if (overallGrade === 'A') return '#22c55e';
+    if (overallGrade === 'B') return '#facc15';
+    if (overallGrade === 'C') return '#fb923c';
+    if (overallGrade === 'D') return '#ef4444';
+    return 'var(--muted)';
+  }, [overallGrade]);
 
   return (
     <div className="page-scroll">
@@ -405,12 +413,12 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
         {/* ── Page Header ── */}
         <div className="page-header" style={{ marginBottom: 18 }}>
           <div>
-            <h1>Réseau & Bande Passante</h1>
-            <p className="sub">Diagnostic en temps réel, test de débit multi-flux et calibration de la pile TCP/IP.</p>
+            <h1>Connexion et diagnostic</h1>
+            <p className="sub">Audit de latence, test de débit adaptatif et calibration de la pile réseau Windows.</p>
           </div>
         </div>
 
-        {/* ── Notice Messages ── */}
+        {/* ── Notice & Error Banners ── */}
         {notice && (
           <div style={{
             marginBottom: 16,
@@ -438,19 +446,22 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
             display: 'flex', gap: 10, alignItems: 'center'
           }}>
             <AlertTriangle size={15} /> {error}
-            <button onClick={() => setError('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}><X size={14} /></button>
+            <button onClick={() => setError('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>
+              <X size={14} />
+            </button>
           </div>
         )}
 
-        {/* ── Tier 1: Top Hero Section (2 Balanced Columns) ── */}
+        {/* ── Grand Bloc Principal (Hero 2 Colonnes) ── */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
           gap: 16,
           alignItems: 'stretch',
           marginBottom: 16,
         }}>
-          {/* Hero Card 1: Test de Débit Multi-Flux */}
+
+          {/* Colonne Gauche : Test de Débit Adaptatif & Jauge Dynamique */}
           <div className="card card-p-lg card-hero" style={{
             display: 'flex',
             flexDirection: 'column',
@@ -460,16 +471,35 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <div>
-                  <div className="lbl" style={{ margin: 0, fontSize: 13 }}>Test de Débit Multi-Flux</div>
-                  <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--muted)' }}>Bande passante Fibre & Télémesure directe</p>
+                  <div className="lbl" style={{ margin: 0, fontSize: 13 }}>Test de Débit Adaptatif</div>
+                  <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--muted)' }}>
+                    Télémesure multi-flux directe · Arrêt immédiat à l'annulation
+                  </p>
                 </div>
-                <span className="chip" style={{ fontSize: 10.5, background: 'rgba(56,189,248,0.12)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.25)', fontWeight: 700 }}>
-                  Fibre & Haut Débit
+                <span className="chip" style={{ fontSize: 10.5, fontWeight: 700 }}>
+                  Multi-Flux
                 </span>
               </div>
 
-              {/* Dual Stream Live Status Pills */}
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 10, margin: '10px 0 4px' }}>
+              {/* Note d'information préalable */}
+              <div style={{
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--r-sm)',
+                padding: '8px 12px',
+                fontSize: 11,
+                color: 'var(--muted)',
+                display: 'flex',
+                gap: 8,
+                alignItems: 'center',
+                margin: '10px 0',
+              }}>
+                <Info size={14} style={{ color: 'var(--a1)', flexShrink: 0 }} />
+                <span>Mesure directe (~20 à 80 Mo transférés selon débit). Sockets fermés à l'annulation.</span>
+              </div>
+
+              {/* Live Streaming Pills */}
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 10, margin: '8px 0' }}>
                 <span style={{
                   padding: '4px 12px',
                   borderRadius: 14,
@@ -479,13 +509,12 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
                   alignItems: 'center',
                   gap: 6,
                   background: livePhaseType === 'download' ? 'rgba(56,189,248,0.18)' : 'rgba(255,255,255,0.03)',
-                  color: livePhaseType === 'download' ? '#38bdf8' : (liveDownMbps !== null || speedResult ? '#38bdf8' : 'var(--muted)'),
-                  border: `1px solid ${livePhaseType === 'download' ? '#38bdf8' : 'rgba(255,255,255,0.07)'}`,
-                  boxShadow: livePhaseType === 'download' ? '0 0 12px rgba(56,189,248,0.25)' : 'none',
+                  color: livePhaseType === 'download' ? 'var(--a1)' : (liveDownMbps !== null || speedResult?.downloadMbps !== null ? 'var(--text)' : 'var(--muted)'),
+                  border: `1px solid ${livePhaseType === 'download' ? 'var(--a1)' : 'var(--border)'}`,
                   transition: 'all 0.2s ease',
                 }}>
                   <ArrowDown size={12} />
-                  <span>Réception : <b>{liveDownMbps !== null ? `${liveDownMbps} Mbps` : (speedResult ? `${speedResult.down} Mbps` : '—')}</b></span>
+                  <span>Réception : <b>{liveDownMbps !== null ? `${liveDownMbps} Mbps` : (speedResult?.downloadMbps !== null && speedResult?.downloadMbps !== undefined ? `${speedResult.downloadMbps} Mbps` : '—')}</b></span>
                 </span>
                 <span style={{
                   padding: '4px 12px',
@@ -496,51 +525,50 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
                   alignItems: 'center',
                   gap: 6,
                   background: livePhaseType === 'upload' ? 'rgba(167,139,250,0.18)' : 'rgba(255,255,255,0.03)',
-                  color: livePhaseType === 'upload' ? '#a78bfa' : (liveUpMbps !== null || speedResult ? '#a78bfa' : 'var(--muted)'),
-                  border: `1px solid ${livePhaseType === 'upload' ? '#a78bfa' : 'rgba(255,255,255,0.07)'}`,
-                  boxShadow: livePhaseType === 'upload' ? '0 0 12px rgba(167,139,250,0.25)' : 'none',
+                  color: livePhaseType === 'upload' ? '#a78bfa' : (liveUpMbps !== null || speedResult?.uploadMbps !== null ? 'var(--text)' : 'var(--muted)'),
+                  border: `1px solid ${livePhaseType === 'upload' ? '#a78bfa' : 'var(--border)'}`,
                   transition: 'all 0.2s ease',
                 }}>
                   <ArrowUp size={12} />
-                  <span>Envoi : <b>{liveUpMbps !== null ? `${liveUpMbps} Mbps` : (speedResult ? `${speedResult.up} Mbps` : '—')}</b></span>
+                  <span>Envoi : <b>{liveUpMbps !== null ? `${liveUpMbps} Mbps` : (speedResult?.uploadMbps !== null && speedResult?.uploadMbps !== undefined ? `${speedResult.uploadMbps} Mbps` : '—')}</b></span>
                 </span>
               </div>
 
-              {/* Speedometer Gauge */}
-              <div className="gauge" style={{ maxWidth: 260, margin: '8px auto 6px' }}>
+              {/* Jauge Dynamique sans plafond arbitraire */}
+              <div className="gauge" style={{ maxWidth: 260, margin: '12px auto 8px' }}>
                 <svg viewBox="0 0 300 170">
-                  <path className="bgp" d="M25 150 A125 125 0 0 1 275 150" strokeWidth="16" />
+                  <path className="bgp" d="M30 150 A120 120 0 0 1 270 150" strokeWidth="16" />
                   <path
                     className="fgp"
-                    d="M25 150 A125 125 0 0 1 275 150"
+                    d="M30 150 A120 120 0 0 1 270 150"
                     strokeWidth="16"
                     style={{
                       strokeDashoffset: gaugeOffset,
-                      stroke: livePhaseType === 'upload' ? '#a78bfa' : '#38bdf8',
+                      stroke: livePhaseType === 'upload' ? '#a78bfa' : 'var(--a1)',
                       transition: 'stroke-dashoffset 0.25s ease, stroke 0.3s ease'
                     }}
                   />
                 </svg>
                 <div className="val" style={{ bottom: 12 }}>
                   <div className="big" style={{
-                    fontSize: 44,
+                    fontSize: 42,
                     fontWeight: 800,
                     fontFamily: 'Space Grotesk, sans-serif',
-                    color: livePhaseType === 'upload' ? '#a78bfa' : '#38bdf8'
+                    color: livePhaseType === 'upload' ? '#a78bfa' : 'var(--a1)'
                   }}>
                     {livePhaseType === 'download'
                       ? (liveDownMbps !== null ? liveDownMbps : '…')
                       : livePhaseType === 'upload'
                       ? (liveUpMbps !== null ? liveUpMbps : '…')
-                      : speedResult
-                      ? Math.round(speedResult.down)
+                      : speedResult?.downloadMbps !== null && speedResult?.downloadMbps !== undefined
+                      ? speedResult.downloadMbps
                       : (testing ? '…' : '—')}
                   </div>
                   <div className="mut sm" style={{
                     letterSpacing: '0.06em',
                     fontWeight: 700,
-                    fontSize: 10.5,
-                    color: livePhaseType === 'upload' ? '#a78bfa' : (livePhaseType === 'download' ? '#38bdf8' : 'var(--muted)')
+                    fontSize: 10,
+                    color: livePhaseType === 'upload' ? '#a78bfa' : (livePhaseType === 'download' ? 'var(--a1)' : 'var(--muted)')
                   }}>
                     {livePhaseType === 'download'
                       ? '↓ RÉCEPTION EN DIRECT'
@@ -550,20 +578,22 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
                       ? livePhase || 'TEST EN COURS'
                       : 'MBPS (DÉBIT DESCENDANT)'}
                   </div>
+                  <div style={{ fontSize: 9.5, color: 'var(--muted)', marginTop: 2 }}>
+                    Échelle dynamique : max {maxGaugeScale >= 1000 ? `${maxGaugeScale / 1000} Gbit/s` : `${maxGaugeScale} Mbit/s`}
+                  </div>
                 </div>
               </div>
 
-              {/* Progress bar during test */}
               {testing && (
-                <div style={{ maxWidth: 240, margin: '4px auto 10px' }}>
+                <div style={{ maxWidth: 260, margin: '4px auto 10px' }}>
                   <div className="bar" style={{ height: 4 }}>
                     <i style={{
-                      width: `${Math.max(8, gaugeVal)}%`,
-                      background: livePhaseType === 'upload' ? '#a78bfa' : '#38bdf8',
-                      transition: 'width 0.2s ease, background 0.3s ease'
+                      width: `${Math.max(6, gaugePercent)}%`,
+                      background: livePhaseType === 'upload' ? '#a78bfa' : 'var(--a1)',
+                      transition: 'width 0.2s ease'
                     }} />
                   </div>
-                  <span style={{ fontSize: 10.5, color: livePhaseType === 'upload' ? '#a78bfa' : '#38bdf8', display: 'block', textAlign: 'center', marginTop: 4, fontWeight: 600 }}>
+                  <span style={{ fontSize: 10.5, color: 'var(--muted)', display: 'block', textAlign: 'center', marginTop: 4 }}>
                     {livePhase}
                   </span>
                 </div>
@@ -571,10 +601,10 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
             </div>
 
             <div>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', margin: '8px 0 14px' }}>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', margin: '12px 0 14px' }}>
                 <button
                   className="btn"
-                  style={{ padding: '10px 28px', fontSize: 12.5, fontWeight: 700 }}
+                  style={{ padding: '10px 24px', fontSize: 12.5, fontWeight: 700 }}
                   onClick={runSpeedTest}
                   disabled={testing}
                 >
@@ -586,44 +616,57 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
                   ) : (
                     <>
                       <Play size={14} fill="currentColor" />
-                      <span>Lancer le test multi-flux</span>
+                      <span>Lancer le test de débit</span>
                     </>
                   )}
                 </button>
                 {testing && (
                   <button
                     className="btn btn-ghost"
-                    onClick={() => { api?.cancelSpeedtest?.(); setLivePhase('Annulation…'); }}
-                    style={{ padding: '10px 16px', fontSize: 12, color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)' }}
+                    onClick={cancelSpeedTest}
+                    style={{ padding: '10px 16px', fontSize: 12, color: 'var(--danger)', borderColor: 'rgba(239,68,68,0.3)' }}
                   >
                     Annuler
                   </button>
                 )}
               </div>
 
-              {/* Metric Stats Strip */}
-              <div className="grid g4" style={{ textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12 }}>
+              {/* Bandeau Télémesure Réelle */}
+              <div className="grid g4" style={{ textAlign: 'center', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
                 <div>
-                  <small style={{ fontSize: 9.5, color: 'var(--muted)', fontWeight: 600, display: 'block' }}>LATENCE</small>
-                  <b style={{ fontSize: 13, color: '#22c55e' }}>{speedResult ? `${speedResult.ping} ms` : (livePing ? `${livePing} ms` : '14 ms')}</b>
+                  <small style={{ fontSize: 9.5, color: 'var(--muted)', fontWeight: 600, display: 'block' }}>LATENCE (REPOS)</small>
+                  <b style={{ fontSize: 12.5, color: '#22c55e' }}>
+                    {speedResult?.pingMs !== null && speedResult?.pingMs !== undefined ? `${speedResult.pingMs} ms` : '—'}
+                  </b>
                 </div>
                 <div>
                   <small style={{ fontSize: 9.5, color: 'var(--muted)', fontWeight: 600, display: 'block' }}>GIGUE</small>
-                  <b style={{ fontSize: 13, color: 'var(--text)' }}>{speedResult ? `${speedResult.jitter} ms` : '1.2 ms'}</b>
+                  <b style={{ fontSize: 12.5, color: 'var(--text)' }}>
+                    {speedResult?.jitterMs !== null && speedResult?.jitterMs !== undefined ? `${speedResult.jitterMs} ms` : '—'}
+                  </b>
                 </div>
                 <div>
-                  <small style={{ fontSize: 9.5, color: 'var(--muted)', fontWeight: 600, display: 'block' }}>RÉCEPTION</small>
-                  <b style={{ fontSize: 13, color: '#38bdf8' }}>{speedResult ? `${speedResult.down} Mbps` : (liveDownMbps !== null ? `${liveDownMbps} Mbps` : '—')}</b>
+                  <small style={{ fontSize: 9.5, color: 'var(--muted)', fontWeight: 600, display: 'block' }}>BUFFERBLOAT (CHARGE)</small>
+                  <b style={{ fontSize: 12.5, color: speedResult?.bufferbloatDownMs !== null && (speedResult?.bufferbloatDownMs ?? 0) <= 20 ? '#22c55e' : '#facc15' }}>
+                    {speedResult?.bufferbloatDownMs !== null && speedResult?.bufferbloatDownMs !== undefined ? `+${speedResult.bufferbloatDownMs} ms` : 'Non mesuré'}
+                  </b>
+                  <small style={{ fontSize: 8.5, color: 'var(--muted)', display: 'block', marginTop: 1 }}>
+                    {speedResult?.bufferbloatDownMs !== null && speedResult?.bufferbloatDownMs !== undefined
+                      ? `(${speedResult.bufferbloatDownProbeCount ?? 2}/2 sondes)`
+                      : 'Non échantillonné'}
+                  </small>
                 </div>
                 <div>
-                  <small style={{ fontSize: 9.5, color: 'var(--muted)', fontWeight: 600, display: 'block' }}>ENVOI</small>
-                  <b style={{ fontSize: 13, color: '#a78bfa' }}>{speedResult ? `${speedResult.up} Mbps` : (liveUpMbps !== null ? `${liveUpMbps} Mbps` : '—')}</b>
+                  <small style={{ fontSize: 9.5, color: 'var(--muted)', fontWeight: 600, display: 'block' }}>VOLUME</small>
+                  <b style={{ fontSize: 12.5, color: 'var(--muted)' }}>
+                    {speedResult?.bytesTransferredMB ? `${speedResult.bytesTransferredMB} Mo` : '—'}
+                  </b>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Hero Card 2: Centre d'Accélération Réseau & Diagnostic Matériel */}
+          {/* Colonne Droite : Synthèse Déterministe sur 3 Dimensions & Actions Directes */}
           <div className="card card-p-lg" style={{
             display: 'flex',
             flexDirection: 'column',
@@ -631,102 +674,255 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
             padding: 24,
           }}>
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <div>
-                  <div className="lbl" style={{ margin: 0, fontSize: 13 }}>Centre d'Accélération Réseau & Diagnostic</div>
-                  <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--muted)' }}>Calibrage TCP/IP, purge DNS et anti-latence</p>
+                  <div className="lbl" style={{ margin: 0, fontSize: 13 }}>Synthèse & Actions Directes</div>
+                  <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--muted)' }}>
+                    Notation 3 dimensions déterministe & calibration intégrée
+                  </p>
                 </div>
-                <span className="chip" style={{ fontSize: 10.5, background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)', fontWeight: 700 }}>
-                  <ShieldCheck size={12} /> Surveillance Active
+                <span className="chip" style={{ fontSize: 10.5, color: gradeColor, borderColor: `${gradeColor}40`, fontWeight: 700 }}>
+                  {overallGrade !== '—' ? `Classe ${overallGrade}` : 'Non certifié'}
                 </span>
               </div>
 
-              {/* Status rows */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginTop: 14 }}>
-                <div style={{ padding: '9px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>Autotuning TCP/IP Windows</span>
-                  <span style={{ fontSize: 11.5, fontWeight: 700, color: '#22c55e' }}>{stackStatus?.autotuning || 'Dynamique (Optimal)'}</span>
+              {/* Bilan Global Déterministe */}
+              <div style={{
+                background: 'rgba(255,255,255,0.02)',
+                border: `1px solid ${gradeColor}30`,
+                borderRadius: 'var(--r-sm)',
+                padding: '12px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 14,
+                marginBottom: 12,
+              }}>
+                <div style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: '50%',
+                  background: `${gradeColor}15`,
+                  border: `2px solid ${gradeColor}`,
+                  display: 'grid',
+                  placeItems: 'center',
+                  fontSize: 20,
+                  fontWeight: 900,
+                  color: gradeColor,
+                  flexShrink: 0,
+                }}>
+                  {overallGrade}
                 </div>
-                <div style={{ padding: '9px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>Receive-Side Scaling (RSS)</span>
-                  <span style={{ fontSize: 11.5, fontWeight: 700, color: '#38bdf8' }}>Multi-cœurs CPU actif</span>
+                <div>
+                  <b style={{ fontSize: 12.5, color: 'var(--text)', display: 'block' }}>
+                    {speedResult?.report?.statusLabel || 'En attente de diagnostic complet'}
+                  </b>
+                  <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--muted)', lineHeight: 1.4 }}>
+                    {speedResult?.report?.summary || 'Lancez le test de débit pour obtenir le bilan sur les 3 dimensions de votre ligne.'}
+                  </p>
+                  <small style={{ fontSize: 9.5, color: 'var(--muted)', display: 'block', marginTop: 3 }}>
+                    Règle anti-masquage : note globale plafonnée à min(dimensions) + 1.
+                  </small>
                 </div>
-                <div style={{ padding: '9px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>Watchdog Latence & Ping</span>
-                  <span style={{ fontSize: 11.5, fontWeight: 700, color: '#22c55e' }}>{livePing ? `${livePing} ms` : '14 ms'} (Cloudflare 1.1.1.1)</span>
+              </div>
+
+              {/* Les 3 Dimensions Distinctes */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {/* 1. Capacité de Transfert */}
+                <div style={{
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  background: 'rgba(255,255,255,0.02)',
+                  border: '1px solid var(--border)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}>
+                  <div>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text)' }}>1. Capacité de transfert</span>
+                    <small style={{ fontSize: 10.5, color: 'var(--muted)', display: 'block' }}>
+                      {speedResult?.report?.transfer?.description || 'Débit descendant et montant réels'}
+                    </small>
+                  </div>
+                  <span className="chip" style={{ fontSize: 10, fontWeight: 700 }}>
+                    {speedResult?.report?.transfer?.grade || '—'}
+                  </span>
                 </div>
-                <div style={{ padding: '9px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>Priorisation flux UDP direct</span>
-                  <span style={{ fontSize: 11.5, fontWeight: 700, color: antiBufferbloat ? '#22c55e' : '#facc15' }}>
-                    {antiBufferbloat ? 'Fast-Path (Anti-Bufferbloat)' : 'Standard'}
+
+                {/* 2. Réactivité au repos */}
+                <div style={{
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  background: 'rgba(255,255,255,0.02)',
+                  border: '1px solid var(--border)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}>
+                  <div>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text)' }}>2. Réactivité (Repos)</span>
+                    <small style={{ fontSize: 10.5, color: 'var(--muted)', display: 'block' }}>
+                      {speedResult?.report?.reactivity?.description || 'Latence aller-retour & gigue'}
+                    </small>
+                  </div>
+                  <span className="chip" style={{ fontSize: 10, fontWeight: 700 }}>
+                    {speedResult?.report?.reactivity?.grade || '—'}
+                  </span>
+                </div>
+
+                {/* 3. Stabilité sous charge (Bufferbloat) */}
+                <div style={{
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  background: 'rgba(255,255,255,0.02)',
+                  border: '1px solid var(--border)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}>
+                  <div>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text)' }}>3. Stabilité sous charge</span>
+                    <small style={{ fontSize: 10.5, color: 'var(--muted)', display: 'block' }}>
+                      {speedResult?.report?.stability?.description ||
+                        (speedResult?.bufferbloatDownProbeCount !== undefined
+                          ? `Élévation ponctuelle sous charge (${speedResult.bufferbloatDownProbeCount}/2 sondes réussies)`
+                          : 'Élévation de latence & échecs de sondes')}
+                    </small>
+                  </div>
+                  <span className="chip" style={{ fontSize: 10, fontWeight: 700 }}>
+                    {speedResult?.report?.stability?.grade || '—'}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div>
-              {/* Primary Action Button */}
-              <button
-                className="btn"
-                onClick={() => setShowAccelDrawer(true)}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  background: 'linear-gradient(135deg, #38bdf8, #0284c7)',
-                  color: '#090d16',
-                  fontWeight: 700,
-                  fontSize: 12.5,
-                  borderRadius: 8,
-                  border: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  boxShadow: '0 4px 16px rgba(56,189,248,0.25)',
-                  margin: '14px 0 12px'
-                }}
-              >
-                <Zap size={16} />
-                <span>Ouvrir le Centre d'Accélération & Purge DNS</span>
-              </button>
+            {/* Actions Directes Intégrées (Pas de modal drawer détaché) */}
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.04em' }}>
+                Actions de maintenance réseau
+              </div>
 
-              {/* Physical Adapter Hardware Strip */}
-              <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 10, display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--muted)' }}>
-                <span>Carte : <b style={{ color: 'var(--text)' }}>{netInfo?.interfaceName || 'Adaptateur Ethernet/Wi-Fi'}</b></span>
-                <span>Passerelle : <b style={{ color: 'var(--text)' }}>{netInfo?.gateway || '192.168.1.1'}</b></span>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
+                <button
+                  className="btn btn-sm btn-ghost"
+                  onClick={handleFlushDns}
+                  disabled={actionInProgress !== null}
+                  style={{ fontSize: 11, padding: '8px 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                >
+                  <RefreshCw size={12} className={actionInProgress === 'flushDns' ? 'spin' : ''} />
+                  <span>Purger cache DNS</span>
+                </button>
+
+                <button
+                  className="btn btn-sm"
+                  onClick={handleOptimizeTcp}
+                  disabled={actionInProgress !== null}
+                  style={{ fontSize: 11, padding: '8px 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                >
+                  <Zap size={12} />
+                  <span>Calibrer pile TCP/IP</span>
+                </button>
+
+                <button
+                  className="btn btn-sm btn-ghost"
+                  onClick={() => handleRestoreDefaults(false)}
+                  disabled={actionInProgress !== null}
+                  style={{ fontSize: 11, padding: '8px 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                >
+                  <RotateCcw size={12} />
+                  <span>Restaurer origine</span>
+                </button>
+              </div>
+
+              {actionLog && (
+                <div style={{
+                  marginTop: 8,
+                  padding: '6px 10px',
+                  borderRadius: 6,
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid var(--border)',
+                  fontSize: 11,
+                  color: actionLog.startsWith('✓') ? '#22c55e' : '#facc15'
+                }}>
+                  {actionLog}
+                </div>
+              )}
+
+              {conflictNotice && (
+                <div style={{
+                  marginTop: 10,
+                  padding: '10px 12px',
+                  borderRadius: 6,
+                  background: 'rgba(234, 179, 8, 0.08)',
+                  border: '1px solid rgba(234, 179, 8, 0.3)',
+                  fontSize: 11,
+                }}>
+                  <div style={{ fontWeight: 700, color: '#facc15', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <AlertTriangle size={13} />
+                    <span>Conflit de configuration détecté</span>
+                  </div>
+                  <p style={{ margin: '0 0 8px', color: 'var(--text)', lineHeight: 1.4 }}>
+                    {conflictNotice.message}
+                  </p>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ fontSize: 10.5, padding: '4px 8px' }}
+                      onClick={() => setConflictNotice(null)}
+                    >
+                      Conserver l'état actuel
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      style={{ fontSize: 10.5, padding: '4px 8px', background: '#eab308', color: '#000', borderColor: '#eab308' }}
+                      onClick={() => handleRestoreDefaults(true)}
+                    >
+                      Forcer la restauration d'origine
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 12, display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--muted)' }}>
+                <span>Carte : <b style={{ color: 'var(--text)' }}>{netInfo?.interfaceName || 'Détection…'}</b></span>
+                <span>Passerelle : <b style={{ color: 'var(--text)' }}>{netInfo?.gateway || '—'}</b></span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* ── Tier 2: Mid Section (2 Balanced Rectangular Panels) ── */}
+        {/* ── Section Intermédiaire : DNS Système & Options Avancées ── */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
           gap: 16,
           alignItems: 'stretch',
           marginBottom: 16,
         }}>
-          {/* Card A: Résolveurs DNS Système */}
+
+          {/* Carte A : Résolveurs DNS Système */}
           <div className="card card-p-lg" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: 22 }}>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <div>
                   <div className="lbl" style={{ margin: 0, fontSize: 13 }}>Résolveurs DNS Système</div>
-                  <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--muted)' }}>Routage sécurisé et temps de résolution</p>
+                  <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--muted)' }}>
+                    Serveurs de résolution configurés sur l'adaptateur actif
+                  </p>
                 </div>
-                <span className="chip" style={{ fontSize: 10.5, color: 'var(--muted)' }}>IPv4</span>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={handleBenchmarkDns}
+                  disabled={benchmarkingDns}
+                  style={{ fontSize: 10.5, padding: '4px 8px' }}
+                >
+                  {benchmarkingDns ? 'Mesure…' : 'Mesurer résolution'}
+                </button>
               </div>
 
               <div className="list">
                 {DNS_PRESETS.map(d => {
-                  const isActive = netInfo?.dns && (
-                    (d.id === 'google' && (netInfo.dns.includes('8.8.8.8') || netInfo.dns.includes('Google'))) ||
-                    (d.id === 'cloudflare' && (netInfo.dns.includes('1.1.1.1') || netInfo.dns.includes('Cloudflare'))) ||
-                    (d.id === 'quad9' && (netInfo.dns.includes('9.9.9.9') || netInfo.dns.includes('Quad9'))) ||
-                    (d.id === 'opendns' && netInfo.dns.includes('208.67')) ||
-                    (d.id === 'auto' && (netInfo.dns.includes('Automatique') || netInfo.dns.includes('FAI')))
-                  );
+                  const isActive = selectedDns === d.id;
+                  const bench = dnsBenchmarks[d.id];
 
                   return (
                     <div
@@ -746,10 +942,22 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
                         </b>
                         <small style={{ fontSize: 10.5, color: 'var(--muted)' }}>{d.label}</small>
                       </div>
-                      {d.ping !== null && (
-                        <span style={{ color: d.ping < 12 ? '#22c55e' : '#facc15', fontWeight: 600, fontSize: 11 }}>
-                          {d.ping} ms
-                        </span>
+
+                      {bench && (
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{
+                            color: bench.status === 'unreachable' ? 'var(--danger)' : bench.resolutionMs && bench.resolutionMs < 25 ? '#22c55e' : '#facc15',
+                            fontWeight: 600,
+                            fontSize: 11,
+                            display: 'block'
+                          }}>
+                            {bench.resolutionMs !== null && bench.resolutionMs !== undefined
+                              ? `${bench.resolutionMs} ms (Requête A)`
+                              : bench.tcpConnectMs !== null && bench.tcpConnectMs !== undefined
+                              ? `${bench.tcpConnectMs} ms (TCP)`
+                              : 'Échec résolution'}
+                          </span>
+                        </div>
                       )}
                     </div>
                   );
@@ -757,114 +965,175 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
               </div>
             </div>
 
-            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12, marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-                <span>Actuel : </span>
-                <b style={{ color: '#ffffff' }}>{netInfo?.dns || selectedDns}</b>
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 12 }}>
+              <div style={{
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                padding: '8px 12px',
+                fontSize: 11,
+                color: 'var(--muted)',
+                display: 'flex',
+                gap: 8,
+                alignItems: 'flex-start',
+              }}>
+                <Lock size={14} style={{ color: 'var(--a1)', flexShrink: 0, marginTop: 2 }} />
+                <span>
+                  <b>DNS sur HTTPS (DoH) :</b> Vanguard ne configure pas DoH dans cette version. Le chiffrement DNS au niveau de l'OS requiert Windows 11 et une configuration spécifique des modèles d'adressage IP dans les paramètres réseau Windows.
+                </span>
               </div>
-              <button
-                className="btn btn-sm"
-                onClick={() => applyDns('custom', selectedDns)}
-                style={{ fontSize: 11, padding: '6px 14px', background: 'var(--a1)', color: '#090d16', border: 'none', fontWeight: 700, borderRadius: 6, cursor: 'pointer' }}
-              >
-                Appliquer ce DNS
-              </button>
             </div>
           </div>
 
-          {/* Card B: Options d'Optimisation & Anti-Bufferbloat */}
+          {/* Carte B : Paramètres Réseau Avancés & Sondes Cibles */}
           <div className="card card-p-lg" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: 22 }}>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <div>
-                  <div className="lbl" style={{ margin: 0, fontSize: 13 }}>Options d'Optimisation Réseau</div>
-                  <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--muted)' }}>Paramètres système persistants</p>
+                  <div className="lbl" style={{ margin: 0, fontSize: 13 }}>Paramètres & Télémesure Cibles</div>
+                  <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--muted)' }}>État matériel et sondes directes par destination</p>
                 </div>
-                <span className="chip" style={{ fontSize: 10.5, color: '#38bdf8', fontWeight: 600 }}>Temps réel</span>
+                <span className="chip" style={{ fontSize: 10.5 }}>
+                  {netInfo?.type || 'Ethernet'}
+                </span>
               </div>
 
+              {/* Blocs d'information sans faux interrupteurs */}
               <div className="list">
-                {[
-                  {
-                    key: 'antiBufferbloat',
-                    label: 'Anti-Bufferbloat UDP (Priorité Gaming)',
-                    desc: 'Priorise le trafic direct sans file d\'attente réseau pour éviter les pics de latence en jeu.',
-                    val: antiBufferbloat,
-                    set: handleToggleBufferbloat,
-                  },
-                  {
-                    key: 'doh',
-                    label: 'DNS sur HTTPS (DoH)',
-                    desc: 'Chiffre les requêtes DNS pour empêcher les écoutes, blocages et analyses par votre FAI.',
-                    val: dnsOverHttps,
-                    set: handleToggleDoH,
-                  },
-                  {
-                    key: 'ipv6',
-                    label: 'Désactiver IPv6',
-                    desc: 'Élimine les fuites de routage IPv6 et stabilise les temps de réponse sur les serveurs.',
-                    val: ipv6Disabled,
-                    set: handleToggleIpv6,
-                  },
-                ].map(({ key, label, desc, val, set }) => (
-                  <div className="row" key={key} style={{ padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', alignItems: 'center' }}>
-                    <div className="rt" style={{ paddingRight: 10 }}>
-                      <b style={{ fontSize: 12 }}>{label}</b>
-                      <small style={{ fontSize: 11, display: 'block', color: 'var(--muted)', marginTop: 2 }}>{desc}</small>
+                <div className="row" style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                  <div className="rt">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <b style={{ fontSize: 12 }}>Anti-Bufferbloat dynamique UDP</b>
+                      <span className="chip" style={{ fontSize: 9.5, color: '#facc15', borderColor: 'rgba(250,204,21,0.3)' }}>
+                        Non implémenté
+                      </span>
                     </div>
-                    <label className="toggle" style={{ transform: 'scale(0.85)', transformOrigin: 'right center', margin: 0 }}>
-                      <input type="checkbox" checked={val} onChange={e => set(e.target.checked)} />
-                      <span className="toggle-track" />
-                      <span className="toggle-thumb" />
-                    </label>
+                    <small style={{ fontSize: 11, display: 'block', color: 'var(--muted)', marginTop: 2 }}>
+                      Aucune modification du trafic réseau n'est appliquée. La mesure d'élévation sous charge est calculée lors du test de débit.
+                    </small>
                   </div>
-                ))}
+                </div>
+
+                <div className="row" style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                  <div className="rt">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <b style={{ fontSize: 12 }}>Protocole IPv6</b>
+                      <span className="chip" style={{
+                        fontSize: 9.5,
+                        color: (netInfo?.ipv6State === 'enabled' || (netInfo?.ipv6Active && netInfo?.ipv6State !== 'disabled'))
+                          ? '#22c55e'
+                          : netInfo?.ipv6State === 'disabled'
+                          ? '#facc15'
+                          : 'var(--muted)',
+                        borderColor: (netInfo?.ipv6State === 'enabled' || (netInfo?.ipv6Active && netInfo?.ipv6State !== 'disabled'))
+                          ? 'rgba(34,197,94,0.3)'
+                          : 'var(--border)'
+                      }}>
+                        {netInfo?.ipv6State === 'enabled' || (netInfo?.ipv6Active && netInfo?.ipv6State !== 'disabled')
+                          ? 'Liaison IPv6 activée sur cet adaptateur'
+                          : netInfo?.ipv6State === 'disabled'
+                          ? 'Liaison IPv6 désactivée sur cet adaptateur'
+                          : 'État de liaison inconnu'}
+                      </span>
+                    </div>
+                    <small style={{ fontSize: 11, display: 'block', color: 'var(--muted)', marginTop: 2 }}>
+                      Vanguard ne modifie pas ce réglage (préservé tel quel pour la compatibilité réseau).
+                    </small>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sondes vers cibles distinctes avec détails explicites */}
+              <div style={{ marginTop: 14 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase' }}>
+                  Sondes de latence par destination (Sondes TCP directes SYN/ACK)
+                </span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 8 }}>
+                  <div style={{ padding: '8px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', textAlign: 'center' }}>
+                    <small style={{ fontSize: 10, color: 'var(--muted)', display: 'block' }}>Passerelle locale</small>
+                    <b style={{ fontSize: 12, color: netInfo?.probes?.gateway?.status === 'ok' ? '#22c55e' : 'var(--muted)' }}>
+                      {netInfo?.probes?.gateway?.status === 'ok' && netInfo?.probes?.gateway?.latencyMs !== null
+                        ? `${netInfo.probes.gateway.latencyMs} ms`
+                        : 'Port filtré / Non dispo'}
+                    </b>
+                    <small style={{ fontSize: 8.5, color: 'var(--muted)', display: 'block', marginTop: 2 }}>
+                      {netInfo?.probes?.gateway?.status === 'ok' ? 'Port 80/53' : 'Service TCP indisponible'}
+                    </small>
+                  </div>
+
+                  <div style={{ padding: '8px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', textAlign: 'center' }}>
+                    <small style={{ fontSize: 10, color: 'var(--muted)', display: 'block' }}>Cloudflare Edge</small>
+                    <b style={{ fontSize: 12, color: netInfo?.probes?.cloudflareMs ? '#38bdf8' : 'var(--muted)' }}>
+                      {netInfo?.probes?.cloudflareMs !== null && netInfo?.probes?.cloudflareMs !== undefined ? `${netInfo.probes.cloudflareMs} ms` : '—'}
+                    </b>
+                    <small style={{ fontSize: 8.5, color: 'var(--muted)', display: 'block', marginTop: 2 }}>Port 443 TCP</small>
+                  </div>
+
+                  <div style={{ padding: '8px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', textAlign: 'center' }}>
+                    <small style={{ fontSize: 10, color: 'var(--muted)', display: 'block' }}>Google Edge</small>
+                    <b style={{ fontSize: 12, color: netInfo?.probes?.googleMs ? '#a78bfa' : 'var(--muted)' }}>
+                      {netInfo?.probes?.googleMs !== null && netInfo?.probes?.googleMs !== undefined ? `${netInfo.probes.googleMs} ms` : '—'}
+                    </b>
+                    <small style={{ fontSize: 8.5, color: 'var(--muted)', display: 'block', marginTop: 2 }}>Port 53 TCP</small>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div style={{
-              background: 'rgba(56,189,248,0.06)',
-              border: '1px solid rgba(56,189,248,0.2)',
-              borderRadius: 8,
-              padding: '10px 14px',
-              marginTop: 14,
-              fontSize: 11,
-              color: 'var(--muted)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}>
-              <CheckCircle2 size={14} style={{ color: '#38bdf8', flexShrink: 0 }} />
-              <span>Vos préférences réseau sont synchronisées et persistées dans votre profil Vanguard.</span>
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                IP locale : <b style={{ color: 'var(--text)' }}>{netInfo?.ip || '—'}</b>
+              </span>
+              <button
+                className="btn btn-sm btn-ghost"
+                onClick={loadDiagnostics}
+                style={{ fontSize: 11, padding: '4px 10px' }}
+              >
+                Actualiser sondes
+              </button>
             </div>
           </div>
         </div>
 
-        {/* ── Historique des Débits & Stabilité (Mbps) with SVG Curve Chart ── */}
+        {/* ── Section Basse : Historique Dédupliqué des Débits ── */}
         <div className="card card-p-lg" style={{ padding: 22, marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div className="lbl" style={{ margin: 0, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Activity size={15} style={{ color: '#38bdf8' }} />
+              <Activity size={15} style={{ color: 'var(--a1)' }} />
               Historique des Débits & Stabilité (Mbps)
             </div>
-            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-              {history.length > 0 ? `${history.length} mesure${history.length > 1 ? 's' : ''} enregistrée${history.length > 1 ? 's' : ''}` : 'Stabilité de votre ligne'}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                {history.length > 0 ? `${history.length} mesure${history.length > 1 ? 's' : ''}` : 'Aucune mesure archivée'}
+              </span>
+              {history.length > 0 && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    setHistory([]);
+                    try { localStorage.removeItem('astral_speedtest_history'); } catch {}
+                  }}
+                  style={{ fontSize: 10.5, padding: '2px 8px' }}
+                >
+                  Effacer
+                </button>
+              )}
+            </div>
           </div>
 
           {history.length === 0 ? (
-            <div style={{ height: 160, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', gap: 8 }}>
+            <div style={{ height: 140, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', gap: 8 }}>
               <Activity size={24} style={{ opacity: 0.4 }} />
               <span style={{ fontSize: 12, fontWeight: 600 }}>Aucune mesure enregistrée</span>
-              <small style={{ fontSize: 11 }}>Lancez un test de débit pour tracer la stabilité temporelle de votre connexion.</small>
+              <small style={{ fontSize: 11 }}>Lancez un test de débit pour alimenter l'historique de stabilité.</small>
             </div>
           ) : (
             <div style={{ width: '100%', height: 160, position: 'relative' }}>
               <svg viewBox="0 0 500 160" width="100%" height="160" style={{ overflow: 'visible' }}>
                 <defs>
                   <linearGradient id="chartGradDown" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.3" />
-                    <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.0" />
+                    <stop offset="0%" stopColor="var(--a1)" stopOpacity="0.3" />
+                    <stop offset="100%" stopColor="var(--a1)" stopOpacity="0.0" />
                   </linearGradient>
                 </defs>
 
@@ -877,7 +1146,7 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
                 <text x="4" y="126" fill="var(--muted)" fontSize="9">100 Mbps</text>
 
                 {(() => {
-                  const maxDown = 1000;
+                  const maxDown = Math.max(1000, ...history.map(p => p.down));
                   const pts = history.map((p, idx) => {
                     const x = history.length === 1 ? 250 : (idx / (history.length - 1)) * 440 + 30;
                     const y = 140 - (Math.min(maxDown, p.down) / maxDown) * 110;
@@ -890,11 +1159,11 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
                   return (
                     <>
                       {history.length > 1 && <path d={areaD} fill="url(#chartGradDown)" />}
-                      {history.length > 1 && <path d={lineD} fill="none" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
+                      {history.length > 1 && <path d={lineD} fill="none" stroke="var(--a1)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
                       {pts.map((pt, i) => (
                         <g key={i}>
-                          <circle cx={pt.x} cy={pt.y} r="4.5" fill="#38bdf8" stroke="#0b0f17" strokeWidth="2" />
-                          <text x={pt.x} y={pt.y - 8} fill="#fff" fontSize="9.5" fontWeight="700" textAnchor="middle">
+                          <circle cx={pt.x} cy={pt.y} r="4.5" fill="var(--a1)" stroke="var(--bg)" strokeWidth="2" />
+                          <text x={pt.x} y={pt.y - 8} fill="var(--text)" fontSize="9.5" fontWeight="700" textAnchor="middle">
                             {pt.down}
                           </text>
                           <text x={pt.x} y={152} fill="var(--muted)" fontSize="8.5" textAnchor="middle">
@@ -910,414 +1179,7 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
           )}
         </div>
 
-        {/* ── Tier 3: Bottom Masterpiece: AI Vanguard Line Quality Grade Card (Full Width) ── */}
-        {(() => {
-          const gradeInfo = getGradeInfo();
-          const pct = gradeInfo.scorePct;
-          const r = 42;
-          const circ = 2 * Math.PI * r;
-          const offset = circ * (1 - pct / 100);
-
-          return (
-            <div
-              className="card card-p-lg"
-              style={{
-                padding: 24,
-                marginBottom: 20,
-                background: 'linear-gradient(135deg, rgba(14,20,30,0.96) 0%, rgba(10,14,22,0.98) 100%)',
-                border: `1px solid ${gradeInfo.color}35`,
-                boxShadow: `0 10px 32px rgba(0,0,0,0.4), 0 0 20px ${gradeInfo.color}15`,
-                display: 'grid',
-                gridTemplateColumns: '130px 1fr auto',
-                alignItems: 'center',
-                gap: 24,
-              }}
-            >
-              {/* Left Column: Animated Circular Score Ring & Letter Badge */}
-              <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <div style={{ position: 'relative', width: 104, height: 104, display: 'grid', placeItems: 'center' }}>
-                  <svg width="104" height="104" viewBox="0 0 104 104" style={{ transform: 'rotate(-90deg)' }}>
-                    <circle cx="52" cy="52" r={r} stroke="rgba(255,255,255,0.08)" strokeWidth="8" fill="none" />
-                    <circle
-                      cx="52"
-                      cy="52"
-                      r={r}
-                      stroke={gradeInfo.color}
-                      strokeWidth="8"
-                      strokeDasharray={circ}
-                      strokeDashoffset={offset}
-                      strokeLinecap="round"
-                      fill="none"
-                      style={{ transition: 'stroke-dashoffset 0.8s ease' }}
-                    />
-                  </svg>
-                  <div style={{
-                    position: 'absolute',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}>
-                    <span style={{
-                      fontSize: 28,
-                      fontWeight: 900,
-                      color: gradeInfo.color,
-                      lineHeight: 1,
-                      textShadow: `0 0 12px ${gradeInfo.color}66`,
-                    }}>
-                      {gradeInfo.grade}
-                    </span>
-                    <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--muted)', marginTop: 2 }}>
-                      {pct}%
-                    </span>
-                  </div>
-                </div>
-                <span style={{ fontSize: 10.5, fontWeight: 700, color: gradeInfo.color, marginTop: 6 }}>
-                  {pct}% EFFICACITÉ
-                </span>
-              </div>
-
-              {/* Middle Column: Detailed Review & Telemetry Badges */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 4, background: `${gradeInfo.color}18`, color: gradeInfo.color, border: `1px solid ${gradeInfo.color}35` }}>
-                    IA VANGUARD
-                  </span>
-                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#f8fafc' }}>
-                    {gradeInfo.label}
-                  </h3>
-                </div>
-
-                <p style={{ margin: '4px 0 10px', fontSize: 12, color: '#94a3b8', lineHeight: 1.55, maxWidth: 720 }}>
-                  {gradeInfo.summary}
-                </p>
-
-                {/* 4 Telemetry Quality Badges */}
-                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                  <div style={{ padding: '6px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', fontSize: 11, color: 'var(--text)' }}>
-                    <span style={{ color: 'var(--muted)' }}>Stabilité de ligne : </span>
-                    <b style={{ color: '#22c55e' }}>99.8% (Optimale)</b>
-                  </div>
-                  <div style={{ padding: '6px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', fontSize: 11, color: 'var(--text)' }}>
-                    <span style={{ color: 'var(--muted)' }}>Gigue / Jitter : </span>
-                    <b style={{ color: '#38bdf8' }}>{speedResult ? `${speedResult.jitter} ms` : '1.2 ms'}</b>
-                  </div>
-                  <div style={{ padding: '6px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', fontSize: 11, color: 'var(--text)' }}>
-                    <span style={{ color: 'var(--muted)' }}>Bufferbloat : </span>
-                    <b style={{ color: antiBufferbloat ? '#22c55e' : '#facc15' }}>{antiBufferbloat ? 'Immunisé (UDP Fast-Path)' : 'Standard'}</b>
-                  </div>
-                  <div style={{ padding: '6px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', fontSize: 11, color: 'var(--text)' }}>
-                    <span style={{ color: 'var(--muted)' }}>Perte de paquets : </span>
-                    <b style={{ color: '#22c55e' }}>0.0% (Zéro perte)</b>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Column: Mini Line Certification Status */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', height: '100%', minWidth: 140 }}>
-                <span style={{ fontSize: 11, color: 'var(--dim)', textAlign: 'right' }}>
-                  {speedResult?.timestamp ? `Mesuré à ${speedResult.timestamp}` : 'Surveillance en veille'}
-                </span>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  marginTop: 8,
-                  padding: '5px 10px',
-                  borderRadius: 6,
-                  background: 'rgba(34, 197, 94, 0.1)',
-                  border: '1px solid rgba(34, 197, 94, 0.25)',
-                  fontSize: 11,
-                  color: '#22c55e',
-                  fontWeight: 600,
-                }}>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
-                  <span>Ligne certifiée</span>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
       </div>
-
-      {/* ── Centered Vanguard Modal: Centre d'Accélération Réseau & Anti-Latence ── */}
-      {showAccelDrawer && (
-        <div style={{
-          position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(5, 8, 16, 0.78)',
-          backdropFilter: 'blur(8px)',
-          zIndex: 9999,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 20
-        }}>
-          <div style={{
-            background: 'linear-gradient(135deg, #0d131f 0%, #080c14 100%)',
-            border: '1px solid rgba(56, 189, 248, 0.25)',
-            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.75), 0 0 35px rgba(56, 189, 248, 0.12)',
-            borderRadius: 16,
-            width: '100%',
-            maxWidth: 880,
-            maxHeight: '90vh',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            animation: 'fadeIn 0.2s ease-out'
-          }}>
-            {/* Modal Header */}
-            <div style={{
-              padding: '20px 24px',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              background: 'rgba(255, 255, 255, 0.02)'
-            }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 18, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700 }}>
-                  <Zap size={20} style={{ color: '#38bdf8' }} />
-                  Centre d'Accélération Réseau & Anti-Latence
-                </h3>
-                <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#94a3b8' }}>
-                  Calibrage direct de la pile TCP/IP, purge du cache DNS Windows et élimination du bufferbloat.
-                </p>
-              </div>
-              <button
-                onClick={() => setShowAccelDrawer(false)}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: 8,
-                  color: '#94a3b8',
-                  cursor: 'pointer',
-                  padding: 8,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* 2-Panel Body */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(320px, 1fr) minmax(360px, 1.2fr)',
-              gap: 20,
-              padding: 24,
-              overflowY: 'auto'
-            }}>
-              {/* Left Panel: Configuration TCP/IP & Télémesure Système */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div style={{
-                  padding: 16,
-                  borderRadius: 12,
-                  background: 'rgba(56, 189, 248, 0.05)',
-                  border: '1px solid rgba(56, 189, 248, 0.2)'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                    <ShieldCheck size={16} style={{ color: '#38bdf8' }} />
-                    <b style={{ fontSize: 13, color: '#38bdf8' }}>État de la Pile TCP/IP Windows</b>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <span style={{ color: 'var(--muted)' }}>Autotuning TCP</span>
-                      <b style={{ color: '#22c55e' }}>{stackStatus?.autotuning ? `${stackStatus.autotuning} (Dynamique)` : 'Normal (Optimal)'}</b>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <span style={{ color: 'var(--muted)' }}>Receive-Side Scaling (RSS)</span>
-                      <b style={{ color: '#38bdf8' }}>{stackStatus?.rss === 'enabled' ? 'Activé (Multi-cœurs CPU)' : 'Activé (Multi-cœurs)'}</b>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <span style={{ color: 'var(--muted)' }}>Heuristiques de congestion</span>
-                      <b style={{ color: '#a78bfa' }}>Désactivées (Latence brute)</b>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <span style={{ color: 'var(--muted)' }}>Cache résolveur DNS</span>
-                      <b style={{ color: '#cbd5e1' }}>{stackStatus?.dnsCacheEntries ? `${stackStatus.dnsCacheEntries} entrées` : 'Actif'}</b>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
-                      <span style={{ color: 'var(--muted)' }}>Latence ICMP directe</span>
-                      <b style={{ color: '#22c55e' }}>{livePing ? `${livePing} ms` : '14 ms'}</b>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 4 Pillars Summary */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Actions incluses dans l'accélération
-                  </span>
-                  {[
-                    { n: '1', title: 'Purge du Cache DNS', desc: 'Supprime les adresses obsolètes pour un accès web instantané.' },
-                    { n: '2', title: 'Autotuning Fenêtre TCP', desc: 'Permet à Windows d\'atteindre 1 Gbps+ sans goulot.' },
-                    { n: '3', title: 'RSS Multi-Cœur Processeur', desc: 'Répartit les paquets entrants sur tous vos cœurs CPU.' },
-                    { n: '4', title: 'Priorisation UDP Antilatence', desc: 'Élimine les pics de latence en jeu multijoueur.' },
-                  ].map(p => (
-                    <div key={p.n} style={{
-                      padding: '8px 12px',
-                      borderRadius: 8,
-                      background: 'rgba(255,255,255,0.02)',
-                      border: '1px solid rgba(255,255,255,0.05)',
-                      display: 'flex',
-                      gap: 10,
-                      alignItems: 'center'
-                    }}>
-                      <span style={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: '50%',
-                        background: 'rgba(56,189,248,0.15)',
-                        color: '#38bdf8',
-                        fontSize: 10.5,
-                        fontWeight: 800,
-                        display: 'grid',
-                        placeItems: 'center',
-                        flexShrink: 0
-                      }}>
-                        {p.n}
-                      </span>
-                      <div>
-                        <b style={{ fontSize: 11.5, color: '#f1f5f9', display: 'block' }}>{p.title}</b>
-                        <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>{p.desc}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Right Panel: Execution & Interactive Terminal */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div style={{
-                  padding: 18,
-                  borderRadius: 12,
-                  background: 'rgba(255,255,255,0.02)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 12
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <b style={{ fontSize: 13, color: '#f8fafc' }}>Calibration Automatisée</b>
-                    <span className="chip" style={{ fontSize: 10, color: '#22c55e', borderColor: 'rgba(34,197,94,0.3)' }}>100% Sûr</span>
-                  </div>
-                  <p style={{ margin: 0, fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
-                    L'accélération calibre les valeurs réseau de bas niveau de Windows sans altérer vos fichiers ni couper Internet.
-                  </p>
-                  <button
-                    className="btn"
-                    onClick={runNetworkAcceleration}
-                    disabled={optimizing}
-                    style={{
-                      width: '100%',
-                      padding: '12px 20px',
-                      fontSize: 13,
-                      fontWeight: 700,
-                      background: optimizing ? 'rgba(56,189,248,0.2)' : '#38bdf8',
-                      color: optimizing ? '#38bdf8' : '#090d16',
-                      border: 'none',
-                      borderRadius: 8,
-                      boxShadow: optimizing ? 'none' : '0 4px 18px rgba(56,189,248,0.35)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                      cursor: optimizing ? 'not-allowed' : 'pointer'
-                    }}
-                  >
-                    {optimizing ? (
-                      <>
-                        <span className="spinner spinner-sm" style={{ borderTopColor: '#38bdf8' }} />
-                        <span>Accélération en cours ({optStep}/4)…</span>
-                      </>
-                    ) : (
-                      <>
-                        <Zap size={16} fill="#090d16" />
-                        <span>Lancer l'Accélération Réseau Complète</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                {/* Progress bar */}
-                {(optimizing || optLogs.length > 0) && (
-                  <div style={{
-                    padding: 16,
-                    background: '#070a10',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    borderRadius: 12,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 10,
-                    flex: 1
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11.5, fontWeight: 600 }}>
-                      <span style={{ color: '#38bdf8' }}>
-                        {optimizing ? `Étape ${optStep}/4 en cours…` : '✓ Calibration réseau terminée avec succès'}
-                      </span>
-                      <span style={{ color: 'var(--muted)' }}>
-                        {optimizing ? `${Math.round((optStep / 4) * 100)}%` : '100%'}
-                      </span>
-                    </div>
-
-                    <div className="bar" style={{ height: 5, background: 'rgba(255,255,255,0.08)' }}>
-                      <i style={{
-                        width: `${optimizing ? (optStep / 4) * 100 : 100}%`,
-                        background: 'linear-gradient(90deg, #38bdf8, #22c55e)',
-                        transition: 'width 0.35s ease'
-                      }} />
-                    </div>
-
-                    <div style={{
-                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                      fontSize: 11,
-                      color: '#cbd5e1',
-                      lineHeight: 1.6,
-                      maxHeight: 150,
-                      overflowY: 'auto',
-                      background: 'rgba(0,0,0,0.3)',
-                      padding: 10,
-                      borderRadius: 6
-                    }}>
-                      {optLogs.map((log, i) => (
-                        <div key={i} style={{ color: log.startsWith('✓') ? '#22c55e' : (log.startsWith('⚠️') ? '#facc15' : '#94a3b8') }}>
-                          {log}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div style={{
-              padding: '16px 24px',
-              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              background: 'rgba(255, 255, 255, 0.01)'
-            }}>
-              <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-                Pile TCP/IP optimisée pour la fibre et le Wi-Fi sans perte de paquets.
-              </span>
-              <button
-                className="btn"
-                onClick={() => setShowAccelDrawer(false)}
-                style={{ padding: '8px 24px', fontSize: 13, fontWeight: 700, background: '#38bdf8', color: '#090d16', border: 'none', borderRadius: 8 }}
-              >
-                Fermer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

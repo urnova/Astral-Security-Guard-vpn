@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import {
   Gamepad2, Power, Monitor, Wifi, Cpu, Eye, Zap, SlidersHorizontal,
   Clock, ExternalLink, Info, X, ShieldCheck, Play, Trash2, HelpCircle, Check, Sparkles
@@ -6,7 +6,7 @@ import {
 
 const api = (window as any).vanguard;
 
-/* ─────────────────────────────── Types ─────────────────────────────────── */
+/* ─────────────── Types ─────────────── */
 interface Game {
   name:      string;
   launcher:  string;
@@ -19,43 +19,19 @@ interface Game {
   path?:     string;
 }
 
-type Profile = 'Compétitif' | 'Équilibré' | 'Qualité';
+/** Proposition de détection automatique en attente de confirmation */
+interface DetectionProposal {
+  pid:        number;
+  name:       string;
+  startTime?: string;
+}
 
-const PROFILES: Profile[] = ['Compétitif', 'Équilibré', 'Qualité'];
-
-const PROFILE_META: Record<Profile, {
-  title: string;
-  tagline: string;
-  desc: string;
-  color: string;
-  features: string[];
-  bestFor: string;
-}> = {
-  'Compétitif': {
-    title: 'Compétitif & Esports',
-    tagline: 'Latence d\'entrée minimale & framerate débridé',
-    desc: 'Bascule le processus de jeu en priorité Haute/AboveNormal, active le plan d\'alimentation Performances Élevées de Windows, purge les files réseau UDP et désactive les effets visuels superflus de Windows pour une réponse instantanée.',
-    color: 'var(--a1)',
-    features: ['Priorité CPU AboveNormal', 'Plan d\'alimentation Performances Élevées', 'Bufferbloat Wi-Fi désactivé', 'Délai d\'entrée minimal'],
-    bestFor: 'Valorant, CS2, Fortnite, Warzone, Apex Legends',
-  },
-  'Équilibré': {
-    title: 'Équilibré & Polyvalent',
-    tagline: 'Fluidité constante et thermique préservé',
-    desc: 'Optimisation modérée et stable garantissant une fluidité maximale tout en maintenant les ventilateurs à un niveau acoustique confortable. Totalement compatible avec le streaming Discord et OBS Studio en arrière-plan.',
-    color: '#22c55e',
-    features: ['Fréquences CPU/GPU équilibrées', 'Températures et ventilation maîtrisées', 'Compatible streaming Discord & OBS', 'Stabilité de framerate'],
-    bestFor: 'GTA V, The Witcher 3, Red Dead Redemption 2, Elden Ring',
-  },
-  'Qualité': {
-    title: 'Qualité & Haute Fidélité',
-    tagline: 'Rendu graphique 1440p/4K sans saccade',
-    desc: 'Priorise le pipeline graphique DirectX 12 et Vulkan, pré-alloue le cache texture pour éliminer le micro-stuttering et stabilise le frametime pour une immersion visuelle totale sur moniteur haute résolution.',
-    color: '#a78bfa',
-    features: ['Allocation maximale du GPU VRAM', 'Élimination du micro-stuttering', 'Priorité rendu DirectX 12 / Vulkan', 'Rendu cinématique ultra-fluide'],
-    bestFor: 'Cyberpunk 2077, Forza Horizon 5, Alan Wake 2, Starfield',
-  },
-};
+/** Statut PresentMon visible dans l'onglet principal */
+type PresentMonTabStatus =
+  | 'unavailable'
+  | 'idle'
+  | 'capturing'
+  | 'blocked';
 
 const LAUNCHER_COLORS: Record<string, string> = {
   Steam:        '#1b2838',
@@ -89,35 +65,7 @@ function LauncherSvg({ launcher, size = 12 }: { launcher: string; size?: number 
   if (l.includes('xbox')) {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
-        <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm-1.895 4.394c1.196.862 2.628 1.488 3.79 1.488 1.162 0 2.594-.626 3.79-1.488.756 1.026 1.257 2.235 1.439 3.535-1.127.876-2.613 1.542-4.148 1.764 1.483 1.635 2.766 3.42 3.655 5.395-1.745 2.015-4.28 3.284-7.086 3.284-2.806 0-5.341-1.269-7.086-3.284.889-1.975 2.172-3.76 3.655-5.395-1.535-.222-3.021-.888-4.148-1.764.182-1.3.683-2.509 1.439-3.535 1.196.862 2.628 1.488 3.79 1.488 1.162 0 2.594-.626 3.79-1.488-.548.423-1.288.73-1.895.73s-1.347-.307-1.895-.73z" />
-      </svg>
-    );
-  }
-  if (l.includes('rockstar')) {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
-        <path d="M4 2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm2.5 4v11h2.8v-3.7h1.6l2.9 3.7h3.4l-3.3-4.1c1.8-.6 2.8-2 2.8-3.5 0-2.2-1.6-3.4-4.2-3.4H6.5zm2.8 2.2h2.2c1.2 0 2 .5 2 1.5s-.8 1.5-2 1.5H9.3V8.2zm6.2 5.3l.6 1.8 1.9.1-1.5 1.1.5 1.8-1.5-1.1-1.5 1.1.5-1.8-1.5-1.1 1.9-.1.6-1.8z" />
-      </svg>
-    );
-  }
-  if (l.includes('riot')) {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
-        <path d="M13.447 3.518l-9.92 4.417.844 7.42 2.527-.378-.423-3.692 1.348-.198.398 3.51 3.253-.487-.417-3.67 1.353-.203.418 3.693 3.33-.498-.444-3.918 1.402-.21.442 3.921 2.24-.336 1.488-10.781zm-4.32 16.964H2v-1.616l2.36-.353 4.767 1.969zm12.873-1.928l-8.527 1.277-2.614-1.082 1.393-10.092 9.748-1.46 0 11.357z" />
-      </svg>
-    );
-  }
-  if (l.includes('ea') || l.includes('origin')) {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
-        <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm-1.8 14.5l-1.2-2.3H5.9l-.8 2.3H3.2l3.4-9.3h2.1l3.5 9.3h-2zm9.1 0h-5.9v-9.3h5.7v1.8h-3.8v1.9h3.4v1.8h-3.4v2h4v1.8zm-9.7-4.1l-1.1-2.4-1.1 2.4h2.2z" />
-      </svg>
-    );
-  }
-  if (l.includes('ubisoft')) {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10c0-1.78-.47-3.45-1.3-4.89l-2.14 1.53c.59 1 1 2.15 1 3.36 0 4.14-3.36 7.5-7.56 7.5-4.14 0-7.5-3.36-7.5-7.5 0-3.36 2.22-6.19 5.27-7.1l.73 2.5c-1.8.63-3.1 2.36-3.1 4.4 0 2.54 2.06 4.6 4.6 4.6s4.6-2.06 4.6-4.6c0-1.27-.52-2.42-1.35-3.25l1.85-1.85C17.27 7.84 17.9 9.35 17.9 11c0 3.26-2.64 5.9-5.9 5.9-3.26 0-5.9-2.64-5.9-5.9 0-2.35 1.37-4.38 3.36-5.35L8.9 3.2C6.07 4.54 4.1 7.53 4.1 11c0 4.36 3.54 7.9 7.9 7.9s7.9-3.54 7.9-7.9c0-2.2-.9-4.2-2.35-5.65L19.4 3.5C21 5.6 22 8.2 22 11c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2z" />
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1.64 14.17c-1.35-.5-2.55-1.38-3.45-2.52l2.21-3.02c.28.73.73 1.39 1.33 1.89l-.09 3.65zm1.64.58c-.22 0-.43-.01-.64-.04l.04-3.71h1.19l.04 3.71c-.21.03-.42.04-.63.04zm1.64-.58l-.09-3.65c.61-.5 1.06-1.17 1.33-1.89l2.21 3.02c-.9 1.14-2.1 2.02-3.45 2.52zM6.15 7.68C7.4 6.35 9.1 5.5 11 5.27v2.5c-1.35.21-2.57.86-3.52 1.83L6.15 7.68zM11 16.56V14h2v2.56c-.33.03-.66.05-1 .05s-.67-.02-1-.05zm2-9.29V5c1.9.23 3.6 1.08 4.85 2.41l-1.33 1.92C15.57 8.36 14.35 7.71 13 7.27z" />
       </svg>
     );
   }
@@ -131,25 +79,27 @@ function LauncherSvg({ launcher, size = 12 }: { launcher: string; size?: number 
   return <Gamepad2 size={size} style={{ display: 'inline-block', verticalAlign: 'middle' }} />;
 }
 
-/* ─────────────────────────────── Toggle ────────────────────────────────── */
-function Toggle({ checked, onChange, id }: { checked: boolean; onChange: (v: boolean) => void; id?: string }) {
+/* ─────────────── Toggle ─────────────── */
+function Toggle({ checked, onChange, id, disabled }: { checked: boolean; onChange: (v: boolean) => void; id?: string; disabled?: boolean }) {
   return (
-    <label className="toggle" htmlFor={id}>
-      <input id={id} type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} />
+    <label className="toggle" htmlFor={id} style={disabled ? { opacity: 0.4, pointerEvents: 'none', cursor: 'not-allowed' } : {}}>
+      <input id={id} type="checkbox" checked={checked} disabled={disabled} onChange={e => onChange(e.target.checked)} />
       <span className="toggle-track" />
       <span className="toggle-thumb" />
     </label>
   );
 }
 
-/* ─────────────────────────────── Props ─────────────────────────────────── */
+/* ─────────────── Props ─────────────── */
 export interface GamingTabProps {
   gamingActive?:   boolean;
   currentGame?:    string | null;
   onGamingToggle?: (val: boolean) => void;
 }
 
-/* ═══════════════════════════════ GamingTab ═══════════════════════════════ */
+/* ═══════════════════════════════════════
+   GamingTab
+═══════════════════════════════════════ */
 export default function GamingTab({
   gamingActive: propGamingActive,
   currentGame:  propCurrentGame,
@@ -158,39 +108,24 @@ export default function GamingTab({
 
   /* ── State ── */
   const [gamingActive, setGamingActive]   = useState(propGamingActive ?? false);
-  const [profile, setProfile]             = useState<Profile>('Équilibré');
   const [hudEnabled, setHudEnabled]       = useState(false);
-  const [antiBufferbloat, setAntiBufferbloat] = useState(true);
   const [suspendBg, setSuspendBg]         = useState(false);
   const [autoDetect, setAutoDetect]       = useState(false);
   const [games, setGames]                 = useState<Game[]>([]);
   const [loadingGames, setLoadingGames]   = useState(true);
   const [currentGame, setCurrentGame]     = useState<string | null>(propCurrentGame ?? null);
-  const [hudMetrics, setHudMetrics]       = useState({ fps: 0, cpu: 0, ram: 0, ping: 0 });
   const [notice, setNotice]               = useState('');
   const [noticeType, setNoticeType]       = useState<'info' | 'success' | 'error'>('info');
   const [launcherFilter, setLauncherFilter] = useState<string>('Tous');
-  const [showProfileDetails, setShowProfileDetails] = useState(false);
-  const [gameProfiles, setGameProfiles]   = useState<Record<string, Profile>>({});
-  const [gameOptEnabled, setGameOptEnabled] = useState<Record<string, boolean>>(() => {
-    try {
-      const raw = localStorage.getItem('astral_game_opt_enabled');
-      return raw ? JSON.parse(raw) : {};
-    } catch {
-      return {};
-    }
-  });
   const [sessionSec, setSessionSec]       = useState(0);
   const sessionTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const toggleGameOpt = (gameName: string, enabled: boolean) => {
-    setGameOptEnabled(prev => {
-      const next = { ...prev, [gameName]: enabled };
-      try { localStorage.setItem('astral_game_opt_enabled', JSON.stringify(next)); } catch {}
-      return next;
-    });
-  };
+  /* ── Détection auto ── */
+  const [detectionProposal, setDetectionProposal] = useState<DetectionProposal | null>(null);
 
+  /* ── PresentMon status dans l'onglet ── */
+  const [pmStatus, setPmStatus] = useState<PresentMonTabStatus>('unavailable');
+  const [pmGame, setPmGame]     = useState<string | null>(null);
   /* ── Derived ── */
   const rawLaunchers = Array.from(new Set(games.map(g => g.launcher))).filter(Boolean);
   const launchers = ['Tous', ...rawLaunchers];
@@ -233,19 +168,17 @@ export default function GamingTab({
     api.getGamingSettings?.().then((res: any) => {
       if (res?.settings) {
         setHudEnabled(Boolean(res.settings.hudEnabled));
-        setAntiBufferbloat(Boolean(res.settings.antiBufferbloat ?? true));
         setSuspendBg(Boolean(res.settings.suspendBg));
         setAutoDetect(Boolean(res.settings.autoDetect));
       }
     }).catch(() => {});
 
-    api.getProfile?.().then((prof: any) => {
-      if (typeof prof?.network?.antiBufferbloat === 'boolean') {
-        setAntiBufferbloat(prof.network.antiBufferbloat);
-      }
-    }).catch(() => {});
-
     loadGames();
+
+    /* PresentMon status initial */
+    api.getPresentMonStatus?.().then((res: any) => {
+      syncPmStatus(res);
+    }).catch(() => {});
 
     /* IPC events */
     const c1 = api.on?.('gaming:game-started', (d: any) => {
@@ -255,24 +188,38 @@ export default function GamingTab({
     const c2 = api.on?.('gaming:game-stopped', () => {
       setCurrentGame(null);
     });
-    const c3 = api.on?.('overlay:metrics', (d: any) => {
-      setHudMetrics({
-        fps: d.fps ?? 0,
-        cpu: d.cpu ?? 0,
-        ram: d.ram ?? 0,
-        ping: d.ping ?? 0,
-      });
-    });
 
     api.hudGetState?.().then((res: any) => {
       if (typeof res?.active === 'boolean') setHudEnabled(res.active);
       else if (typeof res === 'boolean') setHudEnabled(res);
     }).catch(() => {});
 
-    const c4 = api.on?.('hud:state-changed', (d: any) => {
+    const c3 = api.on?.('hud:state-changed', (d: any) => {
       if (typeof d?.active === 'boolean') setHudEnabled(d.active);
       else if (typeof d?.enabled === 'boolean') setHudEnabled(d.enabled);
       else if (typeof d?.visible === 'boolean') setHudEnabled(d.visible);
+    });
+
+    /* Écoute les propositions de détection automatique */
+    const c4 = api.on?.('gaming-event', (d: any) => {
+      if (d?.type === 'detection-proposal' && d?.pid && d?.name) {
+        // Remplacer toute proposition précédente par la nouvelle cible.
+        // Une ancienne proposition ne doit jamais persister pour un nouveau processus.
+        setDetectionProposal(prev => {
+          // Si même PID : ne pas ré-afficher la bannière (évite le spam)
+          if (prev?.pid === d.pid) return prev;
+          // Nouvelle cible : remplacer
+          return { pid: d.pid, name: d.name };
+        });
+      }
+      /* Mise à jour du statut PresentMon via gaming-event si disponible */
+      if (d?.type === 'presentmon-status') {
+        syncPmStatus(d);
+      }
+      /* Nettoyage si le processus proposé a disparu */
+      if (d?.type === 'mode-changed' && d?.state === 'finished') {
+        setDetectionProposal(null);
+      }
     });
 
     const autoRescanInterval = setInterval(() => {
@@ -281,6 +228,25 @@ export default function GamingTab({
 
     return () => { c1?.(); c2?.(); c3?.(); c4?.(); clearInterval(autoRescanInterval); };
   }, []);
+
+  /** Synchronise l'état PresentMon local depuis une réponse IPC ou un event */
+  const syncPmStatus = (res: any) => {
+    if (!res) return;
+    const status: string = res.status ?? res.currentStatus ?? '';
+    if (status === 'Indisponible' || !res.isAvailable) {
+      setPmStatus('unavailable');
+      setPmGame(null);
+    } else if (status === 'Capture en cours') {
+      setPmStatus('capturing');
+      setPmGame(res.gameProcessName ?? null);
+    } else if (status.includes('bloqué') || status.includes('refusé')) {
+      setPmStatus('blocked');
+      setPmGame(null);
+    } else {
+      setPmStatus('idle');
+      setPmGame(null);
+    }
+  };
 
   /* ── Load games automatically ── */
   const loadGames = async (showLoading = true) => {
@@ -296,7 +262,7 @@ export default function GamingTab({
           initial:   g.name?.[0]?.toUpperCase() || '?',
           color1:    LAUNCHER_COLORS[g.launcher] || '#1a2e44',
           color2:    '#090a10',
-          profile:   'OPTIMISÉ',
+          profile:   '',   /* B10 : pas de badge OPTIMISÉ par défaut */
           bannerUrl: g.bannerUrl,
           appId:     g.appId,
           path:      g.path,
@@ -324,34 +290,66 @@ export default function GamingTab({
     onGamingToggle?.(next);
     if (!next) { setSuspendBg(false); api?.suspendBrowsers?.(false); }
     try {
-      await api?.setGamingMode?.({ enabled: next, profile });
-      flash(next ? `Mode Gaming activé — Profil ${profile}.` : 'Mode Gaming désactivé — Paramètres Windows restaurés.', 'success');
+      const res: any = await api?.setGamingMode?.({ enabled: next });
+      if (next) {
+        // set-mode marque le flag interne et envoie une notification.
+        // Les optimisations réelles (priorité processus, plan d'alimentation) sont appliquées
+        // uniquement lorsqu'un PID de jeu est fourni via confirm-detection ou launch-game.
+        // Sans PID identifié, aucune modification système n'est encore effective.
+        flash(
+          'Mode activé. Les réglages (priorité + plan d\'alimentation) s\'appliqueront au lancement d\'une application identifiée.',
+          'info'
+        );
+      } else {
+        flash(
+          res?.success
+            ? 'Désactivé — restauration demandée au backend (priorité et plan d\'alimentation).'
+            : 'Désactivation enregistrée. Vérifiez les journaux si la restauration échoue.',
+          'info'
+        );
+      }
     } catch (e: any) { flash(e.message, 'error'); }
   };
 
   const toggleSetting = async (key: string, val: boolean) => {
     try {
       await api?.setGamingSetting?.({ key, value: val });
-      if (key === 'antiBufferbloat') {
-        api?.saveUserProfile?.({ network: { antiBufferbloat: val } }).catch(() => {});
-      }
       if (key === 'suspendBg') {
-        await api?.suspendBrowsers?.(val);
-        flash(val ? 'Navigateurs mis en priorité Idle (libère RAM).' : 'Navigateurs restaurés en priorité Normale.', 'success');
+        const res: any = await api?.suspendBrowsers?.(val);
+        if (val) {
+          flash('Priorité CPU des navigateurs réduite (priorité Idle).', 'success');
+        } else {
+          const partialNote = (res?.failed ?? 0) > 0
+            ? ` (${res.failed} processus non restauré(s)).`
+            : '';
+          flash(`Navigateurs restaurés à leur priorité initiale.${partialNote}`, 'success');
+        }
       }
     } catch {}
   };
 
-  const assignGameProfile = async (gameName: string, p: Profile) => {
-    setGameProfiles(prev => ({ ...prev, [gameName]: p }));
+  /* ── Détection auto : confirmer / rejeter ── */
+  const confirmDetection = async () => {
+    if (!detectionProposal) return;
     try {
-      await api?.applyGameProfile?.({ game: gameName, profile: p });
-      flash(`Profil "${p}" assigné à ${gameName}.`, 'success');
-    } catch {
-      flash(`Profil assigné : ${gameName}.`, 'info');
+      await api?.confirmDetection?.(detectionProposal);
+      setGamingActive(true);
+      flash(`Optimisations activées pour ${detectionProposal.name}.`, 'success');
+    } catch (e: any) {
+      flash(`Échec activation : ${e.message}`, 'error');
+    } finally {
+      setDetectionProposal(null);
     }
   };
 
+  const rejectDetection = async () => {
+    try {
+      await api?.rejectDetection?.();
+    } catch {}
+    setDetectionProposal(null);
+  };
+
+  /* ── Game actions ── */
   const handleLaunchGame = async (game: Game) => {
     try {
       flash(`Lancement de ${game.name} en cours...`, 'info');
@@ -385,7 +383,27 @@ export default function GamingTab({
     return `${m}m ${s.toString().padStart(2, '0')}s`;
   };
 
-  /* ═══════════════════════════════ Render ═════════════════════════════════ */
+  /* ── PresentMon status label ── */
+  const pmLabel = (): string => {
+    switch (pmStatus) {
+      case 'unavailable': return 'PresentMon : Indisponible';
+      case 'capturing':   return `PresentMon : Capture en cours${pmGame ? ` — ${pmGame}` : ''}`;
+      case 'blocked':     return 'PresentMon : Bloqué (anti-cheat)';
+      default:            return 'PresentMon : Installé — en attente d\'une cible';
+    }
+  };
+  const pmColor = (): string => {
+    switch (pmStatus) {
+      case 'capturing': return '#22c55e';
+      case 'blocked':   return '#ef4444';
+      case 'idle':      return 'var(--a1)';
+      default:          return 'var(--muted)';
+    }
+  };
+
+  /* ══════════════════════════════════════
+     Render
+  ══════════════════════════════════════ */
   return (
     <div className="page-scroll">
       <div className="page">
@@ -393,14 +411,14 @@ export default function GamingTab({
         {/* ── Header ── */}
         <div className="page-header">
           <div>
-            <h1>Performance & E-Sport</h1>
-            <p className="sub">Optimisation des ressources système, profils de session réversibles et bibliothèque de jeux.</p>
+            <h1>Optimisation des ressources</h1>
+            <p className="sub">Optimisation des ressources système. Profil réversible sur demande.</p>
           </div>
           <span className={`chip${gamingActive ? '' : ' idle'}`}>
             <span className="dot" />
             {gamingActive
-              ? currentGame ? `▶ ${currentGame}` : `ACTIF · PROFIL ${profile.toUpperCase()}`
-              : 'EN ATTENTE DE JEU'}
+              ? currentGame ? `▶ ${currentGame}` : 'ACTIF'
+              : 'EN ATTENTE'}
           </span>
         </div>
 
@@ -418,11 +436,43 @@ export default function GamingTab({
             display: 'flex', gap: 10, alignItems: 'center',
             boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
           }}>
-            {noticeType === 'success' ? '✓' : noticeType === 'error' ? '✗' : 'ℹ'} {notice}
+            {noticeType === 'success' ? '✓' : noticeType === 'error' ? '✕' : 'ℹ'} {notice}
           </div>
         )}
 
-        {/* ── Big Hero Session Card ── */}
+        {/* ── Bannière proposition de détection ── */}
+        {detectionProposal && (
+          <div style={{
+            marginBottom: 16,
+            padding: '12px 18px',
+            background: 'rgba(var(--a1r),.1)',
+            border: '1px solid rgba(var(--a1r),.35)',
+            borderRadius: 'var(--r-sm)',
+            display: 'flex', gap: 14, alignItems: 'center',
+            flexWrap: 'wrap',
+            fontSize: 13,
+          }}>
+            <span style={{ flex: 1, fontWeight: 500 }}>
+              Application détectée : <b>{detectionProposal.name}</b>. Activer les optimisations ?
+            </span>
+            <button
+              className="btn"
+              style={{ padding: '7px 16px', fontSize: 12, fontWeight: 700 }}
+              onClick={confirmDetection}
+            >
+              Activer les optimisations
+            </button>
+            <button
+              className="btn-ghost"
+              style={{ padding: '7px 14px', fontSize: 12 }}
+              onClick={rejectDetection}
+            >
+              Ignorer
+            </button>
+          </div>
+        )}
+
+        {/* ── Bloc principal : OPTIMISATION SYSTÈME ── */}
         <div className="card card-p-lg" style={{
           background: 'linear-gradient(135deg, rgba(20,27,45,0.7) 0%, rgba(11,15,23,0.95) 100%)',
           border: '1px solid rgba(var(--a1r), 0.25)',
@@ -430,288 +480,220 @@ export default function GamingTab({
           padding: 24,
           boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{
-                  display: 'inline-flex', padding: '6px 12px', borderRadius: 20,
-                  background: 'rgba(var(--a1r), 0.15)', border: '1px solid var(--a1)',
-                  color: 'var(--a1)', fontSize: 11, fontWeight: 700, letterSpacing: '.04em'
-                }}>
-                  SESSION GAMING
-                </span>
-                <h2 style={{ fontSize: 22, margin: 0, fontWeight: 700 }}>Préparer une session de jeu</h2>
-                <button
-                  className="btn-ghost"
-                  onClick={() => setShowProfileDetails(true)}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '5px 10px', borderRadius: 6 }}
-                  title="Consulter le détail technique des optimisations"
-                >
-                  <Info size={14} style={{ color: 'var(--a1)' }} />
-                  <span>Détails & Réversibilité</span>
-                </button>
-              </div>
-              <p className="mut" style={{ marginTop: 8, fontSize: 13, maxWidth: 650, lineHeight: 1.5 }}>
-                Sélectionnez le comportement système appliqué au lancement du jeu. Tous les ajustements sont mesurables et <b>restaurés automatiquement à 100%</b> à la fin de votre partie.
-              </p>
-            </div>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              {gamingActive && (
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '8px 14px', borderRadius: 8,
-                  background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
-                  color: '#22c55e', fontSize: 13, fontWeight: 600
+            {/* Zone gauche ~55% : état + contrôle */}
+            <div style={{ flex: '1 1 320px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <span style={{
+                  display: 'inline-flex', padding: '4px 10px', borderRadius: 20,
+                  background: 'rgba(var(--a1r), 0.12)', border: '1px solid var(--a1)',
+                  color: 'var(--a1)', fontSize: 10, fontWeight: 700, letterSpacing: '.06em',
+                  marginBottom: 10,
                 }}>
-                  <Clock size={15} />
-                  <span>Session en cours : <b>{fmtDuration(sessionSec)}</b></span>
-                </div>
-              )}
+                  OPTIMISATION SYSTÈME
+                </span>
+                <h2 style={{ fontSize: 20, margin: '0 0 8px', fontWeight: 700 }}>
+                  {gamingActive ? 'Optimisations actives' : 'Optimisations inactives'}
+                </h2>
+
+                {/* Ce qui sera appliqué */}
+                <ul style={{ margin: '0 0 10px 0', padding: '0 0 0 18px', fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.7 }}>
+                  <li>Priorité processus : <b>AboveNormal</b> (restaurée à la désactivation)</li>
+                  <li>Plan d'alimentation : <b>Haute Performance</b> (GUID restauré automatiquement)</li>
+                </ul>
+
+                {gamingActive && currentGame && (
+                  <div style={{
+                    fontSize: 12, color: 'var(--a1)', fontWeight: 600,
+                    padding: '6px 10px', borderRadius: 6,
+                    background: 'rgba(var(--a1r),.08)', border: '1px solid rgba(var(--a1r),.2)',
+                    marginBottom: 8, display: 'inline-flex', alignItems: 'center', gap: 8,
+                  }}>
+                    <Clock size={13} /> Application : {currentGame}
+                  </div>
+                )}
+
+                {gamingActive && (
+                  <div style={{ fontSize: 12, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                    <Clock size={12} /> Session : <b>{fmtDuration(sessionSec)}</b>
+                  </div>
+                )}
+
+                <p style={{ fontSize: 11.5, color: 'var(--muted)', margin: '8px 0 0', fontStyle: 'italic' }}>
+                  Requiert un processus identifié. Aucun gain garanti.
+                </p>
+                <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0' }}>
+                  Restauration automatique du plan et de la priorité à la désactivation.
+                </p>
+              </div>
+
               <button
                 className="btn"
                 id="gaming-toggle-btn"
                 style={{
-                  padding: '12px 28px',
+                  padding: '12px 24px',
                   fontSize: 14,
                   fontWeight: 700,
                   background: gamingActive ? 'rgba(239,68,68,.18)' : 'var(--a1)',
                   borderColor: gamingActive ? 'rgba(239,68,68,.4)' : 'transparent',
                   color: gamingActive ? '#ef4444' : '#0b0f17',
                   boxShadow: gamingActive ? 'none' : '0 4px 16px rgba(var(--a1r), 0.35)',
+                  alignSelf: 'flex-start',
                 }}
                 onClick={toggleGaming}
               >
-                <Power size={16} /> {gamingActive ? 'Désactiver le Mode Gaming' : 'Activer le Mode Gaming'}
+                <Power size={16} /> {gamingActive ? 'Désactiver + restaurer' : 'Activer les optimisations'}
               </button>
             </div>
-          </div>
 
-          {/* Sleek Segmented Profile Selector */}
-          <div style={{
-            background: 'rgba(0,0,0,0.35)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 12,
-            padding: 8,
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: 8,
-          }}>
-            {PROFILES.map(p => {
-              const meta = PROFILE_META[p];
-              const isSelected = profile === p;
-              return (
-                <div
-                  key={p}
-                  onClick={() => setProfile(p)}
-                  style={{
-                    background: isSelected ? 'rgba(255,255,255,0.06)' : 'transparent',
-                    border: `1px solid ${isSelected ? meta.color : 'transparent'}`,
-                    borderRadius: 8,
-                    padding: '12px 16px',
-                    cursor: 'pointer',
-                    transition: 'all .15s ease',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: '50%',
-                      background: isSelected ? meta.color : 'rgba(255,255,255,0.2)',
-                      boxShadow: isSelected ? `0 0 8px ${meta.color}` : 'none',
-                    }} />
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: isSelected ? '#fff' : 'var(--text)' }}>
-                        {meta.title}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-                        {meta.tagline}
-                      </div>
-                    </div>
-                  </div>
-                  {isSelected && (
-                    <Check size={14} style={{ color: meta.color, flexShrink: 0 }} />
-                  )}
-                </div>
-              );
-            })}
-          </div>
+            {/* Zone droite ~45% : grille 2×2 outils */}
+            <div style={{ flex: '1 1 280px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
 
-          {/* Active Profile Info Banner */}
-          <div style={{
-            marginTop: 12,
-            padding: '10px 14px',
-            background: 'rgba(255,255,255,0.02)',
-            border: '1px solid rgba(255,255,255,0.05)',
-            borderRadius: 8,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: 10,
-            fontSize: 11.5,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--muted)' }}>
-              <span>Action au lancement :</span>
-              <span style={{ color: 'var(--text)', fontWeight: 600 }}>{PROFILE_META[profile].desc.split('.')[0]}.</span>
-            </div>
-            <span style={{ color: PROFILE_META[profile].color, fontWeight: 700, fontSize: 10.5, letterSpacing: '0.04em' }}>
-              ✓ RÉVERSIBLE À 100%
-            </span>
-          </div>
-        </div>
-
-        {/* ── Paramètres d'Optimisation en Jeu (Clean Panel) ── */}
-        <div className="card card-p-lg mt" style={{ marginTop: 22 }}>
-          <div className="lbl" style={{ marginBottom: 16, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <SlidersHorizontal size={15} style={{ color: 'var(--a1)' }} />
-            Paramètres & Moteur d'Optimisation Système en Jeu
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
-            {/* Overlay HUD */}
-            <div style={{
-              background: 'rgba(255,255,255,0.02)',
-              border: '1px solid var(--border)',
-              borderRadius: 10,
-              padding: 16,
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between'
-            }}>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 13 }}>
-                    <Eye size={15} style={{ color: 'var(--a1)' }} />
-                    <span>Overlay HUD en jeu</span>
+              {/* HUD Overlay */}
+              <div style={{
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid var(--border)',
+                borderRadius: 10, padding: 14,
+                display: 'flex', flexDirection: 'column', gap: 8,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: 12 }}>
+                    <Eye size={13} style={{ color: 'var(--a1)' }} />
+                    <span>HUD Overlay</span>
                   </div>
                   <span style={{
-                    fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10,
+                    fontSize: 9.5, fontWeight: 700, padding: '2px 6px', borderRadius: 10,
                     background: hudEnabled ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.05)',
                     color: hudEnabled ? '#22c55e' : 'var(--muted)',
-                  }}>
-                    {hudEnabled ? 'ACTIF' : 'INACTIF'}
-                  </span>
+                  }}>{hudEnabled ? 'ACTIF' : 'INACTIF'}</span>
                 </div>
-                <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 12px 0', lineHeight: 1.45 }}>
-                  Affiche les FPS réels, l'usage CPU/RAM et la latence réseau directement par-dessus votre jeu (aucun flou rectangulaire).
+                <p style={{ fontSize: 11, color: 'var(--muted)', margin: 0, lineHeight: 1.4 }}>
+                  FPS, CPU/RAM en superposition. PresentMon requis.
                 </p>
+                {/* Statut PresentMon sous le toggle HUD */}
+                <div style={{ fontSize: 10.5, color: pmColor(), fontWeight: 500 }}>
+                  {pmLabel()}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>Ctrl+Shift+O</span>
+                  <Toggle id="hud-toggle" checked={hudEnabled} onChange={async () => {
+                    const res: any = await api?.hudToggle?.();
+                    if (typeof res?.active === 'boolean') setHudEnabled(res.active);
+                  }} />
+                </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 10 }}>
-                <span style={{ fontSize: 11, color: 'var(--muted)' }}>Raccourci : <b>Ctrl+Shift+O</b></span>
-                <Toggle id="hud-toggle" checked={hudEnabled} onChange={() => api?.hudToggle?.()} />
-              </div>
-            </div>
 
-            {/* Anti-bufferbloat Wi-Fi */}
-            <div style={{
-              background: 'rgba(255,255,255,0.02)',
-              border: '1px solid var(--border)',
-              borderRadius: 10,
-              padding: 16,
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between'
-            }}>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 13 }}>
-                    <Wifi size={15} style={{ color: 'var(--a1)' }} />
-                    <span>Anti-bufferbloat Wi-Fi</span>
+              {/* Priorité navigateurs */}
+              <div style={{
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid var(--border)',
+                borderRadius: 10, padding: 14,
+                display: 'flex', flexDirection: 'column', gap: 8,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: 12 }}>
+                    <Cpu size={13} style={{ color: 'var(--a1)' }} />
+                    <span>Priorité navigateurs</span>
                   </div>
                   <span style={{
-                    fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10,
-                    background: antiBufferbloat ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.05)',
-                    color: antiBufferbloat ? '#22c55e' : 'var(--muted)',
-                  }}>
-                    {antiBufferbloat ? 'ACTIF' : 'INACTIF'}
-                  </span>
-                </div>
-                <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 12px 0', lineHeight: 1.45 }}>
-                  Purge les files d'attente UDP Windows et réduit les sauts de ping de 40% sur réseau local partagé pendant le jeu.
-                </p>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 10 }}>
-                <span style={{ fontSize: 11, color: 'var(--muted)' }}>Files UDP réactives</span>
-                <Toggle id="bufferbloat-toggle" checked={antiBufferbloat} onChange={v => { setAntiBufferbloat(v); toggleSetting('antiBufferbloat', v); }} />
-              </div>
-            </div>
-
-            {/* Suspendre les navigateurs */}
-            <div style={{
-              background: 'rgba(255,255,255,0.02)',
-              border: '1px solid var(--border)',
-              borderRadius: 10,
-              padding: 16,
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between'
-            }}>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 13 }}>
-                    <Cpu size={15} style={{ color: 'var(--a1)' }} />
-                    <span>Suspendre les navigateurs</span>
-                  </div>
-                  <span style={{
-                    fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10,
+                    fontSize: 9.5, fontWeight: 700, padding: '2px 6px', borderRadius: 10,
                     background: suspendBg ? 'rgba(234,179,8,0.15)' : 'rgba(255,255,255,0.05)',
                     color: suspendBg ? '#eab308' : 'var(--muted)',
-                  }}>
-                    {suspendBg ? 'IDLE' : 'NORMAL'}
-                  </span>
+                  }}>{suspendBg ? 'IDLE' : 'NORMAL'}</span>
                 </div>
-                <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 12px 0', lineHeight: 1.45 }}>
-                  Bascule Chrome, Edge et Firefox en priorité Idle pour libérer ~1,8 Go de RAM sans fermer vos onglets.
+                <p style={{ fontSize: 11, color: 'var(--muted)', margin: 0, lineHeight: 1.4 }}>
+                  Réduit CPU (priorité Idle). Navigateurs restent ouverts. Restauration à la désactivation.
                 </p>
+                <p style={{ fontSize: 10, color: 'var(--muted)', margin: 0 }}>
+                  Pas de mémoire libérée garantie.
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>Chrome, Edge, Firefox</span>
+                  <Toggle id="suspend-bg-toggle" checked={suspendBg} onChange={v => { setSuspendBg(v); toggleSetting('suspendBg', v); }} />
+                </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 10 }}>
-                <span style={{ fontSize: 11, color: 'var(--muted)' }}>Restauration automatique</span>
-                <Toggle id="suspend-bg-toggle" checked={suspendBg} onChange={v => { setSuspendBg(v); toggleSetting('suspendBg', v); }} />
-              </div>
-            </div>
 
-            {/* Détection automatique */}
-            <div style={{
-              background: 'rgba(255,255,255,0.02)',
-              border: '1px solid var(--border)',
-              borderRadius: 10,
-              padding: 16,
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between'
-            }}>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 13 }}>
-                    <Zap size={15} style={{ color: 'var(--a1)' }} />
-                    <span>Détection automatique</span>
+              {/* Anti-bufferbloat — NON IMPLÉMENTÉ */}
+              <div style={{
+                background: 'rgba(255,255,255,0.015)',
+                border: '1px solid rgba(255,255,255,0.06)',
+                borderRadius: 10, padding: 14,
+                display: 'flex', flexDirection: 'column', gap: 8,
+                opacity: 0.6,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: 12 }}>
+                    <Wifi size={13} style={{ color: 'var(--muted)' }} />
+                    <span style={{ color: 'var(--muted)' }}>Anti-bufferbloat</span>
                   </div>
                   <span style={{
-                    fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10,
+                    fontSize: 9.5, fontWeight: 700, padding: '2px 6px', borderRadius: 10,
+                    background: 'rgba(255,255,255,0.05)', color: 'var(--muted)',
+                  }}>NON IMPLÉMENTÉ</span>
+                </div>
+                <p style={{ fontSize: 11, color: 'var(--muted)', margin: 0, lineHeight: 1.4 }}>
+                  Aucune modification réseau appliquée dans cette version.
+                </p>
+                <p style={{ fontSize: 10, color: 'var(--muted)', margin: 0, fontStyle: 'italic' }}>
+                  La réduction de latence sous charge sera étudiée dans la section Réseau.
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>Indisponible</span>
+                  {/* Toggle désactivé intentionnellement */}
+                  <Toggle id="bufferbloat-toggle" checked={false} onChange={() => {}} disabled={true} />
+                </div>
+              </div>
+
+              {/* Détection automatique */}
+              <div style={{
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid var(--border)',
+                borderRadius: 10, padding: 14,
+                display: 'flex', flexDirection: 'column', gap: 8,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: 12 }}>
+                    <Zap size={13} style={{ color: 'var(--a1)' }} />
+                    <span>Détection auto</span>
+                  </div>
+                  <span style={{
+                    fontSize: 9.5, fontWeight: 700, padding: '2px 6px', borderRadius: 10,
                     background: autoDetect ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.05)',
                     color: autoDetect ? '#22c55e' : 'var(--muted)',
-                  }}>
-                    {autoDetect ? 'ACTIF' : 'INACTIF'}
-                  </span>
+                  }}>{autoDetect ? 'ACTIF' : 'INACTIF'}</span>
                 </div>
-                <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 12px 0', lineHeight: 1.45 }}>
-                  Active instantanément le Mode Gaming dès qu'une fenêtre de jeu reconnue passe au premier plan.
+                <p style={{ fontSize: 11, color: 'var(--muted)', margin: 0, lineHeight: 1.4 }}>
+                  Surveille la fenêtre active (toutes les 8 s). Propose l'activation — aucune activation sans votre confirmation.
                 </p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>Scan toutes les 8 s</span>
+                  <Toggle id="autodetect-toggle" checked={autoDetect} onChange={v => { setAutoDetect(v); toggleSetting('autoDetect', v); }} />
+                </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 10 }}>
-                <span style={{ fontSize: 11, color: 'var(--muted)' }}>Surveillance de premier plan</span>
-                <Toggle id="autodetect-toggle" checked={autoDetect} onChange={v => { setAutoDetect(v); toggleSetting('autoDetect', v); }} />
-              </div>
+
             </div>
+          </div>
+
+          {/* Limites de la pré-release */}
+          <div style={{
+            marginTop: 18,
+            padding: '10px 14px',
+            background: 'rgba(255,255,255,0.02)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: 8,
+            fontSize: 11.5,
+            color: 'var(--muted)',
+            lineHeight: 1.5,
+          }}>
+            <b style={{ color: 'var(--text)' }}>Limites pré-release v0.1.6 :</b> La maintenance programmée
+            nécessite que Vanguard Core soit actif en arrière-plan. Les optimisations s'appliquent à un
+            processus identifié — aucun gain n'est garanti. Cette fonctionnalité fonctionne uniquement
+            lorsque l'application est en cours d'exécution.
           </div>
         </div>
 
-        {/* ── Game Library ── */}
+        {/* ── Bibliothèque de jeux ── */}
         <div className="card card-p-lg mt" style={{ marginTop: 22 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
             <div className="lbl" style={{ marginBottom: 0 }}>
@@ -767,539 +749,185 @@ export default function GamingTab({
                 transform: 'translateZ(0)',
               }}
             >
-              {filteredGames.map(game => {
-                const assignedProfile = gameProfiles[game.name] || 'Équilibré';
-                const isOpt = gameOptEnabled[game.name] !== false;
-
-                return (
-                  <div
-                    key={game.name}
-                    className="game-card"
-                    style={{
-                      position: 'relative',
-                      overflow: 'hidden',
-                      borderRadius: 12,
-                      border: `1px solid ${isOpt ? 'rgba(56,189,248,0.35)' : 'rgba(255,255,255,0.08)'}`,
-                      background: '#0d111a',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      minHeight: 255,
-                      boxShadow: '0 4px 18px rgba(0,0,0,0.5)',
-                      transition: 'border-color 0.2s ease, transform 0.2s ease',
-                    }}
-                  >
-                    {/* Top Artwork Banner */}
-                    <div style={{
-                      position: 'relative',
-                      width: '100%',
-                      height: 135,
-                      overflow: 'hidden',
-                      background: game.bannerUrl ? '#070a10' : `linear-gradient(135deg, ${game.color1}, ${game.color2})`,
-                    }}>
-                      {game.bannerUrl ? (
-                        <img
-                          src={game.bannerUrl}
-                          alt={game.name}
-                          style={{
-                            width: '100%',
-                            height: '100%',
-                            objectFit: 'cover',
-                            display: 'block',
-                          }}
-                        />
-                      ) : (
-                        <div style={{
+              {filteredGames.map(game => (
+                <div
+                  key={`${game.launcher}::${game.name}`}
+                  className="game-card"
+                  style={{
+                    position: 'relative',
+                    overflow: 'hidden',
+                    borderRadius: 12,
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    background: '#0d111a',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    minHeight: 255,
+                    boxShadow: '0 4px 18px rgba(0,0,0,0.5)',
+                    transition: 'border-color 0.2s ease, transform 0.2s ease',
+                  }}
+                >
+                  {/* Top Artwork Banner */}
+                  <div style={{
+                    position: 'relative',
+                    width: '100%',
+                    height: 135,
+                    overflow: 'hidden',
+                    background: game.bannerUrl ? '#070a10' : `linear-gradient(135deg, ${game.color1}, ${game.color2})`,
+                  }}>
+                    {game.bannerUrl ? (
+                      <img
+                        src={game.bannerUrl}
+                        alt={game.name}
+                        style={{
                           width: '100%',
                           height: '100%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: 48,
-                          fontWeight: 900,
-                          color: 'rgba(255,255,255,0.12)',
-                        }}>
-                          {game.initial}
-                        </div>
-                      )}
-
-                      {/* Soft dark gradient at bottom of artwork */}
+                          objectFit: 'cover',
+                          display: 'block',
+                        }}
+                      />
+                    ) : (
                       <div style={{
-                        position: 'absolute',
-                        inset: 0,
-                        background: 'linear-gradient(to top, rgba(13,17,26,0.95) 0%, rgba(13,17,26,0.15) 50%, rgba(0,0,0,0.3) 100%)',
-                      }} />
-
-                      {/* Badges on top of artwork */}
-                      <div style={{
-                        position: 'absolute',
-                        top: 10,
-                        left: 10,
-                        right: 10,
+                        width: '100%',
+                        height: '100%',
                         display: 'flex',
-                        justifyContent: 'space-between',
                         alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 48,
+                        fontWeight: 900,
+                        color: 'rgba(255,255,255,0.12)',
                       }}>
-                        <span style={{
-                          fontSize: 10,
-                          fontWeight: 700,
-                          padding: '3px 8px',
-                          borderRadius: 6,
-                          background: 'rgba(0,0,0,0.8)',
-                          border: '1px solid rgba(255,255,255,0.15)',
-                          color: '#ffffff',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 5,
-                        }}>
-                          <LauncherSvg launcher={game.launcher} size={11} />
-                          {game.launcher}
-                        </span>
-
-                        <span style={{
-                          fontSize: 9.5,
-                          fontWeight: 700,
-                          padding: '3px 8px',
-                          borderRadius: 6,
-                          background: `${PROFILE_META[assignedProfile].color}25`,
-                          border: `1px solid ${PROFILE_META[assignedProfile].color}50`,
-                          color: PROFILE_META[assignedProfile].color,
-                        }}>
-                          {assignedProfile.toUpperCase()}
-                        </span>
+                        {game.initial}
                       </div>
-                    </div>
+                    )}
 
-                    {/* Content below artwork */}
+                    {/* Gradient */}
                     <div style={{
-                      padding: '14px 16px 16px',
+                      position: 'absolute',
+                      inset: 0,
+                      background: 'linear-gradient(to top, rgba(13,17,26,0.95) 0%, rgba(13,17,26,0.15) 50%, rgba(0,0,0,0.3) 100%)',
+                    }} />
+
+                    {/* Launcher Badge only */}
+                    <div style={{
+                      position: 'absolute',
+                      top: 10,
+                      left: 10,
                       display: 'flex',
-                      flexDirection: 'column',
-                      flex: 1,
-                      justifyContent: 'space-between',
-                      gap: 12,
+                      alignItems: 'center',
                     }}>
-                      <div>
-                        {/* Title */}
-                        <b
+                      <span style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: '3px 8px',
+                        borderRadius: 6,
+                        background: 'rgba(0,0,0,0.8)',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        color: '#ffffff',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 5,
+                      }}>
+                        <LauncherSvg launcher={game.launcher} size={11} />
+                        {game.launcher}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Content below artwork */}
+                  <div style={{
+                    padding: '14px 16px 16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    flex: 1,
+                    justifyContent: 'space-between',
+                    gap: 10,
+                  }}>
+                    <b
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 700,
+                        display: 'block',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        color: '#ffffff',
+                      }}
+                      title={game.name}
+                    >
+                      {game.name}
+                    </b>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {/* Action buttons : Lancer & Désinstaller */}
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          className="btn"
+                          onClick={() => handleLaunchGame(game)}
                           style={{
-                            fontSize: 14,
+                            flex: 2,
+                            padding: '8px 14px',
+                            fontSize: 12,
                             fontWeight: 700,
-                            display: 'block',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            color: '#ffffff',
-                            marginBottom: 2,
-                          }}
-                          title={game.name}
-                        >
-                          {game.name}
-                        </b>
-                      </div>
-
-                      {/* Bottom Controls Area */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {/* Action buttons: Lancer & Désinstaller */}
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button
-                            className="btn"
-                            onClick={() => handleLaunchGame(game)}
-                            style={{
-                              flex: 2,
-                              padding: '8px 14px',
-                              fontSize: 12,
-                              fontWeight: 700,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: 6,
-                              background: 'var(--a1)',
-                              color: '#0b0f17',
-                              borderRadius: 6,
-                              cursor: 'pointer',
-                              border: 'none',
-                            }}
-                          >
-                            <Play size={13} fill="#0b0f17" />
-                            <span>Lancer</span>
-                          </button>
-
-                          <button
-                            className="btn-ghost"
-                            onClick={() => handleUninstallGame(game)}
-                            title="Désinstaller ce jeu"
-                            style={{
-                              flex: 1,
-                              padding: '8px 10px',
-                              fontSize: 11,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: 5,
-                              borderRadius: 6,
-                              color: 'rgba(255,255,255,0.7)',
-                              border: '1px solid rgba(255,255,255,0.12)',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            <Trash2 size={12} />
-                            <span>Désinstaller</span>
-                          </button>
-                        </div>
-
-                        {/* Per-Game Optimization Toggle */}
-                        <div
-                          style={{
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'space-between',
-                            padding: '4px 10px',
-                            background: 'rgba(0,0,0,0.35)',
+                            justifyContent: 'center',
+                            gap: 6,
+                            background: 'var(--a1)',
+                            color: '#0b0f17',
                             borderRadius: 6,
-                            border: '1px solid rgba(255,255,255,0.06)',
+                            cursor: 'pointer',
+                            border: 'none',
                           }}
                         >
-                          <span style={{ fontSize: 10.5, color: isOpt ? 'var(--a1)' : 'var(--muted)', fontWeight: 600 }}>
-                            {isOpt ? 'Optimisation active' : 'Par défaut Windows'}
-                          </span>
-                          <label className="toggle" style={{ transform: 'scale(0.72)', transformOrigin: 'right center', margin: 0 }}>
-                            <input
-                              type="checkbox"
-                              checked={isOpt}
-                              onChange={e => toggleGameOpt(game.name, e.target.checked)}
-                            />
-                            <span className="toggle-track" />
-                            <span className="toggle-thumb" />
-                          </label>
-                        </div>
+                          <Play size={13} fill="#0b0f17" />
+                          <span>Lancer</span>
+                        </button>
 
-                        {/* Profile Selection */}
-                        <div
+                        <button
+                          className="btn-ghost"
+                          onClick={() => handleUninstallGame(game)}
+                          title="Désinstaller ce jeu"
                           style={{
+                            flex: 1,
+                            padding: '8px 10px',
+                            fontSize: 11,
                             display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
                             gap: 5,
-                            opacity: isOpt ? 1 : 0.35,
-                            pointerEvents: isOpt ? 'auto' : 'none',
+                            borderRadius: 6,
+                            color: 'rgba(255,255,255,0.7)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            cursor: 'pointer',
                           }}
                         >
-                          {PROFILES.map(p => {
-                            const isCurrent = assignedProfile === p;
-                            return (
-                              <button
-                                key={p}
-                                onClick={() => assignGameProfile(game.name, p)}
-                                title={PROFILE_META[p].desc}
-                                style={{
-                                  flex: 1,
-                                  fontSize: 10,
-                                  fontWeight: 700,
-                                  padding: '5px 2px',
-                                  borderRadius: 5,
-                                  border: `1px solid ${isCurrent ? PROFILE_META[p].color : 'rgba(255,255,255,0.1)'}`,
-                                  background: isCurrent ? `${PROFILE_META[p].color}26` : 'rgba(0,0,0,0.4)',
-                                  color: isCurrent ? PROFILE_META[p].color : 'rgba(255,255,255,0.6)',
-                                  cursor: 'pointer',
-                                  textAlign: 'center',
-                                }}
-                              >
-                                {p}
-                              </button>
-                            );
-                          })}
-                        </div>
+                          <Trash2 size={12} />
+                          <span>Désinstaller</span>
+                        </button>
+                      </div>
+
+                      {/* Mention honnête du périmètre P3 */}
+                      <div style={{
+                        padding: '6px 8px',
+                        background: 'rgba(255,255,255,0.02)',
+                        borderRadius: 6,
+                        border: '1px solid rgba(255,255,255,0.05)',
+                        fontSize: 10.5,
+                        color: 'var(--muted)',
+                        textAlign: 'center',
+                        lineHeight: 1.35,
+                      }}>
+                        Lancement standard sans modification système. Si la détection automatique est activée, l'optimisation vous sera proposée.
                       </div>
                     </div>
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
           )}
         </div>
 
       </div>
-
-      {/* ── Centered Vanguard Modal: Profils de Session & Vérité Terrain ── */}
-      {showProfileDetails && (
-        <div style={{
-          position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(5, 8, 16, 0.78)',
-          backdropFilter: 'blur(8px)',
-          zIndex: 9999,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 20
-        }}>
-          <div style={{
-            background: 'linear-gradient(135deg, #0d131f 0%, #080c14 100%)',
-            border: '1px solid rgba(56, 189, 248, 0.25)',
-            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.75), 0 0 35px rgba(56, 189, 248, 0.12)',
-            borderRadius: 16,
-            width: '100%',
-            maxWidth: 820,
-            maxHeight: '90vh',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            animation: 'fadeIn 0.2s ease-out'
-          }}>
-            {/* Modal Header */}
-            <div style={{
-              padding: '20px 24px',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              background: 'rgba(255, 255, 255, 0.02)'
-            }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 18, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700 }}>
-                  <Gamepad2 size={20} style={{ color: '#38bdf8' }} />
-                  Profils de Session E-Sport & Ajustements Système
-                </h3>
-                <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#94a3b8' }}>
-                  Ajustements mesurables et 100% réversibles. Windows retrouve ses fréquences et priorités d'origine à la sortie.
-                </p>
-              </div>
-              <button
-                onClick={() => setShowProfileDetails(false)}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: 8,
-                  color: '#94a3b8',
-                  cursor: 'pointer',
-                  padding: 8,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div style={{ padding: 24, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
-              {/* Notice Banner */}
-              <div style={{
-                padding: '12px 16px',
-                borderRadius: 10,
-                background: 'rgba(56, 189, 248, 0.06)',
-                border: '1px solid rgba(56, 189, 248, 0.2)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12
-              }}>
-                <Sparkles size={18} style={{ color: '#38bdf8', flexShrink: 0 }} />
-                <p style={{ margin: 0, fontSize: 12.5, color: '#cbd5e1', lineHeight: 1.5 }}>
-                  Contrairement aux "boosters" destructeurs, Vanguard n'altère aucun composant critique du registre Windows. À la fermeture du jeu ou à la désactivation, <b>tous les paramètres d'origine sont restaurés instantanément</b>.
-                </p>
-              </div>
-
-              {/* 3 Profile Cards */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
-                {/* 1. Compétitif */}
-                <div
-                  onClick={() => setProfile('Compétitif')}
-                  style={{
-                    background: profile === 'Compétitif' ? 'rgba(56, 189, 248, 0.08)' : 'rgba(255, 255, 255, 0.02)',
-                    border: profile === 'Compétitif' ? '2px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.08)',
-                    boxShadow: profile === 'Compétitif' ? '0 0 20px rgba(56, 189, 248, 0.2)' : 'none',
-                    borderRadius: 12,
-                    padding: 16,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    transition: 'all 0.2s ease',
-                    position: 'relative'
-                  }}
-                >
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                      <b style={{ color: '#38bdf8', fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Zap size={16} /> Compétitif
-                      </b>
-                      <span className="chip" style={{ fontSize: 9.5, color: '#38bdf8', borderColor: 'rgba(56,189,248,0.3)', padding: '2px 8px' }}>
-                        Latence Min
-                      </span>
-                    </div>
-                    <p style={{ fontSize: 11.5, color: 'var(--muted)', margin: '0 0 12px', lineHeight: 1.45 }}>
-                      Priorité CPU <code>AboveNormal</code>, plan <code>Performances Élevées</code> (zéro core parking) et priorisation UDP pour esport.
-                    </p>
-                    <ul style={{ margin: '0 0 12px 16px', padding: 0, fontSize: 11, color: '#cbd5e1', lineHeight: 1.6 }}>
-                      <li>Priorité processeur temps réel</li>
-                      <li>Suppression du bufferbloat Wi-Fi</li>
-                      <li>Latence de rendu minimale</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 10 }}>
-                      Recommandé : <span style={{ color: '#e2e8f0' }}>Valorant, CS2, Fortnite, Warzone</span>
-                    </div>
-                    <button
-                      className="btn"
-                      onClick={(e) => { e.stopPropagation(); setProfile('Compétitif'); }}
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        fontSize: 12,
-                        fontWeight: 700,
-                        background: profile === 'Compétitif' ? '#38bdf8' : 'rgba(56, 189, 248, 0.12)',
-                        color: profile === 'Compétitif' ? '#090d16' : '#38bdf8',
-                        border: 'none',
-                        borderRadius: 6
-                      }}
-                    >
-                      {profile === 'Compétitif' ? '✓ Profil Sélectionné' : 'Sélectionner Compétitif'}
-                    </button>
-                  </div>
-                </div>
-
-                {/* 2. Équilibré */}
-                <div
-                  onClick={() => setProfile('Équilibré')}
-                  style={{
-                    background: profile === 'Équilibré' ? 'rgba(34, 197, 94, 0.08)' : 'rgba(255, 255, 255, 0.02)',
-                    border: profile === 'Équilibré' ? '2px solid #22c55e' : '1px solid rgba(255, 255, 255, 0.08)',
-                    boxShadow: profile === 'Équilibré' ? '0 0 20px rgba(34, 197, 94, 0.2)' : 'none',
-                    borderRadius: 12,
-                    padding: 16,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    transition: 'all 0.2s ease',
-                    position: 'relative'
-                  }}
-                >
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                      <b style={{ color: '#22c55e', fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <ShieldCheck size={16} /> Équilibré
-                      </b>
-                      <span className="chip" style={{ fontSize: 9.5, color: '#22c55e', borderColor: 'rgba(34,197,94,0.3)', padding: '2px 8px' }}>
-                        Recommandé
-                      </span>
-                    </div>
-                    <p style={{ fontSize: 11.5, color: 'var(--muted)', margin: '0 0 12px', lineHeight: 1.45 }}>
-                      Parfait compromis entre fluidité maximale, thermiques contrôlés et stabilité complète pour streaming et multitâche.
-                    </p>
-                    <ul style={{ margin: '0 0 12px 16px', padding: 0, fontSize: 11, color: '#cbd5e1', lineHeight: 1.6 }}>
-                      <li>Fréquences processeur stables</li>
-                      <li>Zéro coupure OBS Studio & Discord</li>
-                      <li>Purgation douce de la mémoire</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 10 }}>
-                      Recommandé : <span style={{ color: '#e2e8f0' }}>MMO, RPG, Co-op, Multitâche</span>
-                    </div>
-                    <button
-                      className="btn"
-                      onClick={(e) => { e.stopPropagation(); setProfile('Équilibré'); }}
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        fontSize: 12,
-                        fontWeight: 700,
-                        background: profile === 'Équilibré' ? '#22c55e' : 'rgba(34, 197, 94, 0.12)',
-                        color: profile === 'Équilibré' ? '#090d16' : '#22c55e',
-                        border: 'none',
-                        borderRadius: 6
-                      }}
-                    >
-                      {profile === 'Équilibré' ? '✓ Profil Sélectionné' : 'Sélectionner Équilibré'}
-                    </button>
-                  </div>
-                </div>
-
-                {/* 3. Qualité */}
-                <div
-                  onClick={() => setProfile('Qualité')}
-                  style={{
-                    background: profile === 'Qualité' ? 'rgba(167, 139, 250, 0.08)' : 'rgba(255, 255, 255, 0.02)',
-                    border: profile === 'Qualité' ? '2px solid #a78bfa' : '1px solid rgba(255, 255, 255, 0.08)',
-                    boxShadow: profile === 'Qualité' ? '0 0 20px rgba(167, 139, 250, 0.2)' : 'none',
-                    borderRadius: 12,
-                    padding: 16,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    transition: 'all 0.2s ease',
-                    position: 'relative'
-                  }}
-                >
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                      <b style={{ color: '#a78bfa', fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Monitor size={16} /> Qualité AAA
-                      </b>
-                      <span className="chip" style={{ fontSize: 9.5, color: '#a78bfa', borderColor: 'rgba(167,139,250,0.3)', padding: '2px 8px' }}>
-                        1440p / 4K
-                      </span>
-                    </div>
-                    <p style={{ fontSize: 11.5, color: 'var(--muted)', margin: '0 0 12px', lineHeight: 1.45 }}>
-                      Priorité au pipeline DirectX 12 / Vulkan, pré-allocation des shaders et stabilisation de frametime pour grand écran.
-                    </p>
-                    <ul style={{ margin: '0 0 12px 16px', padding: 0, fontSize: 11, color: '#cbd5e1', lineHeight: 1.6 }}>
-                      <li>Allocation VRAM maximale</li>
-                      <li>Suppression du micro-stuttering</li>
-                      <li>Frametime cinématique stable</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 10 }}>
-                      Recommandé : <span style={{ color: '#e2e8f0' }}>Cyberpunk 2077, Alan Wake 2, Starfield</span>
-                    </div>
-                    <button
-                      className="btn"
-                      onClick={(e) => { e.stopPropagation(); setProfile('Qualité'); }}
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        fontSize: 12,
-                        fontWeight: 700,
-                        background: profile === 'Qualité' ? '#a78bfa' : 'rgba(167, 139, 250, 0.12)',
-                        color: profile === 'Qualité' ? '#090d16' : '#a78bfa',
-                        border: 'none',
-                        borderRadius: 6
-                      }}
-                    >
-                      {profile === 'Qualité' ? '✓ Profil Sélectionné' : 'Sélectionner Qualité'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div style={{
-              padding: '16px 24px',
-              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              background: 'rgba(255, 255, 255, 0.01)'
-            }}>
-              <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-                Profil actuellement configuré : <b style={{ color: '#f8fafc' }}>{profile}</b>
-              </span>
-              <button
-                className="btn"
-                onClick={() => setShowProfileDetails(false)}
-                style={{ padding: '8px 22px', fontSize: 13, fontWeight: 700, background: '#38bdf8', color: '#090d16', border: 'none', borderRadius: 8 }}
-              >
-                Appliquer & Fermer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

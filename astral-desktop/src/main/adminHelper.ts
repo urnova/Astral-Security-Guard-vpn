@@ -1,8 +1,8 @@
 import { app } from 'electron';
 import cp from 'child_process';
 import os from 'os';
-import { runPowerShell } from './psHelper';
-import { logger } from './logger';
+import { runPowerShell } from './psHelper.ts';
+import { logger } from './logger.ts';
 
 export interface WindowsBuildInfo {
   edition: string;
@@ -17,8 +17,8 @@ let cachedOSInfo: WindowsBuildInfo | null = null;
  * Synchronous elevation check via `net session`.
  * On Windows, `net session` returns exit code 0 if elevated, 2 if standard user.
  */
-export function isAdmin(): boolean {
-  if (cachedIsAdmin !== null) return cachedIsAdmin;
+export function isAdmin(forceRefresh = false): boolean {
+  if (!forceRefresh && cachedIsAdmin !== null) return cachedIsAdmin;
   try {
     const res = cp.spawnSync('net', ['session'], { windowsHide: true, stdio: 'ignore' });
     cachedIsAdmin = res.status === 0;
@@ -28,8 +28,8 @@ export function isAdmin(): boolean {
   return cachedIsAdmin;
 }
 
-export async function checkIsAdmin(): Promise<boolean> {
-  return isAdmin();
+export async function checkIsAdmin(forceRefresh = false): Promise<boolean> {
+  return isAdmin(forceRefresh);
 }
 
 /**
@@ -166,21 +166,41 @@ export async function trySilentTaskElevation(): Promise<boolean> {
 /**
  * Relaunches current executable with UAC prompt (RunAs) or via task.
  */
-export async function relaunchElevated(): Promise<void> {
+export async function relaunchElevated(): Promise<{ success: boolean; cancelled?: boolean; error?: string }> {
   logger.info('[UAC] Requesting elevated relaunch...');
   const exePath = app.getPath('exe');
 
-  // Try launching via existing elevated scheduled task first (zero UAC)
+  // 1. Tenter d'abord la tâche planifiée existante (si déjà enregistrée)
   const silentSuccess = await trySilentTaskElevation();
   if (silentSuccess) {
+    logger.info('[UAC] Silent elevation task triggered successfully. Exiting current instance.');
     app.exit(0);
-    return;
+    return { success: true };
   }
 
+  // 2. Lancement interactif RunAs avec détection d'annulation utilisateur
   const script = `
-    Start-Process -FilePath "${exePath.replace(/"/g, '`"')}" -Verb RunAs
+    try {
+      Start-Process -FilePath "${exePath.replace(/"/g, '`"')}" -Verb RunAs -ErrorAction Stop
+      Write-Output "LAUNCHED"
+    } catch {
+      Write-Error $_ 
+      exit 1
+    }
   `;
 
-  await runPowerShell(script).catch(() => {});
-  app.exit(0);
+  try {
+    const res = await runPowerShell(script);
+    if (res.success && res.stdout?.includes('LAUNCHED')) {
+      logger.info('[UAC] Elevated instance spawned successfully. Closing standard instance.');
+      app.exit(0);
+      return { success: true };
+    } else {
+      logger.warn('[UAC] Elevation prompt was cancelled or failed:', res.error || res.technicalError);
+      return { success: false, cancelled: true, error: res.error || 'Annulé par l\'utilisateur' };
+    }
+  } catch (err: any) {
+    logger.warn('[UAC] Unexpected error during RunAs request:', err?.message);
+    return { success: false, cancelled: true, error: err?.message };
+  }
 }

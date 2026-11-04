@@ -6,6 +6,14 @@ import { runPowerShell } from './psHelper';
 import { logger } from './logger';
 import { executePrivilegedAction } from './privilegedHelper';
 import { getFullSystemTelemetry, CRITICAL_SYSTEM_PROCESSES } from './telemetry';
+import {
+  analyzeStorageCategories,
+  executeStorageCleanup,
+  calculateNextMaintenanceRun,
+  formatBytes,
+} from './maintenanceManager';
+import { loadPreferences, savePreferences } from './profile';
+import { notifyScheduleChanged } from './maintenanceScheduler';
 import os from 'os';
 
 export function setupPerformanceIPC(win: BrowserWindow, notifyFn?: (title: string, body: string, opts?: any) => void) {
@@ -74,7 +82,7 @@ export function setupPerformanceIPC(win: BrowserWindow, notifyFn?: (title: strin
     }
   };
 
-  const cleanStartupMeta = (name: string, cmd: string): { displayName: string; publisher: string; impact: 'h' | 'm' | 'l' } => {
+  const cleanStartupMeta = (name: string, cmd: string): { displayName: string; publisher: string; impact: 'h' | 'm' | 'l' | 'u' } => {
     const full = (name + ' ' + cmd).toLowerCase();
     if (full.includes('discord')) return { displayName: 'Discord', publisher: 'Discord Inc.', impact: 'h' };
     if (full.includes('steam')) return { displayName: 'Steam Client Bootstrapper', publisher: 'Valve Corporation', impact: 'h' };
@@ -97,8 +105,8 @@ export function setupPerformanceIPC(win: BrowserWindow, notifyFn?: (title: strin
 
     return {
       displayName: name.replace(/^electron\.app\./i, '').replace(/^com\./i, ''),
-      publisher: /microsoft/i.test(cmd) ? 'Microsoft Corporation' : 'Éditeur vérifié',
-      impact: 'm',
+      publisher: /microsoft/i.test(cmd) ? 'Microsoft Corporation' : 'Éditeur non répertorié',
+      impact: 'u' as const,
     };
   };
 
@@ -162,6 +170,11 @@ export function setupPerformanceIPC(win: BrowserWindow, notifyFn?: (title: strin
         if (seen.has(key)) continue;
         seen.add(key);
 
+        const impactLabel =
+          meta.impact === 'h' ? 'ÉLEVÉ' :
+          meta.impact === 'm' ? 'MOYEN' :
+          meta.impact === 'l' ? 'FAIBLE' : 'NON DÉTERMINÉ';
+
         items.push({
           rawName,
           name: meta.displayName,
@@ -173,7 +186,7 @@ export function setupPerformanceIPC(win: BrowserWindow, notifyFn?: (title: strin
           user: item.location.includes('HKLM') ? 'Système' : 'Utilisateur',
           enabled: true,
           impact: meta.impact,
-          impactLabel: meta.impact === 'h' ? 'ÉLEVÉ' : meta.impact === 'm' ? 'MOYEN' : 'FAIBLE',
+          impactLabel,
           publisher: meta.publisher,
         });
       }
@@ -188,217 +201,182 @@ export function setupPerformanceIPC(win: BrowserWindow, notifyFn?: (title: strin
     }
   });
 
-  // ── Toggle Startup Item (Hardened Phase 1) ────────────────────────────────
-  ipcMain.handle('perf:disable-startup', async (_, arg1: any, arg2?: any) => {
-    const rawName = typeof arg1 === 'object' && arg1 !== null ? (arg1.rawName || arg1.name) : String(arg1 || '');
-    const rawLocation = typeof arg1 === 'object' && arg1 !== null ? arg1.location : String(arg2 || 'HKCU');
+  const DISABLED_STARTUP_PATH = path.join(process.env.APPDATA || 'C:\\', 'AstralVanguard', 'disabled-startup.json');
+  function loadDisabledStartup(): Record<string, { rawName: string; name: string; command: string; location: string; regType?: string; publisher?: string; impact?: 'h' | 'm' | 'l' | 'u' }> {
+    try {
+      if (fs.existsSync(DISABLED_STARTUP_PATH)) {
+        return JSON.parse(fs.readFileSync(DISABLED_STARTUP_PATH, 'utf-8'));
+      }
+    } catch {}
+    return {};
+  }
+  function saveDisabledStartup(map: Record<string, any>) {
+    try {
+      const d = path.dirname(DISABLED_STARTUP_PATH);
+      if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
+      fs.writeFileSync(DISABLED_STARTUP_PATH, JSON.stringify(map, null, 2), 'utf-8');
+    } catch {}
+  }
 
-    // Validation stricte du nom du programme de démarrage (anti-injection)
-    if (!rawName || typeof rawName !== 'string' || !/^[a-zA-Z0-9_\-\.\s]{1,128}$/.test(rawName.trim())) {
-      logger.warn('[Security] perf:disable-startup: Nom de programme invalide ou contenant des caractères interdits.');
+  // ── Set / Toggle Startup Item with Restoration ────────────────────────────
+  ipcMain.handle('perf:set-startup-app', async (_, opts: { name: string; rawName?: string; location?: string; enabled: boolean; command?: string }) => {
+    const rawName = String(opts.rawName || opts.name || '').trim();
+    const location = (opts.location || 'HKCU').includes('HKLM') ? 'HKLM' : 'HKCU';
+    const enabled = Boolean(opts.enabled);
+
+    if (!rawName || !/^[a-zA-Z0-9_\-\.\s]{1,128}$/.test(rawName)) {
       return { success: false, error: 'Nom de programme de démarrage invalide.' };
     }
 
-    const location = rawLocation === 'HKLM' ? 'HKLM' : 'HKCU';
-    const cleanName = rawName.trim().replace(/'/g, "''");
-    logger.info(`Désactivation du programme de démarrage : ${cleanName} (${location})`);
+    const disabledMap = loadDisabledStartup();
+    const key = rawName.toLowerCase();
 
-    // Pour HKLM, déléguer au Helper sécurisé avec élévation ponctuelle
-    if (location === 'HKLM') {
+    if (!enabled) {
+      let cmd = opts.command || '';
+      if (!cmd && cachedStartupItems) {
+        const found = cachedStartupItems.find((i: any) => (i.rawName || i.name).toLowerCase() === key);
+        if (found) cmd = found.command;
+      }
+      // Read the real registry value type before deletion to preserve it for restoration
+      // (e.g. REG_EXPAND_SZ entries use env var expansion — hardcoding REG_SZ would break them)
+      let detectedRegType = 'REG_SZ'; // conservative fallback
+      const regPath = location === 'HKLM'
+        ? 'HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'
+        : 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
       try {
-        const helperRes = await executePrivilegedAction('DISABLE_STARTUP_ENTRY', {
-          hive: 'HKLM',
-          entryName: rawName.trim(),
-        });
-        return { success: helperRes.success, deleted: helperRes.deleted };
-      } catch (err: any) {
-        logger.warn('[Performance] Échec Helper pour startup HKLM, fallback PowerShell:', err.message);
-      }
-    }
+        const queryOut = cp.execFileSync('reg.exe', ['query', regPath, '/v', rawName], { encoding: 'utf8', windowsHide: true });
+        const typeMatch = queryOut.match(/\s+(REG_\w+)\s+/);
+        if (typeMatch) detectedRegType = typeMatch[1];
+      } catch { /* fallback to REG_SZ */ }
 
-    const regPath = location === 'HKLM'
-      ? 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run'
-      : 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
-
-    const script = `
-      Remove-ItemProperty -Path '${regPath}' -Name '${cleanName}' -ErrorAction SilentlyContinue
-      [PSCustomObject]@{ removed = $true } | ConvertTo-Json -Compress
-    `;
-
-    const res = await runPowerShell(script, { asJson: true });
-    return { success: res.success };
-  });
-
-  // ── Analyze Cleanable Disk Categories (Pre-Calculation) ───────────────────
-  ipcMain.handle('perf:analyze-disk-cleanup', async () => {
-    logger.info('Calcul de l\'espace récupérable sur les différentes catégories...');
-
-    const script = `
-      function Get-DirSizeMB ($p) {
-        if (Test-Path $p) {
-          $s = (Get-ChildItem -Path $p -Recurse -Force -File -ErrorAction SilentlyContinue |
-            Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
-          if ($s) { return [Math]::Round(($s / 1MB), 1) }
-        }
-        return 0
-      }
-
-      $uTemp = Get-DirSizeMB $env:TEMP
-      $wTemp = Get-DirSizeMB "C:\\Windows\\Temp"
-      $wLogs = Get-DirSizeMB "C:\\Windows\\Logs"
-      $uDist = Get-DirSizeMB "C:\\Windows\\SoftwareDistribution\\Download"
-      $dxCache = Get-DirSizeMB "$env:LOCALAPPDATA\\D3DSCache"
-
-      [PSCustomObject]@{
-        userTempMB = $uTemp
-        winTempMB = $wTemp
-        winLogsMB = $wLogs
-        updateCacheMB = $uDist
-        dxCacheMB = $dxCache
-        totalMB = [Math]::Round($uTemp + $wTemp + $wLogs + $uDist + $dxCache, 1)
-      } | ConvertTo-Json -Compress
-    `;
-
-    try {
-      const res = await runPowerShell(script, { asJson: true, timeout: 15000 });
-      const d = res.data || { userTempMB: 205, winTempMB: 85, winLogsMB: 40, updateCacheMB: 310, dxCacheMB: 120, totalMB: 760 };
-
-      const formatSize = (mb: number) => {
-        if (!mb || mb <= 0) return '0 Mo';
-        if (mb >= 1024) return `${(mb / 1024).toFixed(2)} Go`;
-        return `${mb.toFixed(1)} Mo`;
+      disabledMap[key] = {
+        rawName,
+        name: opts.name || rawName,
+        command: cmd,
+        location,
+        regType: detectedRegType,
       };
 
-      const toBytes = (mb: number) => Math.round((mb || 0) * 1024 * 1024);
+      try {
+        cp.execFileSync('reg.exe', ['delete', regPath, '/v', rawName, '/f'], { windowsHide: true });
+      } catch (err: any) {
+        logger.warn(`[Startup] Échec suppression registre (${location}):`, err.message);
+        return {
+          success: false,
+          error: location === 'HKLM'
+            ? 'Droits administrateur requis pour désactiver une entrée système (HKLM).'
+            : `Erreur de modification du registre : ${err.message}`
+        };
+      }
+      saveDisabledStartup(disabledMap);
+      cachedStartupItems = null;
+      return { success: true, enabled: false };
+    } else {
+      const saved = disabledMap[key];
+      const cmdToRestore = opts.command || saved?.command;
 
-      const items = [
-        {
-          id: 'userTemp',
-          label: 'Fichiers temporaires utilisateur (%TEMP%)',
-          size: formatSize(d.userTempMB),
-          sizeDisplay: formatSize(d.userTempMB),
-          bytes: toBytes(d.userTempMB),
-          desc: 'Fichiers résiduels et caches d\'applications créés durant votre session Windows.',
-          selected: true,
-        },
-        {
-          id: 'winTemp',
-          label: 'Fichiers temporaires système (C:\\Windows\\Temp)',
-          size: formatSize(d.winTempMB),
-          sizeDisplay: formatSize(d.winTempMB),
-          bytes: toBytes(d.winTempMB),
-          desc: 'Fichiers d\'installation et données temporaires du système d\'exploitation.',
-          selected: true,
-        },
-        {
-          id: 'winLogs',
-          label: 'Journaux et traces système (C:\\Windows\\Logs)',
-          size: formatSize(d.winLogsMB),
-          sizeDisplay: formatSize(d.winLogsMB),
-          bytes: toBytes(d.winLogsMB),
-          desc: 'Rapports de plantages résiduels, traces CBS et historiques d\'événements obsolètes.',
-          selected: true,
-        },
-        {
-          id: 'updateCache',
-          label: 'Cache de mises à jour Windows Update',
-          size: formatSize(d.updateCacheMB),
-          sizeDisplay: formatSize(d.updateCacheMB),
-          bytes: toBytes(d.updateCacheMB),
-          desc: 'Paquets d\'installation de correctifs déjà appliqués et validés par Windows.',
-          selected: true,
-        },
-        {
-          id: 'recycleBin',
-          label: 'Corbeille Windows',
-          size: 'Vidage complet',
-          sizeDisplay: 'Vidage complet',
-          bytes: 180000000,
-          desc: 'Fichiers supprimés placés dans la corbeille en attente de purge définitive.',
-          selected: true,
-        },
-        {
-          id: 'dxCache',
-          label: 'Cache Shaders DirectX & GPU',
-          size: formatSize(d.dxCacheMB),
-          sizeDisplay: formatSize(d.dxCacheMB),
-          bytes: toBytes(d.dxCacheMB),
-          desc: 'Caches de compilation graphique obsolètes pouvant être régénérés automatiquement en jeu.',
-          selected: false,
-        },
-      ];
+      if (cmdToRestore) {
+        const regPath = location === 'HKLM'
+          ? 'HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'
+          : 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
+        try {
+          cp.execFileSync('reg.exe', ['add', regPath, '/v', rawName, '/t', saved?.regType || 'REG_SZ', '/d', cmdToRestore, '/f'], { windowsHide: true });
+        } catch (err: any) {
+          logger.warn(`[Startup] Échec restauration registre (${location}):`, err.message);
+          return {
+            success: false,
+            error: location === 'HKLM'
+              ? 'Droits administrateur requis pour restaurer une entrée système (HKLM).'
+              : `Erreur d'écriture dans le registre : ${err.message}`
+          };
+        }
+      }
+      delete disabledMap[key];
+      saveDisabledStartup(disabledMap);
+      cachedStartupItems = null;
+      return { success: true, enabled: true };
+    }
+  });
 
+  // Alias for backward compatibility
+  ipcMain.handle('perf:disable-startup', async (_, arg1: any, arg2?: any) => {
+    const rawName = typeof arg1 === 'object' && arg1 !== null ? (arg1.rawName || arg1.name) : String(arg1 || '');
+    const rawLocation = typeof arg1 === 'object' && arg1 !== null ? arg1.location : String(arg2 || 'HKCU');
+    return ipcMain.emit('perf:set-startup-app', null, { rawName, location: rawLocation, enabled: false });
+  });
+
+  // ── Real Disk Storage Analysis (Calcul exact, sans valeurs fictives) ─────
+  ipcMain.handle('perf:analyze-disk-cleanup', async () => {
+    try {
+      const items = await analyzeStorageCategories();
+      const totalBytes = items.filter(i => !i.inaccessible).reduce((s, i) => s + i.bytes, 0);
       return {
         success: true,
-        categories: d,
         items,
+        totalBytes,
+        totalDisplay: formatBytes(totalBytes),
       };
-    } catch {
-      return { success: false, items: [] };
+    } catch (err: any) {
+      logger.error('[Performance] Erreur lors de l\'analyse du stockage :', err);
+      return { success: false, items: [], error: err.message };
     }
   });
 
-  // ── Execute Real Disk Cleanup & Maintenance ────────────────────────────────
-  ipcMain.handle('perf:disk-cleanup', async (_, payload?: any) => {
-    logger.info('Exécution du nettoyage réel et optimisation SSD/RAM...', payload);
-
-    win.webContents.send('perf:maintenance-progress', { step: 1, percent: 15, message: 'Vidage sécurisé de la corbeille Windows…' });
-
-    const script = `
-      Clear-RecycleBin -Force -ErrorAction SilentlyContinue
-
-      # User Temp
-      Remove-Item -Path "$env:TEMP\\*" -Recurse -Force -ErrorAction SilentlyContinue
-
-      # Windows Temp
-      Remove-Item -Path "C:\\Windows\\Temp\\*" -Recurse -Force -ErrorAction SilentlyContinue
-
-      # Update Cache
-      Remove-Item -Path "C:\\Windows\\SoftwareDistribution\\Download\\*" -Recurse -Force -ErrorAction SilentlyContinue
-
-      # DirectX Shaders
-      if (Test-Path "$env:LOCALAPPDATA\\D3DSCache") {
-        Remove-Item -Path "$env:LOCALAPPDATA\\D3DSCache\\*" -Recurse -Force -ErrorAction SilentlyContinue
-      }
-
-      # SSD Trim / Volume optimization on drive C:
-      try {
-        Optimize-Volume -DriveLetter C -ReTrim -ErrorAction SilentlyContinue
-      } catch {}
-
-      # RAM working set optimization on background processes
-      try {
-        Add-Type -TypeDefinition @"
-          using System;
-          using System.Runtime.InteropServices;
-          public class VanguardMemTrim {
-            [DllImport("psapi.dll")]
-            public static extern int EmptyWorkingSet(IntPtr hwProc);
-          }
-"@ -ErrorAction SilentlyContinue
-        Get-Process | Where-Object { $_.MainWindowHandle -eq 0 -and $_.ProcessName -notmatch 'astral|vanguard|electron' } | ForEach-Object {
-          try { [VanguardMemTrim]::EmptyWorkingSet($_.Handle) } catch {}
-        }
-      } catch {}
-
-      [PSCustomObject]@{ cleaned = $true } | ConvertTo-Json -Compress
-    `;
-
-    win.webContents.send('perf:maintenance-progress', { step: 2, percent: 45, message: 'Purge des caches temporaires %TEMP% et résidus système…' });
-
-    const res = await runPowerShell(script, { asJson: true, timeout: 35000 });
-
-    win.webContents.send('perf:maintenance-progress', { step: 3, percent: 80, message: 'Optimisation du cache mémoire et des shaders DirectX…' });
-    win.webContents.send('perf:maintenance-progress', { step: 4, percent: 100, message: 'Nettoyage terminé avec succès' });
-
-    if (notifyFn) {
-      notifyFn('Maintenance Système Terminée', 'Les caches temporaires ont été purgés et votre stockage a été optimisé.', { type: 'performance' });
+  // ── Execute Real Disk Cleanup & Maintenance (Mesure réelle fs.statfs) ──────
+  ipcMain.handle('perf:disk-cleanup', async (_, payload?: { items?: string[] }) => {
+    const selected = Array.isArray(payload?.items) ? payload.items : ['userTemp', 'winLogs'];
+    logger.info('[Performance] Lancement de la maintenance sur les catégories :', selected);
+    try {
+      const report = await executeStorageCleanup(selected, win, notifyFn);
+      return report;
+    } catch (err: any) {
+      logger.error('[Performance] Échec de la maintenance :', err);
+      return {
+        success: false,
+        error: err.message,
+        categoriesCleaned: [],
+        deletedFilesCount: 0,
+        deletedBytes: 0,
+        skippedFilesCount: 0,
+        errors: [err.message],
+        observedFreeDeltaBytes: 0,
+        durationMs: 0,
+        freedDisplay: '0 Mo',
+        timestamp: new Date().toISOString(),
+      };
     }
+  });
 
-    return {
-      success: res.success,
-      freedDisplay: 'Espace disque libéré & SSD optimisé',
-    };
+  // ── Scheduled Maintenance Settings & Next Run Calculation ─────────────────
+  ipcMain.handle('perf:get-maintenance-schedule', async () => {
+    try {
+      const prefs = loadPreferences();
+      const schedule = prefs.maintenanceSchedule;
+      const nextRun = calculateNextMaintenanceRun(schedule);
+      return {
+        success: true,
+        schedule,
+        nextRun,
+      };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('perf:save-maintenance-schedule', async (_, newSchedule: any) => {
+    try {
+      const updated = savePreferences({ maintenanceSchedule: newSchedule });
+      const nextRun = calculateNextMaintenanceRun(updated.maintenanceSchedule);
+      // Notify the scheduler to re-read settings and reschedule immediately
+      notifyScheduleChanged();
+      return {
+        success: true,
+        schedule: updated.maintenanceSchedule,
+        nextRun,
+      };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
   });
 
   // ── Per-Disk Storage Optimization (Scan Junk & Cache on a specific drive) ──
@@ -463,13 +441,14 @@ export function setupPerformanceIPC(win: BrowserWindow, notifyFn?: (title: strin
       const res = await runPowerShell(script, { asJson: true, timeout: 15000 });
       const d = res.data || {
         drive: driveLetter,
-        userTempMB: isSystemDrive ? 180 : 0,
-        sysTempMB: isSystemDrive ? 95 : 0,
-        recycleBinMB: 250,
-        dxCacheMB: isSystemDrive ? 120 : 0,
-        packageCacheMB: 150,
-        crashDumpsMB: 40,
-        totalMB: isSystemDrive ? 835 : 400,
+        userTempMB: 0,
+        sysTempMB: 0,
+        recycleBinMB: 0,
+        dxCacheMB: 0,
+        packageCacheMB: 0,
+        crashDumpsMB: 0,
+        totalMB: 0,
+        _analysisError: 'Analyse PowerShell indisponible'
       };
 
       const formatSize = (mb: number) => {
@@ -523,24 +502,32 @@ export function setupPerformanceIPC(win: BrowserWindow, notifyFn?: (title: strin
 
       const totalMB = d.totalMB || categories.reduce((sum, c) => sum + c.sizeMB, 0);
 
+      // If PowerShell failed, d came from the fallback object with _analysisError
+      const analysisError: string | undefined = (d as any)._analysisError || undefined;
+
       return {
-        success: true,
+        success: !analysisError, // false when PowerShell unavailable — not a complete analysis
         driveLetter,
         totalMB,
-        totalFormatted: formatSize(totalMB),
+        totalFormatted: analysisError ? '—' : formatSize(totalMB),
         categories,
-        aiRecommendation: totalMB > 1024
-          ? `Analyse IA : Plus de ${formatSize(totalMB)} de données temporaires et caches orphelins identifiés sur ${driveLetter}. Leur suppression sécurisée améliorera l'espace disponible sans affecter vos données personnelles.`
-          : `Analyse IA : Le volume ${driveLetter} est bien entretenu. ${formatSize(totalMB)} peuvent être récupérés pour maintenir les performances d'écriture optimales.`,
+        summary: analysisError
+          ? `Analyse indisponible : ${analysisError}`
+          : (totalMB > 1024
+            ? `Plus de ${formatSize(totalMB)} de données temporaires et caches orphelins identifiés sur ${driveLetter}.`
+            : `Le volume ${driveLetter} est bien entretenu. ${formatSize(totalMB)} peuvent être récupérés.`),
+        errorMessage: analysisError,
+        aiRecommendation: undefined, // deprecated
       };
     } catch (e: any) {
       return {
         success: false,
         driveLetter,
         totalMB: 0,
-        totalFormatted: '0 Mo',
+        totalFormatted: '—',
         categories: [],
-        aiRecommendation: 'Impossible d\'analyser les dossiers du disque.',
+        summary: `Analyse indisponible : ${e?.message || 'erreur inattendue'}`,
+        errorMessage: e?.message || 'erreur inattendue lors de l\'analyse du disque.',
       };
     }
   });
@@ -810,12 +797,13 @@ export function setupPerformanceIPC(win: BrowserWindow, notifyFn?: (title: strin
         else if (bus === 'USB') typeLabel = 'Disque Externe USB';
         else if (media === 'SSD') typeLabel = 'SSD Flash SATA';
 
-        let healthStatusText = isHealthy ? 'Sain (SMART Nominal)' : 'Attention requise';
-        if (bus === 'USB') {
-          healthStatusText = driveLetters ? `Externe actif (${driveLetters})` : 'Externe non alloué';
-        } else if (rawVols.length > 0 && rawVols[0].fileSystem) {
-          healthStatusText = `Sain · Intègre (${rawVols[0].fileSystem})`;
-        }
+        // Qualification rigoureuse : état de santé Windows (Storage Management API) vs compteurs SMART réels
+        const windowsHealthText = isHealthy ? 'Sain (rapporté par Windows Storage Management)' : 'Attention requise (signalé par Windows)';
+        const smartDetailText = 'Compteurs détaillés S.M.A.R.T. : restreints (nécessite élévation administrateur via root\\wmi)';
+
+        const fsSummary = rawVols.length > 0
+          ? rawVols.map((v: any) => `${v.drive} (${v.fileSystem || 'NTFS'})`).join(', ')
+          : 'Non alloué';
 
         return {
           diskNumber: diskNum,
@@ -829,8 +817,12 @@ export function setupPerformanceIPC(win: BrowserWindow, notifyFn?: (title: strin
           volumeLabel: primaryLabel,
           isSystemDisk: isSystem,
           health: isHealthy ? 'Sain' : 'Attention',
-          HealthStatus: healthStatusText,
-          healthStatusText,
+          windowsHealth: windowsHealthText,
+          smartDetail: smartDetailText,
+          smartHealth: windowsHealthText,
+          HealthStatus: windowsHealthText,
+          healthStatusText: windowsHealthText,
+          fileSystemStatus: fsSummary,
           status: d.operationalStatus || 'OK',
           sizeGB: totalGB,
           usedGB: totalUsedGB,

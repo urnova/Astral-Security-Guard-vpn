@@ -207,9 +207,9 @@ export function setupDoctorIPC(win: BrowserWindow) {
   ipcMain.handle('doctor:get-ping', async () => {
     try {
       const ping = await measureNativePing('1.1.1.1', 53, 2000);
-      return { success: true, ping: ping > 0 ? ping : 18 };
+      return { success: ping > 0, ping: ping > 0 ? ping : null };
     } catch {
-      return { success: true, ping: 18 };
+      return { success: false, ping: null };
     }
   });
 
