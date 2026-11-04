@@ -69,6 +69,10 @@ export class PresentMonEngine {
       'C:\\Program Files\\Intel\\PresentMon\\PresentMon-x64.exe',
       'C:\\Program Files\\Intel\\PresentMon\\PresentMon.exe',
       'C:\\Program Files (x86)\\Intel\\PresentMon\\PresentMon-x64.exe',
+      // App packagée : process.resourcesPath → resources/bin/
+      ...(process.resourcesPath
+        ? [path.join(process.resourcesPath, 'bin', 'PresentMon-x64.exe')]
+        : []),
       path.resolve(typeof __dirname !== 'undefined' ? __dirname : process.cwd(), '../../../bin/PresentMon-x64.exe'),
       path.resolve(typeof __dirname !== 'undefined' ? __dirname : process.cwd(), '../../bin/PresentMon-x64.exe'),
     ];
@@ -152,7 +156,9 @@ export class PresentMonEngine {
     const bin = this.findPresentMonBinary();
     if (!bin) {
       this.currentStatus = 'Indisponible';
-      this.statusMessage = 'FPS indisponibles — PresentMon non installé sur la machine.';
+      this.statusMessage = 'FPS indisponibles — PresentMon v2.0.0 (Intel) non trouvé. ' +
+        'Pour activer la capture FPS : placer PresentMon-x64.exe dans le dossier bin/ de l\'application. ' +
+        'Téléchargement : github.com/GameTechDev/PresentMon/releases/tag/v2.0.0';
       logger.info(`[PresentMon] ${this.statusMessage}`);
       if (onMetricsUpdate) onMetricsUpdate(this.getCurrentMetrics());
       return false;

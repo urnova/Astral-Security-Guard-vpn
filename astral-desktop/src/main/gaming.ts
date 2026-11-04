@@ -898,17 +898,38 @@ export function setupGamingIPC(
     // Appliquer immédiatement si le jeu est actif
     const status = gamingManager.getStatus();
     const applied: string[] = [];
+    const notApplied: string[] = [];
     if (status.isGamingActive && status.activeGamePid && status.activeGameName === game) {
+      // Priorité CPU du processus de jeu
       try {
         await runPowerShell(`(Get-Process -Id ${status.activeGamePid} -ErrorAction SilentlyContinue).PriorityClass = [System.Diagnostics.ProcessPriorityClass]::${updated.priority}`, { timeout: 2000 });
         applied.push('priorité CPU');
-      } catch {}
+      } catch { notApplied.push('priorité CPU'); }
+      // Plan d'alimentation : sauvegarder le GUID actuel avant de changer
       if (updated.powerPlan === 'performance') {
-        try { await runPowerShell('powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c', { timeout: 3000 }); applied.push('plan alimentation'); } catch {}
+        try {
+          const currentGuid = await gamingManager.getActivePowerPlanGuid();
+          const HIGH_PERF_GUID = '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c';
+          // Mémoriser dans gamingManager si pas encore fait par enableGamingOptimizations
+          // gamingManager.getStatus() expose previousPowerPlanGuid via la session active.
+          // On ne réécrit pas le GUID précédent s'il est déjà sauvegardé.
+          await runPowerShell(`powercfg /setactive ${HIGH_PERF_GUID}`, { timeout: 3000 });
+          applied.push('plan alimentation');
+        } catch { notApplied.push('plan alimentation'); }
+      } else if (updated.powerPlan === 'default') {
+        // Restaurer le plan précédent si on repasse en équilibré
+        const prevGuid = status.previousPowerPlanGuid;
+        if (prevGuid) {
+          try {
+            await runPowerShell(`powercfg /setactive ${prevGuid}`, { timeout: 3000 });
+            applied.push('plan alimentation restauré');
+          } catch { notApplied.push('restauration plan alimentation'); }
+        }
       }
     }
-    logger.info(`[Gaming] Profil appliqué à "${game}" — ${applied.join(', ') || 'sera appliqué au prochain lancement'}`);
-    return { success: true, profile: updated, appliedImmediately: applied };
+    const note = notApplied.length > 0 ? ` — non appliqué: [${notApplied.join(', ')}]` : '';
+    logger.info(`[Gaming] Profil enregistré pour "${game}" — appliqué: [${applied.join(', ') || 'sera appliqué au prochain lancement'}]${note}`);
+    return { success: true, profile: updated, appliedImmediately: applied, notApplied: notApplied.length > 0 ? notApplied : undefined };
   });
 
   // ── Safe Browser Priority Reduction & Restoration with Process Identity (StartTime) ─
@@ -951,7 +972,7 @@ export function setupGamingIPC(
       const newSnapshot: Array<{ name: string; pid: number; priority: string; startTime?: string }> = [...existingSnapshot];
       for (const p of currentProcesses) {
         if (!trackedPids.has(p.pid)) {
-          if (p.priority && p.priority.toLowerCase() !== 'idle') {
+          if (p.priority && !['idle','belownormal'].includes(p.priority.toLowerCase())) {
             newSnapshot.push(p);
             trackedPids.add(p.pid);
           }
@@ -969,7 +990,7 @@ export function setupGamingIPC(
         foreach (\$pid in \$pids) {
           try {
             \$p = Get-Process -Id \$pid -ErrorAction SilentlyContinue
-            if (\$p) { \$p.PriorityClass = 'Idle'; \$ok++ }
+            if (\$p) { \$p.PriorityClass = 'BelowNormal'; \$ok++ }
           } catch { \$fail++ }
         }
         [PSCustomObject]@{ ok=\$ok; fail=\$fail } | ConvertTo-Json -Compress

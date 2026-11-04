@@ -1050,7 +1050,7 @@ export default function GamingTab({
                                   checked={editingProfile.suspendBrowsers}
                                   onChange={e => setEditingProfile(p => ({ ...p, suspendBrowsers: e.target.checked }))}
                                 />
-                                Suspendre les navigateurs en arrière-plan
+                                Réduire la priorité des navigateurs en arrière-plan
                               </label>
 
                               {/* Limitation débit sortant QoS */}
