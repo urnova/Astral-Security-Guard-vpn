@@ -180,6 +180,7 @@ export default function VpnTab() {
   const [catalogLoading, setCatalogLoading]       = useState(true);
   const [catalogError, setCatalogError]           = useState<string | null>(null);
   const [catalogSource, setCatalogSource]         = useState<{ count: number; timestamp: number; isCache: boolean } | null>(null);
+  const [catalogFetchSource, setCatalogFetchSource] = useState<'primary' | 'mirror_github' | null>(null);
   const [selectedNode, setSelectedNode]           = useState('');
   const [selectedNodeData, setSelectedNodeData]   = useState<VpnNode | null>(null);
   const [realPublicIp, setRealPublicIp]           = useState('');
@@ -244,6 +245,10 @@ export default function VpnTab() {
         const list = Array.from(map.values());
         setCountries(list);
         setCatalogSource(res.catalogSource || null);
+        // Enregistrer la source de téléchargement pour l'afficher dans les métadonnées
+        if (res.catalogSource && typeof res.catalogSource === 'string') {
+          setCatalogFetchSource(res.catalogSource as 'primary' | 'mirror_github');
+        }
 
         // Sélectionner par défaut le premier serveur si aucun sélectionné
         if (list.length > 0 && list[0].nodes.length > 0) {
@@ -253,7 +258,21 @@ export default function VpnTab() {
         }
       } else {
         setCountries([]);
-        setCatalogError(res?.message || 'Aucun relais communautaire disponible dans le catalogue.');
+        // Distinguer la cause d'erreur pour un message adapté
+        const cause = res?.errorCause;
+        let errorMsg: string;
+        if (cause === 'network') {
+          errorMsg = 'Le service VPN Gate est inaccessible (réseau). Vérifiez votre connexion Internet.';
+        } else if (cause === 'http_error') {
+          errorMsg = 'Le service VPN Gate a répondu avec une erreur HTTP. Réessayez dans quelques instants.';
+        } else if (cause === 'parse_failed') {
+          errorMsg = 'Le catalogue reçu est dans un format invalide. La source peut être temporairement dégradée.';
+        } else if (cause === 'empty') {
+          errorMsg = 'Le catalogue ne contient aucun serveur compatible. Réessayez plus tard.';
+        } else {
+          errorMsg = res?.message || 'Aucun relais communautaire disponible dans le catalogue.';
+        }
+        setCatalogError(errorMsg);
       }
     } catch (err: any) {
       setCountries([]);
@@ -1238,7 +1257,9 @@ export default function VpnTab() {
                 <small style={{ fontSize: 11, color: 'var(--muted)' }}>
                   {catalogSource
                     ? `${catalogSource.count} relais disponibles (${catalogSource.isCache ? 'données déclarées du cache local' : 'données déclarées en direct'})`
-                    : 'Sélectionnez un relais bénévole'}
+                    : countries.length > 0
+                      ? `${countries.length} pays disponibles${catalogFetchSource === 'mirror_github' ? ' · via miroir tiers' : ''}`
+                      : 'Sélectionnez un relais bénévole'}
                 </small>
               </div>
 

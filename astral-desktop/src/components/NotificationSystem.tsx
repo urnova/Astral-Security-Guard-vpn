@@ -30,6 +30,28 @@ const COLORS = {
   info: 'var(--a1)',
 };
 
+/** Joue un bip court via Web Audio API (ne nécessite aucun fichier audio) */
+function playNotificationBeep(type: Toast['type'], volume: number) {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    // Fréquence selon le type
+    osc.frequency.value = type === 'bad' ? 280 : type === 'warn' ? 440 : 660;
+    osc.type = type === 'bad' ? 'sawtooth' : 'sine';
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(volume * 0.3, ctx.currentTime + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.26);
+    osc.onended = () => ctx.close();
+  } catch {
+    // Web Audio non disponible dans cet environnement — silence silencieux
+  }
+}
+
 export function NotificationSystem({ dndEnabled, onNavigateTab }: Props) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -68,6 +90,11 @@ export function NotificationSystem({ dndEnabled, onNavigateTab }: Props) {
         desc: d.message || d.desc || '',
         actionTarget: d.actionTarget,
       });
+
+      // Son de notification via Web Audio (si activé dans les préférences)
+      if (d.soundEnabled && typeof d.volume === 'number' && d.volume > 0) {
+        playNotificationBeep(type, d.volume);
+      }
     });
 
     on('notification:trigger', (d: any) => {

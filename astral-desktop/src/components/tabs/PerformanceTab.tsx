@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Zap,
   HardDrive,
@@ -1924,135 +1924,116 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
           </div>
         </div>
 
-        {/* ── M6: Confirmation Modal before Storage Cleanup ── */}
+        {/* ── M6: Confirmation de nettoyage (panneau inline) ── */}
         {showConfirmModal && (
           <div
             style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 10000,
-              background: 'rgba(0, 0, 0, 0.75)',
-              backdropFilter: 'blur(8px)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 20,
-              animation: 'fadeIn .2s var(--ease) both',
+              borderRadius: 10,
+              border: '1px solid rgba(234, 179, 8, 0.3)',
+              background: 'rgba(234, 179, 8, 0.05)',
+              padding: '16px 18px',
+              marginTop: 4,
             }}
           >
-            <div
-              style={{
-                maxWidth: 520,
-                width: '100%',
-                maxHeight: '90vh',
-                overflowY: 'auto',
-                background: '#090d16',
-                border: '1px solid var(--border)',
-                borderRadius: 12,
-                padding: 22,
-                boxShadow: '0 20px 50px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.06)',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <div
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 8,
+                  background: 'rgba(234, 179, 8, 0.15)',
+                  border: '1px solid rgba(234, 179, 8, 0.35)',
+                  display: 'grid',
+                  placeItems: 'center',
+                  color: '#facc15',
+                  flexShrink: 0,
+                }}
+              >
+                <AlertTriangle size={20} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+                  Confirmation du Nettoyage
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: 11.5, color: 'var(--muted)' }}>
+                  Vérification des catégories sélectionnées
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 18, fontSize: 12, lineHeight: 1.5 }}>
+              {/* Liste synthétique des catégories sélectionnées */}
+              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8 }}>
+                  Périmètre des éléments ciblés :
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {cleanItems.filter(i => i.selected && !i.inaccessible).map(item => (
+                    <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11.5 }}>
+                      <span style={{ color: 'var(--text)' }}>
+                        {item.label} <small style={{ color: 'var(--muted)', fontSize: 10 }}>({item.id === 'userTemp' ? '%TEMP%' : item.id === 'winTemp' ? 'C:\\Windows\\Temp' : item.id === 'winLogs' ? 'C:\\Windows\\Logs' : item.id === 'dxCache' ? 'D3DSCache' : 'Corbeille'})</small>
+                      </span>
+                      <b style={{ color: '#38bdf8' }}>{item.sizeDisplay || item.size}</b>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Avertissements spécifiques */}
+              {cleanItems.some(i => i.selected && i.id === 'recycleBin') && (
                 <div
                   style={{
-                    width: 38,
-                    height: 38,
+                    padding: 10,
                     borderRadius: 8,
-                    background: 'rgba(234, 179, 8, 0.15)',
-                    border: '1px solid rgba(234, 179, 8, 0.35)',
-                    display: 'grid',
-                    placeItems: 'center',
-                    color: '#facc15',
-                    flexShrink: 0,
+                    background: 'rgba(239, 68, 68, 0.08)',
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    color: '#fca5a5',
                   }}
                 >
-                  <AlertTriangle size={20} />
+                  <b>Corbeille Windows :</b> Les éléments actuellement dans la Corbeille seront supprimés de manière définitive et ne pourront plus être récupérés.
                 </div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
-                    Confirmation du Nettoyage
-                  </h3>
-                  <p style={{ margin: '2px 0 0', fontSize: 11.5, color: 'var(--muted)' }}>
-                    Vérification des catégories sélectionnées
-                  </p>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 18, fontSize: 12, lineHeight: 1.5 }}>
-                {/* Liste synthétique des catégories sélectionnées */}
-                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8 }}>
-                    Périmètre des éléments ciblés :
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {cleanItems.filter(i => i.selected && !i.inaccessible).map(item => (
-                      <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11.5 }}>
-                        <span style={{ color: 'var(--text)' }}>
-                          {item.label} <small style={{ color: 'var(--muted)', fontSize: 10 }}>({item.id === 'userTemp' ? '%TEMP%' : item.id === 'winTemp' ? 'C:\\Windows\\Temp' : item.id === 'winLogs' ? 'C:\\Windows\\Logs' : item.id === 'dxCache' ? 'D3DSCache' : 'Corbeille'})</small>
-                        </span>
-                        <b style={{ color: '#38bdf8' }}>{item.sizeDisplay || item.size}</b>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Avertissements spécifiques */}
-                {cleanItems.some(i => i.selected && i.id === 'recycleBin') && (
-                  <div
-                    style={{
-                      padding: 10,
-                      borderRadius: 8,
-                      background: 'rgba(239, 68, 68, 0.08)',
-                      border: '1px solid rgba(239, 68, 68, 0.25)',
-                      color: '#fca5a5',
-                    }}
-                  >
-                    <b>Corbeille Windows :</b> Les éléments actuellement dans la Corbeille seront supprimés de manière définitive et ne pourront plus être récupérés.
-                  </div>
-                )}
-                {cleanItems.some(i => i.selected && i.id === 'dxCache') && (
-                  <div
-                    style={{
-                      padding: 10,
-                      borderRadius: 8,
-                      background: 'rgba(56, 189, 248, 0.08)',
-                      border: '1px solid rgba(56, 189, 248, 0.25)',
-                      color: '#7dd3fc',
-                    }}
-                  >
-                    <b>Cache Shaders DirectX :</b> Les caches de compilation graphique seront purgés. Certains jeux pourront présenter de légers micro-ralentissements lors de leur premier lancement le temps de régénérer leurs shaders.
-                  </div>
-                )}
-
-                <div style={{ padding: '8px 10px', borderRadius: 6, background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.06)', fontSize: 10.5, color: 'var(--muted)' }}>
-                  <b>Sécurité Vanguard :</b> Les liens symboliques ne sont jamais suivis vers l'extérieur. Les fichiers ouverts par un processus actif seront automatiquement ignorés et comptabilisés dans le rapport sans bloquer la maintenance.
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 8 }}>
-                  <span style={{ color: 'var(--muted)', fontSize: 11.5 }}>Volume total estimé à libérer :</span>
-                  <b style={{ color: 'var(--text)', fontSize: 13 }}>{selectedTotal}</b>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  onClick={() => setShowConfirmModal(false)}
-                  style={{ padding: '8px 16px', fontSize: 12 }}
+              )}
+              {cleanItems.some(i => i.selected && i.id === 'dxCache') && (
+                <div
+                  style={{
+                    padding: 10,
+                    borderRadius: 8,
+                    background: 'rgba(56, 189, 248, 0.08)',
+                    border: '1px solid rgba(56, 189, 248, 0.25)',
+                    color: '#7dd3fc',
+                  }}
                 >
-                  Annuler
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={executeCleanup}
-                  style={{ padding: '8px 18px', fontSize: 12, fontWeight: 700 }}
-                >
-                  Confirmer et nettoyer ({selectedTotal})
-                </button>
+                  <b>Cache Shaders DirectX :</b> Les caches de compilation graphique seront purgés. Certains jeux pourront présenter de légers micro-ralentissements lors de leur premier lancement le temps de régénérer leurs shaders.
+                </div>
+              )}
+
+              <div style={{ padding: '8px 10px', borderRadius: 6, background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.06)', fontSize: 10.5, color: 'var(--muted)' }}>
+                <b>Sécurité Vanguard :</b> Les liens symboliques ne sont jamais suivis vers l'extérieur. Les fichiers ouverts par un processus actif seront automatiquement ignorés et comptabilisés dans le rapport sans bloquer la maintenance.
               </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 8 }}>
+                <span style={{ color: 'var(--muted)', fontSize: 11.5 }}>Volume total estimé à libérer :</span>
+                <b style={{ color: 'var(--text)', fontSize: 13 }}>{selectedTotal}</b>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => setShowConfirmModal(false)}
+                style={{ padding: '8px 16px', fontSize: 12 }}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={executeCleanup}
+                style={{ padding: '8px 18px', fontSize: 12, fontWeight: 700 }}
+              >
+                Confirmer et nettoyer ({selectedTotal})
+              </button>
             </div>
           </div>
         )}

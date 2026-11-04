@@ -268,13 +268,26 @@ class CommunityVpnEngine {
         this.cachedServers = servers;
         this.lastCacheTime = now;
         this.saveCache(servers, now);
-        logger.info(`[VPN] Catalogue mis à jour : ${servers.length} serveurs communautaires valides.`);
+        logger.info(`[VPN] Catalogue mis à jour : ${servers.length} serveurs communautaires valides. Source: ${this.lastCatalogSource ?? 'inconnue'}`);
         return servers;
       }
+
+      // CSV téléchargé mais aucun serveur valide extrait
+      const hasHeader = csvData.includes('HostName') && csvData.includes('OpenVPN_ConfigData_Base64');
+      this.catalogFetchError = {
+        cause: hasHeader ? 'empty' : 'parse_failed',
+        message: hasHeader
+          ? 'Le catalogue ne contient aucun serveur compatible avec les exigences de validation.'
+          : 'Le format CSV reçu est invalide ou inattendu (entête introuvable).',
+      };
     } catch (err: any) {
       logger.warn('[VPN] Échec téléchargement catalogue en direct :', err.message);
       if (this.cachedServers.length > 0) {
         return this.cachedServers;
+      }
+      // catalogFetchError déjà renseigné par downloadVpnGateCsv, ou on le complète ici
+      if (!this.catalogFetchError) {
+        this.catalogFetchError = { cause: 'network', message: err.message };
       }
     }
 
@@ -282,19 +295,47 @@ class CommunityVpnEngine {
   }
 
   /**
-   * Télécharge les données CSV de l'API publique VPN Gate avec miroir de secours GitHub
+   * Résultat typé du téléchargement du catalogue VPN Gate.
+   * Permet à fetchServerCatalog d'exposer la cause précise de l'échec.
+   */
+  private catalogFetchError: { cause: 'network' | 'http_error' | 'parse_failed' | 'empty'; message: string } | null = null;
+
+  /** Dernière source utilisée avec succès */
+  public lastCatalogSource: 'primary' | 'mirror_github' | null = null;
+
+  /**
+   * Télécharge les données CSV de l'API publique VPN Gate avec miroir de secours GitHub (tiers, non officiel).
+   * Enregistre la cause d'échec dans catalogFetchError pour l'exposer dans l'IPC.
    */
   private async downloadVpnGateCsv(): Promise<string> {
+    this.catalogFetchError = null;
     try {
-      return await this.fetchHttp('http://www.vpngate.net/api/iphone/');
+      const csv = await this.fetchHttp('http://www.vpngate.net/api/iphone/');
+      this.lastCatalogSource = 'primary';
+      return csv;
     } catch (primaryErr: any) {
-      logger.warn('[VPN] Échec source primaire VPN Gate, tentative sur miroir GitHub...', primaryErr?.message);
+      const isNetwork = primaryErr?.message?.includes('ENOTFOUND') || primaryErr?.message?.includes('ETIMEDOUT') || primaryErr?.message?.includes('dépassé');
+      logger.warn('[VPN] Échec source primaire VPN Gate, tentative sur miroir GitHub (tiers non officiel)...', primaryErr?.message);
       try {
-        return await this.fetchHttp('https://raw.githubusercontent.com/GeorgeXie2333/vpngate-list-mirror/master/vpngate.csv');
+        // Note : GeorgeXie2333/vpngate-list-mirror est un miroir tiers non officiel.
+        // Les mêmes validations CSV strictes sont appliquées.
+        const csv = await this.fetchHttp('https://raw.githubusercontent.com/GeorgeXie2333/vpngate-list-mirror/master/vpngate.csv');
+        this.lastCatalogSource = 'mirror_github';
+        return csv;
       } catch (mirrorErr: any) {
-        throw new Error(`Toutes les sources de catalogue VPN ont échoué : ${mirrorErr.message}`);
+        const cause = isNetwork ? 'network' : 'http_error';
+        this.catalogFetchError = {
+          cause,
+          message: `Source primaire : ${primaryErr?.message || 'injoignable'}. Miroir GitHub : ${mirrorErr?.message || 'injoignable'}.`,
+        };
+        throw new Error(this.catalogFetchError.message);
       }
     }
+  }
+
+  /** Retourne la cause d'erreur de la dernière tentative de chargement du catalogue */
+  public getCatalogFetchError(): { cause: string; message: string } | null {
+    return this.catalogFetchError;
   }
 
   private fetchHttp(targetUrl: string): Promise<string> {

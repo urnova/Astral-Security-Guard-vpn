@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Gamepad2, Power, Monitor, Wifi, Cpu, Eye, Zap, SlidersHorizontal,
   Clock, ExternalLink, Info, X, ShieldCheck, Play, Trash2, HelpCircle, Check, Sparkles
@@ -32,6 +32,21 @@ type PresentMonTabStatus =
   | 'idle'
   | 'capturing'
   | 'blocked';
+
+/** Profil de ressources mémorisé par jeu */
+interface GameProfileUI {
+  priority:        'Normal' | 'AboveNormal' | 'High';
+  powerPlan:       'default' | 'performance';
+  suspendBrowsers: boolean;
+  throttleKbps:    number; // 0 = pas de limite
+}
+
+const DEFAULT_GAME_PROFILE: GameProfileUI = {
+  priority:        'AboveNormal',
+  powerPlan:       'default',
+  suspendBrowsers: false,
+  throttleKbps:    0,
+};
 
 const LAUNCHER_COLORS: Record<string, string> = {
   Steam:        '#1b2838',
@@ -112,6 +127,10 @@ export default function GamingTab({
   const [suspendBg, setSuspendBg]         = useState(false);
   const [autoDetect, setAutoDetect]       = useState(false);
   const [games, setGames]                 = useState<Game[]>([]);
+  const [gameProfilesMap, setGameProfilesMap] = useState<Record<string, GameProfileUI>>({});
+  const [openProfileFor,  setOpenProfileFor]  = useState<string | null>(null);
+  const [editingProfile,  setEditingProfile]  = useState<GameProfileUI>(DEFAULT_GAME_PROFILE);
+  const [savingProfile,   setSavingProfile]   = useState(false);
   const [loadingGames, setLoadingGames]   = useState(true);
   const [currentGame, setCurrentGame]     = useState<string | null>(propCurrentGame ?? null);
   const [notice, setNotice]               = useState('');
@@ -174,6 +193,22 @@ export default function GamingTab({
     }).catch(() => {});
 
     loadGames();
+
+    // Load per-game profiles
+    api?.getProfiles?.().then((res: any) => {
+      if (res?.success && res.profiles) {
+        const mapped: Record<string, GameProfileUI> = {};
+        for (const [name, p] of Object.entries(res.profiles as Record<string, any>)) {
+          mapped[name] = {
+            priority: (['Normal','AboveNormal','High'].includes(p?.priority) ? p.priority : 'AboveNormal') as GameProfileUI['priority'],
+            powerPlan: p?.powerPlan === 'performance' ? 'performance' : 'default',
+            suspendBrowsers: Boolean(p?.suspendBrowsers),
+            throttleKbps: Number(p?.throttleKbps) >= 0 ? Number(p?.throttleKbps) : 0,
+          };
+        }
+        setGameProfilesMap(mapped);
+      }
+    }).catch(() => {});
 
     /* PresentMon status initial */
     api.getPresentMonStatus?.().then((res: any) => {
@@ -398,6 +433,45 @@ export default function GamingTab({
       case 'blocked':   return '#ef4444';
       case 'idle':      return 'var(--a1)';
       default:          return 'var(--muted)';
+    }
+  };
+
+  /* ── Game profile handlers ── */
+  const handleOpenProfilePanel = (gameName: string) => {
+    const existing = gameProfilesMap[gameName] || DEFAULT_GAME_PROFILE;
+    setEditingProfile({ ...existing });
+    setOpenProfileFor(prev => prev === gameName ? null : gameName);
+  };
+
+  const handleSaveGameProfile = async (gameName: string) => {
+    setSavingProfile(true);
+    try {
+      const res = await api?.applyGameProfile?.({
+        game: gameName,
+        priority: editingProfile.priority,
+        powerPlan: editingProfile.powerPlan,
+        suspendBrowsers: editingProfile.suspendBrowsers,
+      });
+      if (res?.success) {
+        // Appliquer aussi le QoS si un débit est défini et qu'un chemin de jeu est disponible
+        const targetGame = games.find(g => g.name === gameName);
+        const throttle = editingProfile.throttleKbps ?? 0;
+        if (throttle > 0 && targetGame?.path) {
+          api?.setQos?.({ name: gameName, appPath: targetGame.path, throttleKbps: throttle })
+            .catch(() => {}); // Non bloquant : QoS peut nécessiter élévation
+        } else if (throttle === 0) {
+          api?.removeQos?.(gameName).catch(() => {});
+        }
+        setGameProfilesMap(prev => ({ ...prev, [gameName]: { ...editingProfile } }));
+        setOpenProfileFor(null);
+        flash(`Profil de "${gameName}" enregistré.`, 'success');
+      } else {
+        flash(res?.error || 'Erreur lors de l\'enregistrement du profil.', 'error');
+      }
+    } catch (e: any) {
+      flash(e.message || 'Erreur inattendue.', 'error');
+    } finally {
+      setSavingProfile(false);
     }
   };
 
@@ -720,6 +794,17 @@ export default function GamingTab({
                 transform: 'translateZ(0)',
               }}
             >
+              {/* Note périmètre : lancement standard, optimisation proposée à la détection */}
+              {filteredGames.length > 0 && (
+                <div style={{
+                  gridColumn: '1 / -1',
+                  fontSize: 10.5,
+                  color: 'var(--muted)',
+                  padding: '4px 2px',
+                }}>
+                  Lancement standard sans modification système. Si la détection automatique est activée, l’optimisation vous sera proposée au lancement.
+                </div>
+              )}
               {filteredGames.map(game => (
                 <div
                   key={`${game.launcher}::${game.name}`}
@@ -755,7 +840,9 @@ export default function GamingTab({
                           objectFit: 'cover',
                           display: 'block',
                         }}
-                      />
+                      
+                                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                            />
                     ) : (
                       <div style={{
                         width: '100%',
@@ -877,19 +964,170 @@ export default function GamingTab({
                         </button>
                       </div>
 
-                      {/* Mention honnête du périmètre P3 */}
-                      <div style={{
-                        padding: '6px 8px',
-                        background: 'rgba(255,255,255,0.02)',
-                        borderRadius: 6,
-                        border: '1px solid rgba(255,255,255,0.05)',
-                        fontSize: 10.5,
-                        color: 'var(--muted)',
-                        textAlign: 'center',
-                        lineHeight: 1.35,
-                      }}>
-                        Lancement standard sans modification système. Si la détection automatique est activée, l'optimisation vous sera proposée.
-                      </div>
+                        {/* Bouton Profil */}
+                        <button
+                          className="btn-ghost"
+                          onClick={() => handleOpenProfilePanel(game.name)}
+                          title="Configurer le profil de ressources pour ce jeu"
+                          style={{
+                            width: '100%',
+                            padding: '7px 10px',
+                            fontSize: 11,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 5,
+                            borderRadius: 6,
+                            color: gameProfilesMap[game.name] ? 'var(--a1)' : 'rgba(255,255,255,0.65)',
+                            border: gameProfilesMap[game.name] ? '1px solid rgba(var(--a1r),.35)' : '1px solid rgba(255,255,255,0.1)',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          <SlidersHorizontal size={12} />
+                          <span>{gameProfilesMap[game.name] ? 'Profil configuré ✓' : 'Configurer un profil'}</span>
+                        </button>
+
+                        {/* Panneau profil inline */}
+                        {openProfileFor === game.name && (
+                          <div style={{
+                            marginTop: 8,
+                            padding: '14px 16px',
+                            background: 'rgba(79,70,229,.08)',
+                            border: '1px solid rgba(79,70,229,.25)',
+                            borderRadius: 8,
+                          }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.85)', marginBottom: 10 }}>
+                              Profil de ressources — {game.name}
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                              {/* Priorité CPU */}
+                              <label style={{ fontSize: 11, color: 'rgba(255,255,255,.6)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                Priorité CPU
+                                <select
+                                  value={editingProfile.priority}
+                                  onChange={e => setEditingProfile(p => ({ ...p, priority: e.target.value as GameProfileUI['priority'] }))}
+                                  style={{
+                                    background: 'rgba(255,255,255,.07)',
+                                    border: '1px solid rgba(255,255,255,.12)',
+                                    borderRadius: 5,
+                                    color: '#fff',
+                                    padding: '5px 8px',
+                                    fontSize: 12,
+                                  }}
+                                >
+                                  <option value="Normal">Normale</option>
+                                  <option value="AboveNormal">Au-dessus de la normale</option>
+                                  <option value="High">Haute</option>
+                                </select>
+                              </label>
+
+                              {/* Plan d'alimentation */}
+                              <label style={{ fontSize: 11, color: 'rgba(255,255,255,.6)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                Plan d'alimentation
+                                <select
+                                  value={editingProfile.powerPlan}
+                                  onChange={e => setEditingProfile(p => ({ ...p, powerPlan: e.target.value as GameProfileUI['powerPlan'] }))}
+                                  style={{
+                                    background: 'rgba(255,255,255,.07)',
+                                    border: '1px solid rgba(255,255,255,.12)',
+                                    borderRadius: 5,
+                                    color: '#fff',
+                                    padding: '5px 8px',
+                                    fontSize: 12,
+                                  }}
+                                >
+                                  <option value="default">Équilibré (par défaut)</option>
+                                  <option value="performance">Haute performance</option>
+                                </select>
+                              </label>
+
+                              {/* Suspendre navigateurs */}
+                              <label style={{ fontSize: 11, color: 'rgba(255,255,255,.6)', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={editingProfile.suspendBrowsers}
+                                  onChange={e => setEditingProfile(p => ({ ...p, suspendBrowsers: e.target.checked }))}
+                                />
+                                Suspendre les navigateurs en arrière-plan
+                              </label>
+
+                              {/* Limitation débit sortant QoS */}
+                              <label style={{ fontSize: 11, color: 'rgba(255,255,255,.6)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                Limiter le débit sortant (QoS)
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={100000}
+                                    step={100}
+                                    value={editingProfile.throttleKbps ?? 0}
+                                    onChange={e => setEditingProfile(p => ({ ...p, throttleKbps: Math.max(0, Number(e.target.value)) }))}
+                                    style={{
+                                      flex: 1,
+                                      background: 'rgba(255,255,255,.07)',
+                                      border: '1px solid rgba(255,255,255,.12)',
+                                      borderRadius: 5,
+                                      color: '#fff',
+                                      padding: '5px 8px',
+                                      fontSize: 12,
+                                    }}
+                                    placeholder="0 = pas de limite"
+                                  />
+                                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', whiteSpace: 'nowrap' }}>Kbps</span>
+                                </div>
+                                <span style={{ fontSize: 10, color: 'rgba(255,255,255,.35)' }}>
+                                  Windows 10+ · 0 = désactivé · élévation requise
+                                </span>
+                              </label>
+
+                              {/* Avertissement batterie */}
+                              {editingProfile.powerPlan === 'performance' && (
+                                <div style={{ fontSize: 10, color: 'rgba(234,179,8,.8)', padding: '4px 8px', background: 'rgba(234,179,8,.06)', borderRadius: 4, border: '1px solid rgba(234,179,8,.15)' }}>
+                                  ⚠ Le plan haute performance augmente la consommation énergétique sur batterie.
+                                </div>
+                              )}
+
+                              {/* Boutons */}
+                              <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+                                <button
+                                  onClick={() => handleSaveGameProfile(game.name)}
+                                  disabled={savingProfile}
+                                  style={{
+                                    flex: 1,
+                                    padding: '7px 12px',
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    background: savingProfile ? 'rgba(79,70,229,.3)' : 'rgba(79,70,229,.7)',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: 6,
+                                    cursor: savingProfile ? 'wait' : 'pointer',
+                                  }}
+                                >
+                                  {savingProfile ? 'Enregistrement…' : 'Appliquer'}
+                                </button>
+                                <button
+                                  onClick={() => setOpenProfileFor(null)}
+                                  style={{
+                                    padding: '7px 12px',
+                                    fontSize: 12,
+                                    background: 'rgba(255,255,255,.06)',
+                                    color: 'rgba(255,255,255,.7)',
+                                    border: '1px solid rgba(255,255,255,.12)',
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Annuler
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                      {/* Mention périmètre : affichée une seule fois au-dessus de la grille */}
                     </div>
                   </div>
                 </div>

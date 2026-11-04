@@ -9,11 +9,21 @@
  *   arbitraire de fichiers système en dehors du coffre.
  */
 
-import { ipcMain, dialog, BrowserWindow } from 'electron';
+import { ipcMain, dialog, BrowserWindow, app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { VaultManager } from './vaultManager.ts';
 import type { VaultStatusDTO, VaultProgressEvent } from './vaultProtocol.ts';
+
+/** Chemin par défaut proposé pour un nouveau coffre : userData/VanguardVault */
+function defaultVaultCreatePath(): string {
+  try {
+    const base = path.join(app.getPath('userData'), 'VanguardVault');
+    return base;
+  } catch {
+    return '';
+  }
+}
 
 export function registerVaultIpc(vaultManager: VaultManager): void {
   // 1. Récupération de l'état du coffre
@@ -22,11 +32,14 @@ export function registerVaultIpc(vaultManager: VaultManager): void {
   });
 
   // 2. Sélection d'un dossier pour création ou ouverture
-  ipcMain.handle('vault:select-folder', async (event, options?: { title?: string }): Promise<string | null> => {
+  ipcMain.handle('vault:select-folder', async (event, options?: { title?: string; forCreate?: boolean }): Promise<string | null> => {
     const win = BrowserWindow.fromWebContents(event.sender);
+    // Pour la création, pré-remplir avec userData/VanguardVault si le dossier n'existe pas encore
+    const defaultPath = options?.forCreate ? defaultVaultCreatePath() : undefined;
     const res = await dialog.showOpenDialog(win || undefined as any, {
       title: options?.title || 'Sélectionner le répertoire du coffre Vanguard Vault',
       properties: ['openDirectory', 'createDirectory'],
+      defaultPath,
     });
     if (res.canceled || res.filePaths.length === 0) {
       return null;

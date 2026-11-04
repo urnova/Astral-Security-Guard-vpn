@@ -177,22 +177,62 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
       if (d?.ping && d.ping > 0) setPing(d.ping);
     });
 
-    // Chargement des événements récents réels (historique des téléchargements et des analyses)
+    // Chargement des événements récents réels : analyses, maintenance, Vault, mises à jour
     const loadRecentEvents = async () => {
       try {
-        const scRes = await api?.getScannerHistory?.();
-        const items = scRes?.history || [];
-        if (Array.isArray(items) && items.length > 0) {
-          const mapped = items.slice(0, 5).map((it: any) => ({
-            title: it.fileName || 'Analyse de fichier',
-            desc: it.verdict === 'clean' ? 'Fichier sain vérifié' : `Menace neutralisée (${it.threatName || 'Suspect'})`,
-            tag: it.verdict === 'clean' ? 'Sain' : 'Alerte',
-            when: it.timestamp ? new Date(it.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : 'Récemment',
-          }));
-          setEvents(mapped);
-        } else {
-          setEvents([]);
-        }
+        const allEvents: { title: string; desc: string; tag: string; when: string; ts: number }[] = [];
+
+        // 1. Historique des analyses (scanner)
+        try {
+          const scRes = await api?.getScannerHistory?.();
+          const items = scRes?.history || [];
+          if (Array.isArray(items)) {
+            items.slice(0, 8).forEach((it: any) => {
+              allEvents.push({
+                title: it.fileName || 'Analyse de fichier',
+                desc: it.verdict === 'clean' ? 'Fichier analysé — sain' : `Menace détectée (${it.threatName || 'Suspect'})`,
+                tag: it.verdict === 'clean' ? 'Sain' : 'Alerte',
+                when: it.timestamp ? new Date(it.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : 'Récemment',
+                ts: it.timestamp || 0,
+              });
+            });
+          }
+        } catch {}
+
+        // 2. Historique des notifications (maintenance, vault, updater, vpn)
+        try {
+          const notifRes = await api?.notifications?.getHistory?.();
+          const notifs: any[] = Array.isArray(notifRes) ? notifRes : (notifRes?.history || []);
+          const relevantCats = new Set(['maintenance', 'vault', 'updater', 'vpn', 'security']);
+          notifs.filter(n => relevantCats.has(n.category)).slice(0, 10).forEach((n: any) => {
+            const tagMap: Record<string, string> = {
+              maintenance: 'Maintenance',
+              vault: 'Vault',
+              updater: 'Mise à jour',
+              vpn: 'VPN',
+              security: 'Sécurité',
+            };
+            allEvents.push({
+              title: n.title || n.category,
+              desc: n.message || '',
+              tag: tagMap[n.category] || n.category,
+              when: n.timestamp ? new Date(n.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : 'Récemment',
+              ts: n.timestamp || 0,
+            });
+          });
+        } catch {}
+
+        // Tri anti-chronologique et dédup sur titre+tag
+        allEvents.sort((a, b) => b.ts - a.ts);
+        const seen = new Set<string>();
+        const deduped = allEvents.filter(e => {
+          const key = `${e.title}::${e.tag}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+        setEvents(deduped.slice(0, 6).map(({ title, desc, tag, when }) => ({ title, desc, tag, when })));
       } catch {
         setEvents([]);
       }

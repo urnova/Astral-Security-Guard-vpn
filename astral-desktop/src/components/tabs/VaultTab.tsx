@@ -137,6 +137,7 @@ export default function VaultTab() {
     try {
       const folder = await api?.vault?.selectFolder?.({
         title: target === 'CREATE' ? 'Choisir le dossier où créer le coffre' : 'Ouvrir un coffre Vanguard Vault existant',
+        forCreate: target === 'CREATE',
       });
       if (folder) {
         if (target === 'CREATE') {

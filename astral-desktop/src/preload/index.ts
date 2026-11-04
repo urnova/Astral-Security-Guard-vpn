@@ -173,6 +173,11 @@ const api = {
   flushDnsCache: () => ipcRenderer.invoke('network:flush-dns-cache'),
   testDnsLatencies: () => ipcRenderer.invoke('network:test-dns-latencies'),
   getNetworkProcesses: () => ipcRenderer.invoke('network:get-processes'),
+  // QoS par application (New-NetQosPolicy, Windows 10+)
+  setQos: (opts: { name: string; appPath: string; throttleKbps: number }) => ipcRenderer.invoke('network:set-qos', opts),
+  removeQos: (name: string) => ipcRenderer.invoke('network:remove-qos', name),
+  getQosStatus: () => ipcRenderer.invoke('network:get-qos-status'),
+  removeAllVanguardQos: () => ipcRenderer.invoke('network:remove-all-vanguard-qos'),
   wifiInterference: () => ipcRenderer.invoke('network:wifi-interference'),
   getWifiDiag: () => ipcRenderer.invoke('network:get-wifi-diag'),
   optimizeNetwork: () => ipcRenderer.invoke('network:optimize'),

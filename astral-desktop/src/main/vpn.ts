@@ -351,19 +351,38 @@ export function setupVpnIPC(
       }));
 
       const st = communityVpnEngine.getStatus();
+      const fetchErr = communityVpnEngine.getCatalogFetchError();
+      const catalogSource = (communityVpnEngine as any).lastCatalogSource ?? st.catalogSource ?? null;
+
+      if (servers.length === 0 && fetchErr) {
+        // Catalogue vide avec cause connue
+        return {
+          success: false,
+          servers: [],
+          catalogSource,
+          errorCause: fetchErr.cause,
+          message: fetchErr.message,
+        };
+      }
+
       return {
         success: true,
         servers: mapped,
-        catalogSource: st.catalogSource,
-        message: servers.length > 0 ? `${servers.length} relais communautaires disponibles.` : 'Aucun relais disponible dans le catalogue.',
+        catalogSource,
+        errorCause: null,
+        message: servers.length > 0
+          ? `${servers.length} relais communautaires disponibles${catalogSource === 'mirror_github' ? ' (via miroir tiers)' : ''}.`
+          : 'Aucun relais disponible dans le catalogue.',
       };
     } catch (err: any) {
       logger.error('[VPN] Erreur chargement catalogue VPN Gate:', err.message);
+      const fetchErr = communityVpnEngine.getCatalogFetchError();
       return {
         success: false,
         servers: [],
         catalogSource: null,
-        message: `Impossible de charger le catalogue communautaire VPN Gate : ${err.message}`,
+        errorCause: fetchErr?.cause ?? 'network',
+        message: fetchErr?.message ?? `Impossible de charger le catalogue communautaire VPN Gate : ${err.message}`,
       };
     }
   });

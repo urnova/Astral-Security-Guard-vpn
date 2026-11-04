@@ -57,19 +57,47 @@ const EXCLUDED_PROCESSES = new Set([
   'electron', 'astral vanguard', 'astral vanguard setup',
 ]);
 
-// Saved per-game profiles
-const gameProfiles: Record<string, {
-  networkPriority: boolean;
-  dnsProvider: string;
-  ecoGpu: boolean;
-}> = {};
+// Saved per-game profiles (persistés sur disque dans userData)
+interface GameProfile {
+  priority: 'Normal' | 'AboveNormal' | 'High';
+  powerPlan: 'default' | 'performance';
+  suspendBrowsers: boolean;
+  note?: string;
+  savedAt?: number;
+}
+const gameProfiles: Record<string, GameProfile> = {};
 
-// NvidiaFamily, resolveNvidiaFamily and normaliseNvidiaDriverVersion are imported from './nvidiaResolver'
+function getProfilesFilePath(): string {
+  try { return path.join(app.getPath('userData'), 'game_profiles.json'); }
+  catch { return ''; }
+}
+
+function persistGameProfiles(): void {
+  try {
+    const fp = getProfilesFilePath();
+    if (!fp) return;
+    if (!fs.existsSync(path.dirname(fp))) fs.mkdirSync(path.dirname(fp), { recursive: true });
+    fs.writeFileSync(fp, JSON.stringify(gameProfiles, null, 2), 'utf8');
+  } catch (e: any) { logger.warn('[Gaming] Persist profiles error:', e.message); }
+}
+
+function loadGameProfilesFromDisk(): void {
+  try {
+    const fp = getProfilesFilePath();
+    if (!fp || !fs.existsSync(fp)) return;
+    const loaded = JSON.parse(fs.readFileSync(fp, 'utf8'));
+    if (typeof loaded === 'object' && loaded !== null) {
+      Object.assign(gameProfiles, loaded);
+      logger.info(`[Gaming] ${Object.keys(loaded).length} profil(s) chargé(s) depuis le disque.`);
+    }
+  } catch (e: any) { logger.warn('[Gaming] Load profiles error:', e.message); }
+}
 
 export function setupGamingIPC(
   win: BrowserWindow,
   getOverlay: () => BrowserWindow | null
-) {
+) {
+  loadGameProfilesFromDisk();
   // ── Status ────────────────────────────────────────────────────────────────
   ipcMain.handle('gaming:get-status', () => {
     const mgrStatus = gamingManager.getStatus();
@@ -141,10 +169,19 @@ export function setupGamingIPC(
   // ── Profiles ─────────────────────────────────────────────────────────────
   ipcMain.handle('gaming:get-profiles', () => ({ success: true, profiles: gameProfiles }));
 
-  ipcMain.handle('gaming:save-profile', (_, gameName: string, settings: any) => {
-    gameProfiles[gameName] = settings;
-    logger.info(`Profil de jeu sauvegardé pour [${gameName}]`, settings);
-    return { success: true };
+    ipcMain.handle('gaming:save-profile', (_, gameName: string, settings: any) => {
+    if (!gameName || typeof gameName !== 'string') return { success: false, error: 'Nom invalide.' };
+    const profile: GameProfile = {
+      priority:        (['Normal','AboveNormal','High'].includes(settings?.priority) ? settings.priority : 'AboveNormal') as GameProfile['priority'],
+      powerPlan:       settings?.powerPlan === 'performance' ? 'performance' : 'default',
+      suspendBrowsers: Boolean(settings?.suspendBrowsers),
+      note:            typeof settings?.note === 'string' ? settings.note.slice(0, 200) : undefined,
+      savedAt:         Date.now(),
+    };
+    gameProfiles[gameName] = profile;
+    persistGameProfiles();
+    logger.info(`[Gaming] Profil sauvegardé pour [${gameName}]`);
+    return { success: true, profile };
   });
 
   // ── Enable/Disable Auto-Detection ─────────────────────────────────────────
@@ -845,11 +882,33 @@ export function setupGamingIPC(
     return { success: true };
   });
 
-  ipcMain.handle('gaming:apply-game-profile', async (_evt, payload: { game: string; profile: string }) => {
-    const { game, profile } = payload;
-    gameProfiles[game] = { networkPriority: profile === 'Compétitif', dnsProvider: 'google', ecoGpu: profile === 'Équilibré' };
-    logger.info(`[Gaming] Profile "${profile}" applied to "${game}"`);
-    return { success: true };
+    ipcMain.handle('gaming:apply-game-profile', async (_evt, payload: { game: string; priority?: string; powerPlan?: string; suspendBrowsers?: boolean }) => {
+    const { game, priority, powerPlan, suspendBrowsers } = payload;
+    if (!game) return { success: false, error: 'Nom de jeu manquant.' };
+    const existing = gameProfiles[game] || { priority: 'AboveNormal', powerPlan: 'default', suspendBrowsers: false };
+    const updated: GameProfile = {
+      ...existing,
+      priority:        (['Normal','AboveNormal','High'].includes(priority ?? '') ? priority : existing.priority) as GameProfile['priority'],
+      powerPlan:       powerPlan === 'performance' ? 'performance' : (powerPlan === 'default' ? 'default' : existing.powerPlan),
+      suspendBrowsers: suspendBrowsers !== undefined ? Boolean(suspendBrowsers) : existing.suspendBrowsers,
+      savedAt:         Date.now(),
+    };
+    gameProfiles[game] = updated;
+    persistGameProfiles();
+    // Appliquer immédiatement si le jeu est actif
+    const status = gamingManager.getStatus();
+    const applied: string[] = [];
+    if (status.isGamingActive && status.activeGamePid && status.activeGameName === game) {
+      try {
+        await runPowerShell(`(Get-Process -Id ${status.activeGamePid} -ErrorAction SilentlyContinue).PriorityClass = [System.Diagnostics.ProcessPriorityClass]::${updated.priority}`, { timeout: 2000 });
+        applied.push('priorité CPU');
+      } catch {}
+      if (updated.powerPlan === 'performance') {
+        try { await runPowerShell('powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c', { timeout: 3000 }); applied.push('plan alimentation'); } catch {}
+      }
+    }
+    logger.info(`[Gaming] Profil appliqué à "${game}" — ${applied.join(', ') || 'sera appliqué au prochain lancement'}`);
+    return { success: true, profile: updated, appliedImmediately: applied };
   });
 
   // ── Safe Browser Priority Reduction & Restoration with Process Identity (StartTime) ─
