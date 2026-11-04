@@ -279,7 +279,7 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
         return (
           <span className="chip" style={{ fontSize: 11, background: 'rgba(var(--a1r),0.12)', color: 'var(--a1)', border: '1px solid rgba(var(--a1r),0.3)', fontWeight: 600 }}>
             <Activity size={12} style={{ marginRight: 4 }} />
-            Synthèse locale déterministe
+            Résumé local
           </span>
         );
     }

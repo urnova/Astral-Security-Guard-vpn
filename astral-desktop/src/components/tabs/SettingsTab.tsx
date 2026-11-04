@@ -1010,7 +1010,7 @@ export default function SettingsTab({
                 <div className="setting-row">
                   <div className="setting-info">
                     <div className="setting-title">Sentinelle des périphériques USB & amovibles</div>
-                    <div className="setting-desc">Détecte l'insertion de clés USB et prévient l'exécution automatique de scripts hostiles</div>
+                    <div className="setting-desc">Détecte l'insertion de clés USB et analyse les fichiers détectés sur les volumes amovibles</div>
                   </div>
                   <div
                     className={`sw ${usbScanEnabled ? 'on' : ''}`}
@@ -1241,7 +1241,7 @@ export default function SettingsTab({
           {activeSection === 'gaming' && (
             <div className="stack" style={{ gap: 20 }}>
               <div>
-                <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Gaming & Overlay HUD</h2>
+                <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Jeux & Performances</h2>
                 <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
                   Superposition en jeu légère à zéro impact graphique (DirectX / PresentMon).
                 </p>
@@ -1841,21 +1841,6 @@ export default function SettingsTab({
                       <h2 style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', margin: 0 }}>
                         {firstName ? `${firstName} ${lastName}`.trim() : 'Utilisateur Vanguard'}
                       </h2>
-                      <span style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        color: '#22c55e',
-                        background: 'rgba(34,197,94,0.12)',
-                        border: '1px solid rgba(34,197,94,0.3)',
-                        borderRadius: 12,
-                        padding: '2px 8px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 5,
-                      }}>
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} />
-                        COMPTE LOCAL AUTONOME
-                      </span>
                     </div>
                     <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
                       Personnalisation locale du tableau de bord et du message d'accueil Astral Vanguard.

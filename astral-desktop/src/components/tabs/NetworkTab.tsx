@@ -495,7 +495,7 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
                 margin: '10px 0',
               }}>
                 <Info size={14} style={{ color: 'var(--a1)', flexShrink: 0 }} />
-                <span>Mesure directe (~20 à 80 Mo transférés selon débit). Sockets fermés à l'annulation.</span>
+                <span>Volume transféré variable selon le débit de la ligne. Sockets fermés à l'annulation.{speedResult?.bytesTransferredMB ? ` — ${speedResult.bytesTransferredMB.toFixed(0)} Mo mesurés.` : ''}</span>
               </div>
 
               {/* Live Streaming Pills */}
@@ -720,7 +720,12 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
                     {speedResult?.report?.summary || 'Lancez le test de débit pour obtenir le bilan sur les 3 dimensions de votre ligne.'}
                   </p>
                   <small style={{ fontSize: 9.5, color: 'var(--muted)', display: 'block', marginTop: 3 }}>
-                    Règle anti-masquage : note globale plafonnée à min(dimensions) + 1.
+                    <span
+                      title="Règle anti-masquage : la note globale est plafonnée à min(dimensions) + 1 pour refléter le facteur limitant."
+                      style={{ cursor: 'help', borderBottom: '1px dashed rgba(255,255,255,0.2)', paddingBottom: 1 }}
+                    >
+                      ⓘ Méthode de notation
+                    </span>
                   </small>
                 </div>
               </div>
@@ -1000,19 +1005,7 @@ export default function NetworkTab({ gamingActive: _gamingActive }: { gamingActi
 
               {/* Blocs d'information sans faux interrupteurs */}
               <div className="list">
-                <div className="row" style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-                  <div className="rt">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <b style={{ fontSize: 12 }}>Anti-Bufferbloat dynamique UDP</b>
-                      <span className="chip" style={{ fontSize: 9.5, color: '#facc15', borderColor: 'rgba(250,204,21,0.3)' }}>
-                        Non implémenté
-                      </span>
-                    </div>
-                    <small style={{ fontSize: 11, display: 'block', color: 'var(--muted)', marginTop: 2 }}>
-                      Aucune modification du trafic réseau n'est appliquée. La mesure d'élévation sous charge est calculée lors du test de débit.
-                    </small>
-                  </div>
-                </div>
+{/* Anti-Bufferbloat removed — no implementation, honest QoS note in Network section */}
 
                 <div className="row" style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
                   <div className="rt">

@@ -535,7 +535,7 @@ export default function VaultTab() {
               Créer un coffre Vanguard Vault
             </h1>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--dim)' }}>
-              Stockage local chiffré partitionné (Argon2id & XChaCha20-Poly1305)
+              Vos fichiers restent chiffrés localement. La clé de récupération protège vos données si vous oubliez votre mot de passe.
             </p>
           </div>
           <button className="btn btn-ghost btn-sm" onClick={() => { setViewMode('DEFAULT'); setError(null); }}>
@@ -714,7 +714,7 @@ export default function VaultTab() {
             Vanguard Vault
           </h1>
           <p style={{ margin: 0, fontSize: 13, color: 'var(--dim)' }}>
-            Coffre-fort local transactionnel partitionné — Chiffrement matériel hors-ligne
+            Vos fichiers, chiffrés sur cet appareil.
           </p>
         </div>
 

@@ -614,36 +614,7 @@ export default function GamingTab({
                 </div>
               </div>
 
-              {/* Anti-bufferbloat — NON IMPLÉMENTÉ */}
-              <div style={{
-                background: 'rgba(255,255,255,0.015)',
-                border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: 10, padding: 14,
-                display: 'flex', flexDirection: 'column', gap: 8,
-                opacity: 0.6,
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: 12 }}>
-                    <Wifi size={13} style={{ color: 'var(--muted)' }} />
-                    <span style={{ color: 'var(--muted)' }}>Anti-bufferbloat</span>
-                  </div>
-                  <span style={{
-                    fontSize: 9.5, fontWeight: 700, padding: '2px 6px', borderRadius: 10,
-                    background: 'rgba(255,255,255,0.05)', color: 'var(--muted)',
-                  }}>NON IMPLÉMENTÉ</span>
-                </div>
-                <p style={{ fontSize: 11, color: 'var(--muted)', margin: 0, lineHeight: 1.4 }}>
-                  Aucune modification réseau appliquée dans cette version.
-                </p>
-                <p style={{ fontSize: 10, color: 'var(--muted)', margin: 0, fontStyle: 'italic' }}>
-                  La réduction de latence sous charge sera étudiée dans la section Réseau.
-                </p>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>Indisponible</span>
-                  {/* Toggle désactivé intentionnellement */}
-                  <Toggle id="bufferbloat-toggle" checked={false} onChange={() => {}} disabled={true} />
-                </div>
-              </div>
+              {/* Anti-bufferbloat : non disponible — voir la section Réseau pour la gestion QoS Windows */}
 
               {/* Détection automatique */}
               <div style={{
@@ -686,7 +657,7 @@ export default function GamingTab({
             color: 'var(--muted)',
             lineHeight: 1.5,
           }}>
-            <b style={{ color: 'var(--text)' }}>Limites pré-release v0.1.6 :</b> La maintenance programmée
+            <b style={{ color: 'var(--text)' }}>Limites de cette version :</b> La maintenance programmée
             nécessite que Vanguard Core soit actif en arrière-plan. Les optimisations s'appliquent à un
             processus identifié — aucun gain n'est garanti. Cette fonctionnalité fonctionne uniquement
             lorsque l'application est en cours d'exécution.

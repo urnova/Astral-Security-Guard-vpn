@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import {
   Zap,
   HardDrive,
@@ -322,7 +322,14 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
     api.getDiskHealth?.().then((res: any) => {
       setLoadingDisks(false);
       if (res?.success && Array.isArray(res.disks)) {
-        const sorted = [...res.disks].sort((a: any, b: any) => (a.diskNumber ?? 0) - (b.diskNumber ?? 0));
+        const sorted = [...res.disks].sort((a: any, b: any) => {
+          // Disque système (C:) en premier
+          const aIsSys = Boolean(a.isSystemDisk || (a.driveLetters && a.driveLetters.includes('C')));
+          const bIsSys = Boolean(b.isSystemDisk || (b.driveLetters && b.driveLetters.includes('C')));
+          if (aIsSys && !bIsSys) return -1;
+          if (!aIsSys && bIsSys) return 1;
+          return (a.diskNumber ?? 0) - (b.diskNumber ?? 0);
+        });
         setPhysicalDisks(sorted);
       }
     }).catch(() => setLoadingDisks(false));
@@ -777,7 +784,7 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
               </button>
 
               <p style={{ fontSize: 10.5, color: 'var(--muted)', margin: '10px 0 0', lineHeight: 1.4 }}>
-                Purge ciblée et sécurisée : vos fichiers personnels, documents et configurations de jeux restent 100% intacts.
+                Purge ciblée et sécurisée : vos fichiers personnels, documents et configurations de jeux restent intacts.
               </p>
             </div>
           </div>
@@ -1159,7 +1166,17 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
               label: 'Mémoire vive (RAM)',
               val: ram / 100,
               display: `${ram}%`,
-              sub: `${Math.round((metrics?.ramUsed || 0) / 1024).toFixed(1)} / ${hardware?.ramGB || metrics?.ramTotal || 16} Go`,
+              sub: (() => {
+                const usedMB = metrics?.ramUsed ?? 0;
+                const totalGB = hardware?.ramGB ?? (metrics?.ramTotal ? metrics.ramTotal / 1024 : 0);
+                if (usedMB > 0 && totalGB > 0) {
+                  return `${(usedMB / 1024).toFixed(1)} / ${totalGB.toFixed(0)} Go`;
+                }
+                if (totalGB > 0 && ram > 0) {
+                  return `${((ram / 100) * totalGB).toFixed(1)} / ${totalGB.toFixed(0)} Go`;
+                }
+                return totalGB > 0 ? `— / ${totalGB.toFixed(0)} Go` : 'Non disponible';
+              })(),
             },
             {
               label: 'Stockage Système (C:)',
@@ -1204,18 +1221,7 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
           <div className="grid g2" style={{ gap: 16 }}>
             {/* M3: GPUs (Multi-GPU Support, no hardcoded single GPU) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {(hardware?.gpus && hardware.gpus.length > 0 ? hardware.gpus : [
-                {
-                  name: hardware?.gpuName || 'NVIDIA GeForce RTX 3060 Ti',
-                  driverVersionDisplay: hardware?.gpuDriver || '617.42',
-                  driverVersionRaw: hardware?.gpuDriverRaw || '32.0.16.1742',
-                  driverDate: hardware?.gpuDriverDate || '09/10/2024',
-                  driverUrl: hardware?.driverUrl || 'https://www.nvidia.com/fr-fr/geforce/drivers/',
-                  manufacturer: 'nvidia',
-                  isPrimary: true,
-                  isVirtual: false,
-                }
-              ]).map((gpu: any, gIdx: number) => {
+              {(hardware?.gpus && hardware.gpus.length > 0 ? hardware.gpus : []).map((gpu: any, gIdx: number) => {
                 const isNvidia = gpu.manufacturer === 'nvidia' || gpu.name?.toLowerCase().includes('geforce') || gpu.name?.toLowerCase().includes('nvidia');
                 const isAmd = gpu.manufacturer === 'amd' || gpu.name?.toLowerCase().includes('radeon') || gpu.name?.toLowerCase().includes('amd');
                 const isIntel = gpu.manufacturer === 'intel' || gpu.name?.toLowerCase().includes('intel');
@@ -1450,31 +1456,41 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                   <b>Statut vérification en ligne :</b> Consultation manuelle requise (API constructeur propriétaire ASUS non accessible publiquement sans jeton interne pour cette plateforme).
                 </div>
 
-                {/* Embedded flash safety guide conditionné au constructeur ASUS */}
+                {/* Embedded flash safety guide — accordéon pour ne pas surcharger l'affichage principal */}
                 {(hardware?.motherboardManufacturer?.toLowerCase().includes('asus') || hardware?.motherboard?.toLowerCase().includes('asus') || !hardware?.motherboardManufacturer) && (
-                  <div
+                  <details
                     style={{
                       marginTop: 10,
-                      padding: '10px 12px',
                       borderRadius: 8,
-                      background: 'rgba(234, 179, 8, 0.06)',
-                      border: '1px solid rgba(234, 179, 8, 0.22)',
+                      background: 'rgba(234, 179, 8, 0.04)',
+                      border: '1px solid rgba(234, 179, 8, 0.2)',
                       fontSize: 11,
                       color: '#fef08a',
                       lineHeight: 1.5,
+                      overflow: 'hidden',
                     }}
                   >
-                    <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, color: '#facc15' }}>
-                      <AlertTriangle size={13} />
-                      <span>Consignes officielles ASUS ROG (Zéro flash automatique) :</span>
-                    </div>
-                    <ul style={{ margin: 0, paddingLeft: 16 }}>
+                    <summary style={{
+                      padding: '7px 12px',
+                      cursor: 'pointer',
+                      fontWeight: 700,
+                      color: '#facc15',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      listStyle: 'none',
+                      userSelect: 'none',
+                    }}>
+                      <AlertTriangle size={12} />
+                      <span>Procédure de mise à jour BIOS (cliquer pour afficher)</span>
+                    </summary>
+                    <ul style={{ margin: 0, paddingLeft: 20, paddingBottom: 10, paddingTop: 4 }}>
                       <li>Téléchargez le fichier firmware officiel (.CAP) depuis la page support ASUS ROG ci-dessous.</li>
                       <li>Copiez le fichier à la racine d'une clé USB formatée en <b>FAT32</b>.</li>
                       <li>Effectuez la mise à jour hors Windows via l'outil <b>ASUS EZ Flash 3</b> (BIOS &gt; Outils).</li>
                       <li><b>Ne coupez jamais l'alimentation</b> durant la procédure d'écriture du firmware.</li>
                     </ul>
-                  </div>
+                  </details>
                 )}
               </div>
 
@@ -1511,10 +1527,15 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
             <span style={{ fontSize: 11, color: 'var(--muted)' }}>Interrogation matérielle des contrôleurs de stockage</span>
           </div>
 
-          {/* Explication rigoureuse de la numérotation Windows */}
-          <div style={{ marginBottom: 16, padding: '8px 12px', borderRadius: 8, background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.06)', fontSize: 11, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ color: '#38bdf8', fontWeight: 700 }}>Index Windows (Get-Disk) :</span>
-            <span>Index attribué dynamiquement par le sous-système de stockage Windows lors de l'énumération au démarrage. Il ne garantit pas une correspondance matérielle directe avec un numéro de port physique de la carte mère.</span>
+
+          {/* Note numérotation Windows — compacte */}
+          <div style={{ marginBottom: 12, fontSize: 10.5, color: 'var(--muted)' }}>
+            <span
+              title="L'index Windows (Get-Disk) est attribué dynamiquement lors de l'énumération au démarrage et ne correspond pas nécessairement à un numéro de port physique de la carte mère."
+              style={{ cursor: 'help', borderBottom: '1px dashed rgba(255,255,255,0.2)', paddingBottom: 1 }}
+            >
+              ⓘ Index disque Windows — ordre d'énumération système
+            </span>
           </div>
 
           {loadingDisks ? (
@@ -1583,12 +1604,17 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                         <div style={{ minWidth: 0, flex: 1 }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                             <span style={{ fontSize: 11, fontWeight: 700, color: '#38bdf8' }}>
-                              Disque {diskNum}
+                              {isBootDrive && d.driveLetters
+                                ? `Windows (${d.driveLetters}:)`
+                                : d.driveLetters
+                                ? `${d.driveLetters}:`
+                                : `Disque ${diskNum}`}
                             </span>
                             <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)' }}>
                               {sizeLabel}
                             </span>
                           </div>
+                          {/* Modèle en ligne secondaire — identifiant Windows en tooltip */}
                           <b
                             style={{
                               fontSize: 12.5,
@@ -1918,6 +1944,8 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
               style={{
                 maxWidth: 520,
                 width: '100%',
+                maxHeight: '90vh',
+                overflowY: 'auto',
                 background: '#090d16',
                 border: '1px solid var(--border)',
                 borderRadius: 12,
