@@ -5,6 +5,7 @@ import assert from 'assert';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { presentMonEngine } from '../src/main/presentmonEngine.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -56,23 +57,79 @@ runTest('Configuration package.json extraResources inclut bien bin/*', () => {
   assert.ok(binResource, 'extraResources doit mapper "bin" vers "bin"');
 });
 
-console.log('\n=== 2. Parseur CSV PresentMon et Arguments ===');
+console.log('\n=== 2. Parseur CSV PresentMon et Intégrité du Calcul FPS ===');
 
-runTest('Parseur CSV supporte MsBetweenPresents, FrameTime et variantes case-insensitive', () => {
-  const headers = [
-    'Application,ProcessID,MsBetweenPresents,MsInPresentApi',
-    'application,process_id,frametime,cpustarttime',
-    'Application,ProcessID,msBetweenDisplayChange,CPUWait',
-  ];
+runTest('RÈGLE MAJEURE : avec msBetweenPresents=16.67 et msInPresentAPI=0.2, le calcul donne ~60 FPS (jamais 5 000)', () => {
+  presentMonEngine.resetForTest();
 
-  for (const h of headers) {
-    const cols = h.split(',').map(c => c.trim());
-    const idx = cols.findIndex(c => {
-      const lc = c.toLowerCase();
-      return lc === 'msbetweenpresents' || lc === 'frametime' || lc === 'msbetweendisplaychange' || lc === 'msinpresentapi';
-    });
-    assert.ok(idx >= 0, `Entête [${h}] doit identifier une colonne frametime valide`);
-  }
+  // Entête où msInPresentAPI apparaît AVANT msBetweenPresents
+  const header = 'Application,ProcessID,msInPresentAPI,msBetweenPresents';
+  presentMonEngine.processCsvLine(header);
+
+  // Ligne de données : msInPresentAPI = 0.2 ms, msBetweenPresents = 16.67 ms
+  const data = 'GameProcess.exe,4321,0.2,16.67';
+  const recorded = presentMonEngine.processCsvLine(data);
+
+  assert.strictEqual(recorded, true, 'Un échantillon doit être enregistré');
+  const metrics = presentMonEngine.getCurrentMetrics();
+
+  // Le calcul doit se baser sur 16.67 ms -> 1000 / 16.67 = 59.988... -> 60 FPS
+  assert.strictEqual(metrics.fps, 60, `FPS attendu: 60, obtenu: ${metrics.fps}`);
+  assert.strictEqual(metrics.frametimeMs, 16.67, `Frametime attendu: 16.67 ms, obtenu: ${metrics.frametimeMs}`);
+
+  // Vérification explicite : le FPS ne doit JAMAIS valoir 5000 (1000 / 0.2)
+  assert.notStrictEqual(metrics.fps, 5000, 'msInPresentAPI ne doit JAMAIS être utilisé pour le calcul FPS !');
+});
+
+runTest('Absence d\'intervalle compatible : affiche « Mesure indisponible », aucun dérivé de msInPresentAPI', () => {
+  presentMonEngine.resetForTest();
+
+  // Entête SANS msBetweenPresents ni FrameTime, avec uniquement msInPresentAPI
+  const header = 'Application,ProcessID,msInPresentAPI,CPUWait';
+  presentMonEngine.processCsvLine(header);
+
+  const data = 'GameProcess.exe,4321,0.2,1.5';
+  const recorded = presentMonEngine.processCsvLine(data);
+
+  assert.strictEqual(recorded, false, 'Aucun échantillon ne doit être enregistré sans intervalle valide');
+  const metrics = presentMonEngine.getCurrentMetrics();
+
+  assert.strictEqual(metrics.fps, null, 'Le FPS doit être null');
+  assert.strictEqual(metrics.statusMessage, 'Mesure indisponible', 'Le statut doit afficher « Mesure indisponible »');
+});
+
+runTest('Schéma 2.x : FrameTime est utilisé uniquement si msBetweenPresents est absent', () => {
+  presentMonEngine.resetForTest();
+
+  const header = 'Application,ProcessID,FrameTime,msInPresentAPI';
+  presentMonEngine.processCsvLine(header);
+
+  const data = 'Game2x.exe,5678,33.33,0.4';
+  const recorded = presentMonEngine.processCsvLine(data);
+
+  assert.strictEqual(recorded, true);
+  const metrics = presentMonEngine.getCurrentMetrics();
+
+  // 1000 / 33.33 = ~30 FPS
+  assert.strictEqual(metrics.fps, 30, `FPS attendu: 30, obtenu: ${metrics.fps}`);
+  assert.strictEqual(metrics.frametimeMs, 33.33);
+});
+
+runTest('msBetweenDisplayChange est identifié distinctement et non confondu avec le débit de présentation', () => {
+  presentMonEngine.resetForTest();
+
+  // Entête contenant msBetweenDisplayChange et msInPresentAPI, mais ni msBetweenPresents ni FrameTime
+  const header = 'Application,ProcessID,msBetweenDisplayChange,msInPresentAPI';
+  presentMonEngine.processCsvLine(header);
+
+  const data = 'GameDisplay.exe,9999,16.67,0.2';
+  const recorded = presentMonEngine.processCsvLine(data);
+
+  // msBetweenDisplayChange n'est pas confondu avec le taux de trames de l'application
+  assert.strictEqual(recorded, false, 'msBetweenDisplayChange ne doit pas servir de fallback aveugle');
+  const metrics = presentMonEngine.getCurrentMetrics();
+  assert.strictEqual(metrics.fps, null);
+  assert.strictEqual(metrics.statusMessage, 'Mesure indisponible');
 });
 
 console.log('\n=== 3. Logique QoS Ownership et Protection Anti-Collision ===');
