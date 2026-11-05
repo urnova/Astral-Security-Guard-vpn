@@ -159,7 +159,7 @@ const api = {
   killProcess: (pid: number) => ipcRenderer.invoke('perf:kill-process', pid),
   getDiskHealth: () => ipcRenderer.invoke('perf:get-disk-health'),
   scanDiskJunk: (driveLetter: string) => ipcRenderer.invoke('perf:scan-disk-junk', driveLetter),
-  cleanDiskJunk: (driveLetter: string) => ipcRenderer.invoke('perf:clean-disk-junk', driveLetter),
+  cleanDiskJunk: (driveLetter: string, options?: { emptyRecycleBin?: boolean }) => ipcRenderer.invoke('perf:clean-disk-junk', driveLetter, options),
 
   // Network
   speedtest: () => ipcRenderer.invoke('network:speedtest'),
@@ -300,6 +300,7 @@ const api = {
   // Vanguard Vault (Moteur de Coffre Transactionnel Local)
   vault: {
     getStatus: () => ipcRenderer.invoke('vault:get-status'),
+    getDefaultPath: () => ipcRenderer.invoke('vault:get-default-path'),
     selectFolder: (options?: { title?: string }) => ipcRenderer.invoke('vault:select-folder', options),
     selectImportFiles: () => ipcRenderer.invoke('vault:select-import-files'),
     selectExtractDest: (options: { defaultFilename: string }) => ipcRenderer.invoke('vault:select-extract-dest', options),

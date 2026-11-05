@@ -238,10 +238,12 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
       }
     };
     loadRecentEvents();
+    const cleanupNotifs = api?.on?.('notifications:updated', () => { loadRecentEvents(); });
 
     return () => {
       clearInterval(pingTimer);
       cleanupPing?.();
+      cleanupNotifs?.();
     };
   }, []);
 

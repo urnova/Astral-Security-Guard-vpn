@@ -110,6 +110,22 @@ interface PhysicalDisk {
   }>;
 }
 
+type Tone = 'ok' | 'warn' | 'bad';
+const TONE_VAR: Record<Tone, string> = { ok: 'var(--ok)', warn: 'var(--warn)', bad: 'var(--bad)' };
+const toneBg = (tone: Tone, pct: number) => `color-mix(in srgb, ${TONE_VAR[tone]} ${pct}%, transparent)`;
+
+/** success / partial result / failure, from a cleanup report. */
+function reportTone(report: any): Tone {
+  if (report?.success && !report?.partial) return 'ok';
+  return (report?.deletedFilesCount > 0 || (report?.categoriesCleaned?.length ?? 0) > 0) ? 'warn' : 'bad';
+}
+
+/** First lettered volume of a physical disk. Never falls back to a default drive. */
+function driveLetterOf(disk: PhysicalDisk): string | null {
+  const first = String(disk.driveLetters || '').split(',')[0].trim();
+  return /^[A-Za-z]:?$/.test(first) ? first[0].toUpperCase() : null;
+}
+
 function Ring({ size, val, label }: { size: number; val: number; label?: React.ReactNode }) {
   const sw = 9;
   const r = size / 2 - sw;
@@ -145,7 +161,12 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
   const [maintaining, setMaintaining] = useState(false);
   const [cleanProgress, setCleanProgress] = useState(-1);
   const [cleanMsg, setCleanMsg] = useState('');
-  const [notice, setNotice] = useState('');
+  const [noticeState, setNoticeState] = useState<{ text: string; tone: Tone }>({ text: '', tone: 'ok' });
+  const notice = noticeState.text;
+  const setNotice = (text: string, tone?: Tone) =>
+    setNoticeState({ text, tone: tone ?? (/^(Erreur|Échec|Impossible)/.test(text) ? 'bad' : 'ok') });
+  const [emptyBinConfirmed, setEmptyBinConfirmed] = useState(false);
+  const [diskEmptyBin, setDiskEmptyBin] = useState(false);
   const [selectedTotal, setSelectedTotal] = useState('0 Mo');
   const [startupSearch, setStartupSearch] = useState('');
   const [loadingDisks, setLoadingDisks] = useState(true);
@@ -210,7 +231,10 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
   const [diskJunkScanResult, setDiskJunkScanResult] = useState<any | null>(null);
   const [diskJunkScanning, setDiskJunkScanning] = useState(false);
   const [diskJunkCleaning, setDiskJunkCleaning] = useState(false);
-  const [diskJunkNotice, setDiskJunkNotice] = useState('');
+  const [diskJunkNotice, setDiskJunkNotice] = useState<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(null);
+  const diskJunkCleaningRef = useRef(false);
+  const maintainingRef = useRef(false);
+  const confirmPanelRef = useRef<HTMLDivElement>(null);
 
   const cpu = Math.round(metrics?.cpuPercent ?? 0);
   const ram =
@@ -227,6 +251,10 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
       maintTerminalRef.current.scrollTop = maintTerminalRef.current.scrollHeight;
     }
   }, [maintLogs]);
+
+  useEffect(() => {
+    if (showConfirmModal) confirmPanelRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [showConfirmModal]);
 
   useEffect(() => {
     loadData();
@@ -413,7 +441,7 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
 
   // M6: Pre-cleanup systematic confirmation gate
   const handleLaunchCleanupClick = () => {
-    if (!api || maintaining) return;
+    if (!api || maintaining || maintainingRef.current || diskJunkCleaningRef.current) return;
     if (gamingActive) {
       setNotice('Maintenance différée : une session de jeu ou haute performance est active.');
       setTimeout(() => setNotice(''), 4000);
@@ -427,6 +455,7 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
     }
 
     // Confirmation synthétique systématique avant toute action destructive
+    setEmptyBinConfirmed(false);
     setShowConfirmModal(true);
   };
 
@@ -533,43 +562,52 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
   };
 
   const executeCleanup = async () => {
+    // Synchronous guard: two clicks in the same frame must not start two operations.
+    if (maintainingRef.current || diskJunkCleaningRef.current) return;
+    // The confirmed list is exactly the executed list. The Recycle Bin needs its own explicit consent.
+    const selectedIds = cleanItems.filter(i => i.selected && !i.inaccessible).map(i => i.id);
+    if (selectedIds.length === 0 || (selectedIds.includes('recycleBin') && !emptyBinConfirmed)) return;
+    maintainingRef.current = true;
     setShowConfirmModal(false);
     setMaintaining(true);
     setCleanProgress(5);
     setCleanMsg('Initialisation du moteur de maintenance…');
     setLastReport(null);
     const nowStr = () => new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    setMaintLogs([
-      `[${nowStr()}] Démarrage de la maintenance système...`,
-      `[${nowStr()}] Vérification de l'espace disque C: initial...`,
-    ]);
-
-    const selectedIds = cleanItems.filter(i => i.selected && !i.inaccessible).map(i => i.id);
+    setMaintLogs([`[${nowStr()}] Démarrage de la maintenance système...`]);
 
     try {
       const report = await api.runCleanup?.({ items: selectedIds });
       setCleanProgress(100);
-      if (report && report.success) {
+      if (report && !report.error && typeof report.deletedFilesCount === 'number') {
+        // A partial report is still a real result: show what was done, what was skipped and why.
         setLastReport(report);
-        const freed = report.freedDisplay || selectedTotal;
-        setCleanMsg(`Maintenance terminée — ${freed} libéré(s)`);
-        setNotice(`Maintenance terminée : ${freed} libéré(s) (${report.deletedFilesCount} fichiers supprimés).`);
+        const freed = report.freedDisplay || '0 Mo';
+        const problems: string[] = Array.isArray(report.errors) ? report.errors : [];
+        const incomplete = !report.success || report.partial;
+        setCleanMsg(incomplete ? `Maintenance en échec ou partielle — ${freed} comptabilisé(s)` : `Maintenance terminée — ${freed} libéré(s)`);
+        setNotice(`${incomplete ? (reportTone(report) === 'bad' ? 'Maintenance échouée' : 'Maintenance partielle') : 'Maintenance terminée'} : ${report.deletedFilesCount} fichier(s) supprimé(s), ${freed}.`, reportTone(report));
         setMaintLogs(prev => [
           ...prev,
-          `[${nowStr()}] [OK] Rapport final : ${report.deletedFilesCount} fichiers supprimés (${freed}).`,
-          `[${nowStr()}] [OK] Fichiers ignorés ou verrouillés : ${report.skippedFilesCount || 0}.`,
-          `[${nowStr()}] [OK] Variation mesurée sur C: : ${((report.observedFreeDeltaBytes || 0) / (1024 * 1024)).toFixed(1)} Mo.`,
+          `[${nowStr()}] [${incomplete ? 'PARTIEL' : 'OK'}] ${report.deletedFilesCount} fichier(s) supprimé(s) (${freed}).`,
+          `[${nowStr()}] Éléments ignorés ou verrouillés : ${report.skippedFilesCount || 0}.`,
+          ...problems.map(p => `[${nowStr()}] [AVERTISSEMENT] ${p}`),
         ]);
         loadCleanupData();
         loadDisksData();
       } else {
-        setCleanMsg(report?.error || 'Fin de la maintenance.');
-        setMaintLogs(prev => [...prev, `[${nowStr()}] [AVERTISSEMENT] ${report?.error || 'Opération terminée avec des alertes.'}`]);
+        const message = report?.error || 'La maintenance n’a produit aucun rapport.';
+        setCleanMsg(message);
+        setLastReport(null);
+        setMaintLogs(prev => [...prev, `[${nowStr()}] [ERREUR] ${message}`]);
+        setNotice(message);
       }
     } catch (err: any) {
       setCleanMsg(`Erreur : ${err.message}`);
       setMaintLogs(prev => [...prev, `[${nowStr()}] [ERREUR] ${err.message}`]);
+      setNotice(`Erreur : ${err.message}`);
     } finally {
+      maintainingRef.current = false;
       setMaintaining(false);
       setTimeout(() => setNotice(''), 7000);
     }
@@ -578,35 +616,49 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
   const openDiskOptimizer = async (disk: PhysicalDisk) => {
     setSelectedDiskForOpt(disk);
     setShowDiskOptModal(true);
-    setDiskJunkScanning(true);
     setDiskJunkScanResult(null);
-    setDiskJunkNotice('');
-    const letter = disk.driveLetters ? disk.driveLetters.split(',')[0].trim().replace(':', '') : (disk.isSystemDisk ? 'C' : 'C');
+    setDiskJunkNotice(null);
+    setDiskEmptyBin(false);
+    const letter = driveLetterOf(disk);
+    if (!letter) {
+      setDiskJunkScanning(false);
+      setDiskJunkNotice({ tone: 'error', text: 'Ce disque n’expose aucune lettre de lecteur : aucune analyse ni nettoyage n’est possible.' });
+      return;
+    }
+    setDiskJunkScanning(true);
     try {
       const res = await api?.scanDiskJunk?.(letter);
       setDiskJunkScanResult(res);
     } catch {
-      setDiskJunkNotice('Erreur lors de l\'analyse du volume.');
+      setDiskJunkNotice({ tone: 'error', text: 'Erreur lors de l\'analyse du volume.' });
     } finally {
       setDiskJunkScanning(false);
     }
   };
 
   const cleanDiskJunk = async () => {
-    if (!selectedDiskForOpt || diskJunkCleaning) return;
+    if (!selectedDiskForOpt || diskJunkCleaningRef.current || maintainingRef.current) return;
+    const letter = driveLetterOf(selectedDiskForOpt);
+    if (!letter) return;
+    diskJunkCleaningRef.current = true;
     setDiskJunkCleaning(true);
-    const letter = selectedDiskForOpt.driveLetters ? selectedDiskForOpt.driveLetters.split(',')[0].trim().replace(':', '') : (selectedDiskForOpt.isSystemDisk ? 'C' : 'C');
+    setDiskJunkNotice(null);
     try {
-      const res = await api?.cleanDiskJunk?.(letter);
+      const res = await api?.cleanDiskJunk?.(letter, { emptyRecycleBin: diskEmptyBin });
       if (res?.success) {
-        setDiskJunkNotice(res.message || 'Optimisation réussie ! Espace libéré avec succès.');
-        loadDisksData();
+        setDiskJunkNotice({ tone: 'ok', text: res.message || 'Nettoyage terminé.' });
+      } else if (res?.partial || res?.deletedFilesCount > 0) {
+        setDiskJunkNotice({ tone: 'warn', text: `${res.message || 'Nettoyage partiel.'} ${(res.errors || []).join(' ')}`.trim() });
       } else {
-        setDiskJunkNotice(res?.error || 'Erreur lors du nettoyage du volume.');
+        setDiskJunkNotice({ tone: 'error', text: res?.error || (res?.errors || []).join(' ') || 'Erreur lors du nettoyage du volume.' });
       }
+      loadDisksData();
+      const rescan = await api?.scanDiskJunk?.(letter);
+      if (rescan) setDiskJunkScanResult(rescan);
     } catch (err: any) {
-      setDiskJunkNotice(`Erreur : ${err.message}`);
+      setDiskJunkNotice({ tone: 'error', text: `Erreur : ${err.message}` });
     } finally {
+      diskJunkCleaningRef.current = false;
       setDiskJunkCleaning(false);
     }
   };
@@ -658,16 +710,16 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
-                background: 'rgba(74,222,128,0.1)',
-                border: '1px solid rgba(74,222,128,0.25)',
-                color: 'var(--ok)',
+                background: toneBg(noticeState.tone, 12),
+                border: `1px solid ${toneBg(noticeState.tone, 35)}`,
+                color: TONE_VAR[noticeState.tone],
                 borderRadius: 8,
                 padding: '6px 14px',
                 fontSize: 12,
                 fontWeight: 600,
               }}
             >
-              <CheckCircle2 size={15} />
+              {noticeState.tone === 'ok' ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
               <span>{notice}</span>
             </div>
           )}
@@ -729,9 +781,11 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                       </div>
                     ) : lastReport ? (
                       <div>
-                        <CheckCircle2 size={36} style={{ color: 'var(--ok)', margin: '0 auto 4px' }} />
-                        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ok)' }}>{lastReport.freedDisplay}</div>
-                        <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>Libéré(s)</div>
+                        {reportTone(lastReport) === 'ok'
+                          ? <CheckCircle2 size={36} style={{ color: 'var(--ok)', margin: '0 auto 4px' }} />
+                          : <AlertTriangle size={36} style={{ color: TONE_VAR[reportTone(lastReport)], margin: '0 auto 4px' }} />}
+                        <div style={{ fontSize: 15, fontWeight: 800, color: TONE_VAR[reportTone(lastReport)] }}>{lastReport.freedDisplay}</div>
+                        <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{reportTone(lastReport) === 'ok' ? 'Libéré(s)' : 'Résultat partiel'}</div>
                       </div>
                     ) : (
                       <div>
@@ -744,11 +798,11 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                 </div>
               </div>
 
-              <div style={{ fontSize: 11.5, color: maintaining ? '#38bdf8' : lastReport ? 'var(--ok)' : 'var(--muted)', fontWeight: 600, minHeight: 20 }}>
+              <div style={{ fontSize: 11.5, color: maintaining ? '#38bdf8' : lastReport ? TONE_VAR[reportTone(lastReport)] : 'var(--muted)', fontWeight: 600, minHeight: 20 }}>
                 {maintaining
                   ? cleanMsg || 'Purge des fichiers résiduels…'
                   : lastReport
-                  ? `Dernier nettoyage : ${lastReport.freedDisplay} récupérés`
+                  ? `${{ ok: 'Dernier nettoyage', warn: 'Dernier nettoyage partiel', bad: 'Dernier nettoyage échoué' }[reportTone(lastReport)]} : ${lastReport.freedDisplay} comptabilisés`
                   : `${selectedCount} catégorie(s) sélectionnée(s)`}
               </div>
             </div>
@@ -758,7 +812,7 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                 type="button"
                 className="btn"
                 onClick={handleLaunchCleanupClick}
-                disabled={maintaining || selectedCount === 0}
+                disabled={maintaining || showConfirmModal || selectedCount === 0}
                 style={{
                   width: '100%',
                   padding: '12px 18px',
@@ -786,6 +840,60 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
               <p style={{ fontSize: 10.5, color: 'var(--muted)', margin: '10px 0 0', lineHeight: 1.4 }}>
                 Purge ciblée et sécurisée : vos fichiers personnels, documents et configurations de jeux restent intacts.
               </p>
+
+              {/* Confirmation intégrée, juste sous l'action qui l'a ouverte */}
+              {showConfirmModal && !maintaining && (
+                <div
+                  ref={confirmPanelRef}
+                  role="alertdialog"
+                  aria-label="Confirmation du nettoyage"
+                  style={{
+                    marginTop: 14,
+                    textAlign: 'left',
+                    borderRadius: 10,
+                    border: '1px solid rgba(234, 179, 8, 0.3)',
+                    background: 'rgba(234, 179, 8, 0.05)',
+                    padding: '14px 16px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, color: '#facc15', fontWeight: 700, fontSize: 13 }}>
+                    <AlertTriangle size={16} />
+                    <span>Confirmer le nettoyage ?</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 10 }}>
+                    {cleanItems.filter(i => i.selected && !i.inaccessible).map(item => (
+                      <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 11.5 }}>
+                        <span style={{ color: 'var(--text)', minWidth: 0 }}>{item.label}</span>
+                        <b style={{ color: '#38bdf8', whiteSpace: 'nowrap' }}>{item.sizeDisplay || item.size}</b>
+                      </div>
+                    ))}
+                  </div>
+                  {cleanItems.some(i => i.selected && i.id === 'recycleBin') && (
+                    <div style={{ padding: 8, borderRadius: 6, marginBottom: 8, fontSize: 11, background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#fca5a5' }}>
+                      <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={emptyBinConfirmed} onChange={e => setEmptyBinConfirmed(e.target.checked)} style={{ marginTop: 2 }} />
+                        <span><b>Vider la Corbeille Windows</b> : tout son contenu sera supprimé définitivement et ne pourra pas être récupéré. Cochez pour confirmer.</span>
+                      </label>
+                    </div>
+                  )}
+                  {cleanItems.some(i => i.selected && i.id === 'dxCache') && (
+                    <div style={{ padding: 8, borderRadius: 6, marginBottom: 8, fontSize: 11, background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)', color: '#7dd3fc' }}>
+                      <b>Shaders DirectX :</b> le premier lancement de certains jeux peut être plus lent.
+                    </div>
+                  )}
+                  <p style={{ margin: '0 0 10px', fontSize: 10.5, color: 'var(--muted)', lineHeight: 1.4 }}>
+                    Les liens symboliques ne sont pas suivis. Les fichiers utilisés par un programme sont ignorés et comptés dans le rapport.
+                  </p>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" className="btn-ghost" onClick={() => setShowConfirmModal(false)} style={{ flex: 1, padding: '8px 12px', fontSize: 12 }}>
+                      Annuler
+                    </button>
+                    <button type="button" className="btn" onClick={executeCleanup} disabled={maintaining || (cleanItems.some(i => i.selected && !i.inaccessible && i.id === 'recycleBin') && !emptyBinConfirmed)} style={{ flex: 2, padding: '8px 12px', fontSize: 12, fontWeight: 700 }}>
+                      Confirmer ({selectedTotal})
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -931,19 +1039,25 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                 </div>
               )}
 
-              {lastReport && (
+              {lastReport && (() => {
+                const tone = reportTone(lastReport);
+                const incomplete = tone !== 'ok';
+                const accent = TONE_VAR[tone];
+                const errors: string[] = Array.isArray(lastReport.errors) ? lastReport.errors : [];
+                return (
                 <div
+                  role="status"
                   style={{
-                    background: 'rgba(34, 197, 94, 0.05)',
-                    border: '1px solid rgba(34, 197, 94, 0.22)',
+                    background: toneBg(tone, 7),
+                    border: `1px solid ${toneBg(tone, 35)}`,
                     borderRadius: 8,
                     padding: 12,
                     marginBottom: 10,
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#4ade80', fontWeight: 700, marginBottom: 8 }}>
-                    <CheckCircle2 size={14} />
-                    <span>Rapport exact du dernier nettoyage :</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: accent, fontWeight: 700, marginBottom: 8 }}>
+                    {incomplete ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}
+                    <span>{tone === 'bad' ? 'Nettoyage échoué — aucun fichier supprimé :' : incomplete ? 'Nettoyage partiel — rapport du dernier passage :' : 'Rapport exact du dernier nettoyage :'}</span>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, fontSize: 11 }}>
                     <div>
@@ -952,19 +1066,25 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                     </div>
                     <div>
                       <span style={{ color: 'var(--muted)' }}>Volume libéré : </span>
-                      <b style={{ color: '#4ade80' }}>{lastReport.freedDisplay}</b>
+                      <b style={{ color: accent }}>{lastReport.freedDisplay}</b>
                     </div>
                     <div>
-                      <span style={{ color: 'var(--muted)' }}>Fichiers verrouillés : </span>
+                      <span style={{ color: 'var(--muted)' }}>Ignorés / verrouillés : </span>
                       <span style={{ color: 'var(--text)' }}>{lastReport.skippedFilesCount || 0}</span>
                     </div>
                     <div>
-                      <span style={{ color: 'var(--muted)' }}>Delta C: mesuré : </span>
-                      <b style={{ color: '#38bdf8' }}>+{((lastReport.observedFreeDeltaBytes || 0) / (1024 * 1024)).toFixed(1)} Mo</b>
+                      <span style={{ color: 'var(--muted)' }}>Variation d’espace libre mesurée : </span>
+                      <b style={{ color: '#38bdf8' }}>{((lastReport.observedFreeDeltaBytes || 0) / (1024 * 1024)).toFixed(1)} Mo</b>
                     </div>
                   </div>
+                  {errors.length > 0 && (
+                    <ul style={{ margin: '8px 0 0', paddingLeft: 16, fontSize: 10.5, color: accent, lineHeight: 1.5 }}>
+                      {errors.map((message, idx) => <li key={idx}>{message}</li>)}
+                    </ul>
+                  )}
                 </div>
-              )}
+                );
+              })()}
 
               {/* Collapsible Technical Logs */}
               {maintLogs.length > 0 && (
@@ -1924,120 +2044,6 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
           </div>
         </div>
 
-        {/* ── M6: Confirmation de nettoyage (panneau inline) ── */}
-        {showConfirmModal && (
-          <div
-            style={{
-              borderRadius: 10,
-              border: '1px solid rgba(234, 179, 8, 0.3)',
-              background: 'rgba(234, 179, 8, 0.05)',
-              padding: '16px 18px',
-              marginTop: 4,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-              <div
-                style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 8,
-                  background: 'rgba(234, 179, 8, 0.15)',
-                  border: '1px solid rgba(234, 179, 8, 0.35)',
-                  display: 'grid',
-                  placeItems: 'center',
-                  color: '#facc15',
-                  flexShrink: 0,
-                }}
-              >
-                <AlertTriangle size={20} />
-              </div>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
-                  Confirmation du Nettoyage
-                </h3>
-                <p style={{ margin: '2px 0 0', fontSize: 11.5, color: 'var(--muted)' }}>
-                  Vérification des catégories sélectionnées
-                </p>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 18, fontSize: 12, lineHeight: 1.5 }}>
-              {/* Liste synthétique des catégories sélectionnées */}
-              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' }}>
-                <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8 }}>
-                  Périmètre des éléments ciblés :
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {cleanItems.filter(i => i.selected && !i.inaccessible).map(item => (
-                    <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11.5 }}>
-                      <span style={{ color: 'var(--text)' }}>
-                        {item.label} <small style={{ color: 'var(--muted)', fontSize: 10 }}>({item.id === 'userTemp' ? '%TEMP%' : item.id === 'winTemp' ? 'C:\\Windows\\Temp' : item.id === 'winLogs' ? 'C:\\Windows\\Logs' : item.id === 'dxCache' ? 'D3DSCache' : 'Corbeille'})</small>
-                      </span>
-                      <b style={{ color: '#38bdf8' }}>{item.sizeDisplay || item.size}</b>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Avertissements spécifiques */}
-              {cleanItems.some(i => i.selected && i.id === 'recycleBin') && (
-                <div
-                  style={{
-                    padding: 10,
-                    borderRadius: 8,
-                    background: 'rgba(239, 68, 68, 0.08)',
-                    border: '1px solid rgba(239, 68, 68, 0.25)',
-                    color: '#fca5a5',
-                  }}
-                >
-                  <b>Corbeille Windows :</b> Les éléments actuellement dans la Corbeille seront supprimés de manière définitive et ne pourront plus être récupérés.
-                </div>
-              )}
-              {cleanItems.some(i => i.selected && i.id === 'dxCache') && (
-                <div
-                  style={{
-                    padding: 10,
-                    borderRadius: 8,
-                    background: 'rgba(56, 189, 248, 0.08)',
-                    border: '1px solid rgba(56, 189, 248, 0.25)',
-                    color: '#7dd3fc',
-                  }}
-                >
-                  <b>Cache Shaders DirectX :</b> Les caches de compilation graphique seront purgés. Certains jeux pourront présenter de légers micro-ralentissements lors de leur premier lancement le temps de régénérer leurs shaders.
-                </div>
-              )}
-
-              <div style={{ padding: '8px 10px', borderRadius: 6, background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.06)', fontSize: 10.5, color: 'var(--muted)' }}>
-                <b>Sécurité Vanguard :</b> Les liens symboliques ne sont jamais suivis vers l'extérieur. Les fichiers ouverts par un processus actif seront automatiquement ignorés et comptabilisés dans le rapport sans bloquer la maintenance.
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 8 }}>
-                <span style={{ color: 'var(--muted)', fontSize: 11.5 }}>Volume total estimé à libérer :</span>
-                <b style={{ color: 'var(--text)', fontSize: 13 }}>{selectedTotal}</b>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => setShowConfirmModal(false)}
-                style={{ padding: '8px 16px', fontSize: 12 }}
-              >
-                Annuler
-              </button>
-              <button
-                type="button"
-                className="btn"
-                onClick={executeCleanup}
-                style={{ padding: '8px 18px', fontSize: 12, fontWeight: 700 }}
-              >
-                Confirmer et nettoyer ({selectedTotal})
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* ── Per-Disk Junk Optimizer Modal ── */}
         {showDiskOptModal && selectedDiskForOpt && (
           <div
@@ -2169,25 +2175,41 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                       ))}
                     </div>
 
-                    {diskJunkNotice && (
-                      <div
-                        style={{
-                          padding: '10px 14px',
-                          borderRadius: 8,
-                          background: 'rgba(34, 197, 94, 0.1)',
-                          border: '1px solid rgba(34, 197, 94, 0.3)',
-                          fontSize: 12,
-                          color: '#4ade80',
-                          marginBottom: 16,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 8,
-                        }}
-                      >
-                        <CheckCircle2 size={15} />
-                        <span>{diskJunkNotice}</span>
-                      </div>
-                    )}
+                    {diskJunkNotice && (() => {
+                      const tone = diskJunkNotice.tone === 'ok'
+                        ? { bg: 'rgba(34, 197, 94, 0.1)', border: 'rgba(34, 197, 94, 0.3)', color: '#4ade80' }
+                        : diskJunkNotice.tone === 'warn'
+                        ? { bg: 'rgba(234, 179, 8, 0.1)', border: 'rgba(234, 179, 8, 0.3)', color: '#facc15' }
+                        : { bg: 'rgba(239, 68, 68, 0.1)', border: 'rgba(239, 68, 68, 0.3)', color: '#f87171' };
+                      return (
+                        <div
+                          role="status"
+                          style={{
+                            padding: '10px 14px',
+                            borderRadius: 8,
+                            background: tone.bg,
+                            border: `1px solid ${tone.border}`,
+                            fontSize: 12,
+                            color: tone.color,
+                            marginBottom: 16,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                          }}
+                        >
+                          {diskJunkNotice.tone === 'ok' ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
+                          <span>{diskJunkNotice.text}</span>
+                        </div>
+                      );
+                    })()}
+
+                    <p style={{ margin: '0 0 14px', fontSize: 10.5, color: 'var(--muted)', lineHeight: 1.5 }}>
+                      Seuls les caches connus de ce lecteur sont nettoyés ; vos jeux, téléchargements et dossiers personnels ne sont jamais touchés.
+                    </p>
+                    <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '0 0 14px', fontSize: 11.5, color: 'var(--text)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={diskEmptyBin} onChange={e => setDiskEmptyBin(e.target.checked)} disabled={diskJunkCleaning} style={{ marginTop: 2 }} />
+                      <span><b>Vider aussi la Corbeille de ce lecteur</b> (suppression définitive, irrécupérable). Non coché : la Corbeille n’est pas touchée.</span>
+                    </label>
 
                     <div
                       style={{
@@ -2209,7 +2231,7 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                       <button
                         className="btn"
                         onClick={cleanDiskJunk}
-                        disabled={diskJunkCleaning || !diskJunkScanResult?.totalMB || !!diskJunkScanResult?.errorMessage}
+                        disabled={diskJunkCleaning || maintaining || !diskJunkScanResult?.totalMB || !!diskJunkScanResult?.errorMessage}
                         style={{ padding: '10px 20px', fontSize: 12.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}
                       >
                         {diskJunkCleaning ? (

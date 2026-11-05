@@ -441,7 +441,7 @@ class CommunityVpnEngine {
       if (!line || line.startsWith('*')) continue;
 
       const cols = line.split(',');
-      if (cols.length < configIdx) continue;
+      if (cols.length <= configIdx) continue;
 
       const base64Config = cols[configIdx];
       if (!base64Config || base64Config.length < 100) continue;

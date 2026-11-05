@@ -1401,7 +1401,7 @@ export default function VpnTab() {
               textAlign: 'left',
             }}
           >
-            <span>Connexion via profil OpenVPN importé</span>
+            <span>Import manuel d'un profil OpenVPN (.ovpn)</span>
             <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>
               {showImportSection ? '▲ Masquer' : '▼ Afficher'}
             </span>
@@ -1410,7 +1410,7 @@ export default function VpnTab() {
           {showImportSection && (
             <div style={{ padding: 14, background: 'var(--surface)', display: 'flex', flexDirection: 'column', gap: 10 }}>
               <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0, lineHeight: 1.5 }}>
-                Importez un fichier <code>.ovpn</code> officiel (ex. VPNBook) et saisissez vos identifiants.
+                Import manuel : ce n'est pas un catalogue automatique. Choisissez un fichier <code>.ovpn</code> fourni par votre service (ex. VPNBook) et saisissez vos identifiants.
                 Les identifiants ne sont jamais enregistrés sur disque.{' '}
                 <a href="https://www.vpnbook.com/" target="_blank" rel="noopener noreferrer"
                    style={{ color: 'var(--accent)', textDecoration: 'none' }}>
@@ -1418,7 +1418,26 @@ export default function VpnTab() {
                 </a>{' '}→ onglet "Free OpenVPN Account" pour les credentials du jour.
               </p>
 
-              {/* Coller le contenu OVPN */}
+              {/* Sélection du fichier .ovpn (ou collage du contenu) */}
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                  Fichier .ovpn
+                </label>
+                <input
+                  type="file"
+                  accept=".ovpn,.conf,text/plain"
+                  onChange={async e => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (!file) return;
+                    if (file.size > 256 * 1024) { setImportError('Fichier trop volumineux pour un profil OpenVPN (256 Ko max).'); return; }
+                    setImportError(null);
+                    setImportedOvpn(await file.text());
+                    if (!importedLabel.trim()) setImportedLabel(file.name.replace(/\.(ovpn|conf)$/i, ''));
+                  }}
+                  style={{ fontSize: 11.5, color: 'var(--text)' }}
+                />
+              </div>
               <div>
                 <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
                   Contenu du fichier .ovpn
@@ -1500,6 +1519,9 @@ export default function VpnTab() {
                   {importError}
                 </div>
               )}
+              {error && importedServerId && (
+                <div style={{ fontSize: 12, color: 'var(--bad)' }}>{error}</div>
+              )}
               {importSuccess && (
                 <div style={{ fontSize: 12, color: 'var(--success, #4c4)', padding: '6px 8px',
                   background: 'rgba(50,180,50,0.08)', borderRadius: 4, border: '1px solid rgba(50,180,50,0.2)' }}>
@@ -1525,7 +1547,9 @@ export default function VpnTab() {
                       });
                       if (res?.success) {
                         setImportedServerId(res.serverId);
-                        setImportSuccess(`Profil validé : ${res.label} (${res.remoteHost}:${res.remotePort}). Sélectionnez-le dans le catalogue pour vous connecter.`);
+                        setImportSuccess(`Profil validé : ${res.label} (${res.remoteHost}:${res.remotePort}). Cliquez sur « Se connecter avec ce profil » : un tunnel OpenVPN réel sera alors établi.`);
+                        setSelectedNode(res.label);
+                        setSelectedNodeData({ id: res.serverId, name: res.label, speed: '—', speedMbps: 0, protocolBadge: String(res.protocol || 'ovpn').toUpperCase(), ip: res.remoteHost || '', ping: 0, sessions: 0, disclaimer: 'Profil importé manuellement.' });
                         // Recharger le catalogue pour faire apparaître le serveur injecté
                         fetchCatalog(false);
                       } else {
@@ -1541,6 +1565,15 @@ export default function VpnTab() {
                   {importLoading ? 'Validation…' : 'Valider et préparer'}
                 </button>
 
+                {importedServerId && (
+                  <button
+                    className="btn btn-primary btn-sm"
+                    disabled={connected || (vpnState !== 'disconnected' && vpnState !== 'error')}
+                    onClick={handleToggleConnect}
+                  >
+                    {vpnState === 'preparing' ? 'Connexion…' : connected ? 'Connecté' : 'Se connecter avec ce profil'}
+                  </button>
+                )}
                 {importedServerId && (
                   <button
                     className="btn btn-sm"

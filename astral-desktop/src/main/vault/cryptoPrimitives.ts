@@ -9,6 +9,7 @@
  * - Effacement mémoire sécurisé : sodium.memzero
  */
 
+import './webcryptoPolyfill.ts';
 import sodium from 'libsodium-wrappers-sumo';
 
 // Bornes strictes de sécurité pour la dérivation KDF (protection Anti-DoS en lecture d'en-tête)

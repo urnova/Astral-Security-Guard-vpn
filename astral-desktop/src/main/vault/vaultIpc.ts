@@ -31,6 +31,18 @@ export function registerVaultIpc(vaultManager: VaultManager): void {
     return vaultManager.getStatus();
   });
 
+  // 1b. Emplacement proposé par défaut pour un nouveau coffre, et ce qu'il contient déjà (lecture seule)
+  ipcMain.handle('vault:get-default-path', async (): Promise<{ path: string; exists: boolean; hasVault: boolean; hasContent: boolean }> => {
+    const target = defaultVaultCreatePath();
+    let entries: string[] = [];
+    let exists = false;
+    try {
+      if (target && fs.existsSync(target)) { exists = true; entries = fs.readdirSync(target); }
+    } catch { /* unreadable: treated as non-empty below */ exists = true; entries = ['?']; }
+    const hasVault = entries.includes('vault.header');
+    return { path: target, exists, hasVault, hasContent: entries.length > 0 && !hasVault };
+  });
+
   // 2. Sélection d'un dossier pour création ou ouverture
   ipcMain.handle('vault:select-folder', async (event, options?: { title?: string; forCreate?: boolean }): Promise<string | null> => {
     const win = BrowserWindow.fromWebContents(event.sender);

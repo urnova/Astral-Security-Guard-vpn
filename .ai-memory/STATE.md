@@ -1,12 +1,17 @@
 # STATE — Vanguard Core
 
 ## État Actuel
-- **Version cible :** `v0.1.8` (suite à l'incident de livraison v0.1.7).
-- **Git Branch :** `refactor/v3-baseline`. **Dernier commit :** `f52fd48`. **Tag distant :** `v0.1.7` (sur `f52fd48`).
-- **Statut courant :** Diagnostic complet et prouvé de l'incident v0.1.7. Correctifs appliqués sur `communityVpnEngine.ts`, `lifecycle.ts`, `updater.ts`, `UpdateModal.tsx`, `preload/index.ts`.
-- **TypeCheck :** 0 erreur (`tsc --noEmit`).
-- **Tests :** 16/16 tests cycle de vie & brief IA passés (`test-brief-and-lifecycle.mjs`), 14/14 tests Vault passés (`test-vault-worker-and-ipc.mjs`).
-- **Publication :** En attente de décision utilisateur pour le passage en v0.1.8. Aucun tag distant poussé.
+- **Version publiée :** `v0.1.8` ; candidate `v0.1.9` (pré-release) préparée, non publiée tant que non confirmée.
+- **Git Branch :** `refactor/v3-baseline`. **Dernier commit :** `858ecf5f14d5ab45259eef3ccc079d0f465a2f69`.
+- **Tags distants :** `v0.1.7` (sur `f52fd48`, inchangé) et `v0.1.8` (sur `858ecf5`, publié).
+- **Statut courant :** Pré-release v0.1.8 publiée avec succès sur GitHub. Vérification des 4 assets et du tag validée.
+- **En attente :** Essais réels par l'utilisateur (mise à jour / installation v0.1.8). Arrêt de toute modification logicielle.
+- **TypeCheck :** 0 erreur (`tsc -p tsconfig.json --noEmit`).
+- **Tests validés :** 
+  - `test-updater-and-lifecycle.mjs` : 6/6 OK.
+  - `test-brief-and-lifecycle.mjs` : 16/16 OK.
+  - `test-vault-worker-and-ipc.mjs` : 14/14 OK.
+- **Artefacts produits :** `Vanguard-Core-Setup-0.1.8.exe` (SHA-256: `717A136CA5DFD406FC2459EB1F9AE3E1F7B08B9EEBCC5DF213968EE45A019F94`), blockmap, `latest.yml`, `SHA256SUMS.txt`.
 
 ---
 
@@ -30,3 +35,15 @@
 - `updater.ts` : suivi dynamique `installStage` (`preparing`, `closing`, `launching`, `failed`), destruction des fenêtres avant quit, résolution du chemin de l'installateur téléchargé (`getDownloadedInstallerPath()`), IPC de secours `open-installer-folder` et `launch-downloaded-installer`.
 - `UpdateModal.tsx` : suppression de l'estimation "2 à 4 secondes", checklist dynamique calquée sur les étapes réelles, gestion d'erreur sans figer l'interface, carte de secours avec chemin de l'installateur et boutons de lancement manuel / ouverture dossier.
 - `preload/index.ts` : exposition des méthodes de secours `openInstallerFolder` et `launchDownloadedInstaller`.
+
+---
+
+---
+
+## Candidat v0.1.9 (branche `release/v0.1.9-prerelease`, base Perplexity ad4d963 relue et corrigée)
+Détail et limites : voir `.ai-memory/HANDOFF.md`.
+- **Maintenance :** confirmation intégrée sous le bouton, anti double lancement, rapport partiel (couleurs ok/warn/bad du thème), Corbeille jamais vidée sans case de consentement dédiée (principal et par lecteur), plus de `C:` implicite, plus de nettoyage de `Temp`/`tmp`/Steam `downloading`/caches d'installation.
+- **Vault :** erreur `globalThis.crypto.getRandomValues is not available` : Electron 28 = Node 18, pas de WebCrypto global dans le worker, donc le Vault ne démarrait pas, y compris dans l'app packagée. Polyfill `vault/webcryptoPolyfill.ts` importé avant libsodium. Parcours « Créer mon coffre » (userData/VanguardVault proposé, sans écrasement), ouverture après création corrigée, extraction en clair confirmée dans la page.
+- **VPN :** le catalogue VPN Gate était toujours vide : le parseur rejetait les lignes vides dans `<ca>` (97/97 profils rejetés avant, 97/97 valides après correctif sur le flux réel). Import .ovpn manuel avec sélecteur de fichier et bouton de connexion.
+- **Notifications :** historique atomique, événement `notifications:updated`, pas de doublon constaté sur le parcours maintenance.
+- **Packaging :** `winCodeSign-2.6.0` recopié dans le cache utilisateur depuis une extraction complète (échec symlink darwin sans mode développeur).

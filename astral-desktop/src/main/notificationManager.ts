@@ -97,7 +97,7 @@ class NotificationManager {
         const raw = fs.readFileSync(this.historyFilePath, 'utf-8');
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          this.history = parsed.slice(-MAX_HISTORY_ITEMS);
+          this.history = parsed.slice(0, MAX_HISTORY_ITEMS); // newest first
         }
       }
     } catch (err: any) {
@@ -110,7 +110,10 @@ class NotificationManager {
     try {
       const dir = path.dirname(this.historyFilePath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(this.historyFilePath, JSON.stringify(this.history, null, 2), 'utf-8');
+      // Write-then-rename so an interrupted write can never truncate the persisted activity log.
+      const tmp = `${this.historyFilePath}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(this.history, null, 2), 'utf-8');
+      fs.renameSync(tmp, this.historyFilePath);
     } catch (err: any) {
       logger.warn('[NotificationManager] Impossible d\'enregistrer l\'historique :', err?.message);
     }
@@ -212,6 +215,9 @@ class NotificationManager {
       this.history.pop();
     }
     this.saveHistory();
+    try {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) this.mainWindow.webContents.send('notifications:updated', { id: notification.id });
+    } catch { /* the persisted history stays authoritative */ }
 
     // 5. Décision de distribution visuelle et sonore
     if (!isGlobalEnabled && !isCritical) {

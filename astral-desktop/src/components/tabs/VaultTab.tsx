@@ -90,6 +90,9 @@ export default function VaultTab() {
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedHash, setCopiedHash] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [defaultVault, setDefaultVault] = useState<{ path: string; exists: boolean; hasVault: boolean; hasContent: boolean } | null>(null);
+  const [showOpenForm, setShowOpenForm] = useState(false);
+  const [confirmPlain, setConfirmPlain] = useState(false);
 
   // Rafraîchir l'état du coffre
   const refreshStatus = useCallback(async () => {
@@ -133,6 +136,33 @@ export default function VaultTab() {
   }, [refreshStatus]);
 
   // Dialogue de sélection de répertoire
+  // Création : emplacement par défaut proposé sans sélection préalable, sans jamais écraser un contenu existant.
+  const startCreate = async () => {
+    setError(null);
+    setCreatePath('');
+    setDefaultVault(null);
+    setViewMode('CREATE');
+    try {
+      const info = await api?.vault?.getDefaultPath?.();
+      if (info?.path) {
+        setDefaultVault(info);
+        if (!info.hasVault && !info.hasContent) setCreatePath(info.path);
+      }
+    } catch { /* l'utilisateur peut toujours choisir un emplacement */ }
+  };
+
+  // Ouverture directe après création, avec les identifiants saisis (aucun retour à l'écran de sélection).
+  const openAfterCreate = async (vaultRoot: string, password: string) => {
+    try {
+      await api?.vault?.open?.({ vaultRoot, password });
+      setSelectedVaultPath(vaultRoot);
+      await refreshStatus();
+    } catch (e: any) {
+      setSelectedVaultPath(vaultRoot);
+      setError(`Le coffre a été créé mais son ouverture a échoué : ${e.message || 'erreur inconnue'}. Déverrouillez-le avec votre mot de passe.`);
+    }
+  };
+
   const handleSelectFolder = async (target: 'UNLOCK' | 'CREATE') => {
     try {
       const folder = await api?.vault?.selectFolder?.({
@@ -219,12 +249,12 @@ export default function VaultTab() {
         setCreatedRecoveryKey(res.recoveryKeyFormatted);
         setCreatedVaultId(res.vaultId);
       } else {
-        // Pas de récupération demandée -> ouvrir directement
-        setSelectedVaultPath(createPath);
+        // Pas de récupération demandée -> ouvrir directement avec les identifiants saisis
+        const password = createPassword;
         setViewMode('DEFAULT');
         setCreatePassword('');
         setCreateConfirm('');
-        await handleUnlock();
+        await openAfterCreate(createPath, password);
       }
     } catch (e: any) {
       setError(e.message || 'Échec de création du coffre.');
@@ -255,13 +285,15 @@ export default function VaultTab() {
       setError('Veuillez confirmer que vous avez sauvegardé votre clé de secours.');
       return;
     }
-    setSelectedVaultPath(createPath);
+    const password = createPassword;
+    const root = createPath;
+    setSelectedVaultPath(root);
     setCreatedRecoveryKey(null);
     setCreatedVaultId(null);
     setCreatePassword('');
     setCreateConfirm('');
     setViewMode('DEFAULT');
-    await handleUnlock();
+    await openAfterCreate(root, password);
   };
 
   // Verrouillage manuel
@@ -353,12 +385,8 @@ export default function VaultTab() {
   // 2. Extraire tous les fichiers en clair vers un dossier cible
   const handleExtractAllPlaintext = async () => {
     if (!api?.vault) return;
-    const confirmed = window.confirm(
-      '⚠️ Attention : Vous êtes sur le point d\'extraire TOUS les fichiers du coffre EN CLAIR sur votre disque, sans protection cryptographique.\n\n' +
-      'Cette opération écrit des fichiers lisibles par toute application.\n\n' +
-      'Confirmez-vous cette extraction en clair ?'
-    );
-    if (!confirmed) return;
+    // La confirmation est affichée dans la page (panneau « confirmPlain »), pas dans une boîte système.
+    setConfirmPlain(false);
 
     try {
       const destPath: string | null = await api.vault.selectExportDest?.({
@@ -556,8 +584,24 @@ export default function VaultTab() {
             {/* 1. Dossier */}
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>
-                1. Répertoire du coffre sur disque (NTFS)
+                1. Emplacement du coffre (proposé : dossier de données Vanguard)
               </label>
+              {defaultVault?.hasVault && (
+                <div className="card card-warning card-p" style={{ marginBottom: 8, fontSize: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <span>Un coffre existe déjà à l’emplacement proposé (<code>{defaultVault.path}</code>). Rien ne sera écrasé.</span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-sm" onClick={() => { setSelectedVaultPath(defaultVault.path); setShowOpenForm(true); setViewMode('DEFAULT'); }}>
+                      Ouvrir ce coffre
+                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => handleSelectFolder('CREATE')}>Choisir un autre emplacement…</button>
+                  </div>
+                </div>
+              )}
+              {defaultVault?.hasContent && (
+                <div className="card card-warning card-p" style={{ marginBottom: 8, fontSize: 12 }}>
+                  L’emplacement proposé (<code>{defaultVault.path}</code>) contient déjà des fichiers : il ne sera pas utilisé. Choisissez un autre dossier vide.
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
                 <input
                   type="text"
@@ -741,6 +785,21 @@ export default function VaultTab() {
         )}
 
         <div className="card card-p" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {!selectedVaultPath && !showOpenForm && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button className="btn btn-success" style={{ padding: '14px 18px', fontSize: 14, fontWeight: 700 }} onClick={startCreate}>
+                <Plus size={16} style={{ marginRight: 8 }} /> Créer mon coffre
+              </button>
+              <p style={{ margin: 0, fontSize: 11.5, color: 'var(--dim)', textAlign: 'center' }}>
+                Un emplacement local vous est proposé automatiquement ; vous pourrez en choisir un autre.
+              </p>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowOpenForm(true)}>
+                <FolderLock size={14} style={{ marginRight: 6 }} /> Ouvrir un coffre existant
+              </button>
+            </div>
+          )}
+          {(selectedVaultPath || showOpenForm) && (
+          <>
           {/* Sélection du dossier */}
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>
@@ -837,10 +896,12 @@ export default function VaultTab() {
 
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 12, color: 'var(--dim)' }}>Vous n'avez pas encore de coffre ?</span>
-            <button className="btn btn-ghost btn-sm" onClick={() => { setViewMode('CREATE'); setError(null); }}>
-              <Plus size={14} style={{ marginRight: 6 }} /> Créer un nouveau coffre
+            <button className="btn btn-ghost btn-sm" onClick={startCreate}>
+              <Plus size={14} style={{ marginRight: 6 }} /> Créer mon coffre
             </button>
           </div>
+          </>
+          )}
         </div>
       </div>
     );
@@ -1024,27 +1085,29 @@ export default function VaultTab() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 10.5, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Sauvegarde chiffrée</span>
           <button
             className="btn btn-ghost btn-sm"
             onClick={handleBackupEncrypted}
-            title="Sauvegarder une copie chiffrée complète du coffre dans un dossier externe"
+            title="Copie chiffrée complète du coffre vers un dossier de votre choix (disque externe, clé USB…) : les fichiers restent chiffrés"
           >
-            <FolderLock size={13} style={{ marginRight: 6 }} /> Sauvegarder copie chiffrée
+            <FolderLock size={13} style={{ marginRight: 6 }} /> Copie chiffrée vers…
           </button>
           <button
             className="btn btn-ghost btn-sm"
             onClick={handleExportPortableArchive}
-            title="Empaqueter le coffre dans une archive unique portable (.vgv) chiffrée"
+            title="Archive unique portable (.vgv), entièrement chiffrée, à enregistrer où vous voulez (clé USB par exemple)"
           >
-            <HardDrive size={13} style={{ marginRight: 6 }} /> Exporter archive (.vgv)
+            <HardDrive size={13} style={{ marginRight: 6 }} /> Archive portable (.vgv)…
           </button>
+          <span style={{ fontSize: 10.5, color: 'var(--warn)', textTransform: 'uppercase', letterSpacing: '0.04em', marginLeft: 8 }}>Sans protection</span>
           <button
             className="btn btn-ghost btn-sm"
-            onClick={handleExtractAllPlaintext}
-            title="Extraire tous les fichiers indexés en clair sur le disque"
+            onClick={() => setConfirmPlain(v => !v)}
+            title="Écrit les fichiers lisibles en clair sur le disque : aucune protection cryptographique"
           >
-            <Download size={13} style={{ marginRight: 6 }} /> Extraire tous les fichiers en clair
+            <Download size={13} style={{ marginRight: 6 }} /> Extraire en clair…
           </button>
           <button
             className="btn btn-ghost btn-sm"
@@ -1062,6 +1125,22 @@ export default function VaultTab() {
           </button>
         </div>
       </div>
+
+      {confirmPlain && (
+        <div role="alertdialog" aria-label="Confirmer l'extraction en clair" className="card card-warning card-p" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 13, color: 'var(--warn)' }}>
+            <AlertTriangle size={16} /> Extraire tous les fichiers EN CLAIR ?
+          </div>
+          <p style={{ margin: 0, fontSize: 12, color: 'var(--dim)', lineHeight: 1.5 }}>
+            Les fichiers seront écrits lisibles dans le dossier que vous choisirez, sans protection cryptographique : toute application ou personne ayant accès à ce dossier pourra les lire.
+            Pour une copie qui reste protégée (clé USB, disque externe), utilisez plutôt « Copie chiffrée » ou « Archive portable (.vgv) ».
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setConfirmPlain(false)}>Annuler</button>
+            <button className="btn btn-danger btn-sm" onClick={handleExtractAllPlaintext}>Choisir le dossier et extraire en clair</button>
+          </div>
+        </div>
+      )}
 
       {/* Formulaire de changement de mot de passe inline */}
       {viewMode === 'CHANGE_PASSWORD' && (
@@ -1165,10 +1244,10 @@ export default function VaultTab() {
         </table>
       </div>
 
-      {/* Modal de confirmation de suppression */}
+      {/* Confirmation de suppression, dans la page (sans voile ni flou) */}
       {fileToDelete && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
-          <div className="card card-p" style={{ maxWidth: 460, width: '100%', background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div style={{ position: 'sticky', bottom: 12, zIndex: 5 }}>
+          <div role="alertdialog" aria-label="Confirmer la suppression" className="card card-p" style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--bad)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
               <ShieldAlert size={22} style={{ color: 'var(--bad)' }} />
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Supprimer du coffre ?</h3>

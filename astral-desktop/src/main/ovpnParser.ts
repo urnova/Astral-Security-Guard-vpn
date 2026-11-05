@@ -157,6 +157,7 @@ export class StrictOvpnParser {
       if (insideTag) {
         // Validation du contenu du certificat (caractères base64 ou délimiteurs standard)
         if (
+          line === '' || // blank separator lines are legitimate inside PEM / key blocks
           /^[A-Za-z0-9+/=\s-]+$/.test(line) ||
           line.includes('BEGIN CERTIFICATE') ||
           line.includes('END CERTIFICATE') ||

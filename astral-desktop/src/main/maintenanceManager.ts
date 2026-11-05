@@ -101,18 +101,39 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} Go`;
 }
 
-export async function analyzeStorageCategories(): Promise<StorageCategoryScan[]> {
-  const userTempPath = process.env.TEMP || path.join(process.env.USERPROFILE || 'C:\\', 'AppData', 'Local', 'Temp');
-  const paths = {
-    userTemp: userTempPath,
-    winTemp: 'C:\\Windows\\Temp',
-    winLogs: 'C:\\Windows\\Logs',
-    dxCache: path.join(process.env.LOCALAPPDATA || 'C:\\', 'D3DSCache'),
+const EMPTY_SCAN = { bytes: 0, fileCount: 0, inaccessible: true };
+
+function absoluteEnv(name: string): string | null {
+  const value = process.env[name];
+  return value && path.isAbsolute(value) ? path.resolve(value) : null;
+}
+
+/** Fixed cleanup targets, resolved from the environment. A target that cannot be resolved is null: no drive is ever assumed. */
+export function resolveCleanupTargets(): Record<'userTemp' | 'winTemp' | 'winLogs' | 'dxCache', string | null> {
+  const home = absoluteEnv('USERPROFILE');
+  let userTemp = absoluteEnv('TEMP') || (home ? path.join(home, 'AppData', 'Local', 'Temp') : null);
+  // Never treat a drive root or the profile folder itself as a temporary directory.
+  if (userTemp && (userTemp === path.parse(userTemp).root || userTemp === home)) userTemp = null;
+  const systemRoot = absoluteEnv('SystemRoot') || absoluteEnv('windir');
+  const localAppData = absoluteEnv('LOCALAPPDATA');
+  return {
+    userTemp,
+    winTemp: systemRoot ? path.join(systemRoot, 'Temp') : null,
+    winLogs: systemRoot ? path.join(systemRoot, 'Logs') : null,
+    dxCache: localAppData ? path.join(localAppData, 'D3DSCache') : null,
   };
-  const uTemp = getSafeDirSize(paths.userTemp);
-  const wTemp = getSafeDirSize(paths.winTemp);
-  const wLogs = getSafeDirSize(paths.winLogs);
-  const dxCache = getSafeDirSize(paths.dxCache);
+}
+
+function scanTarget(target: string | null) {
+  return target ? getSafeDirSize(target) : EMPTY_SCAN;
+}
+
+export async function analyzeStorageCategories(): Promise<StorageCategoryScan[]> {
+  const paths = resolveCleanupTargets();
+  const uTemp = scanTarget(paths.userTemp);
+  const wTemp = scanTarget(paths.winTemp);
+  const wLogs = scanTarget(paths.winLogs);
+  const dxCache = scanTarget(paths.dxCache);
   let rbBytes = 0;
   let rbCount = 0;
   let rbUnavailable = true;
@@ -143,8 +164,8 @@ export async function analyzeStorageCategories(): Promise<StorageCategoryScan[]>
   });
   return [
     category('userTemp', 'Fichiers temporaires utilisateur (%TEMP%)', uTemp, 'Fichiers temporaires de la session utilisateur.', true),
-    category('winTemp', 'Fichiers temporaires système (C:\\Windows\\Temp)', wTemp, "Données temporaires du système et des installations.", wTemp.bytes > 0),
-    category('winLogs', 'Journaux système (C:\\Windows\\Logs)', wLogs, 'Journaux de diagnostic Windows. Nettoyage facultatif.', false),
+    category('winTemp', `Fichiers temporaires système (${paths.winTemp ?? 'Windows\\Temp'})`, wTemp, "Données temporaires du système et des installations.", wTemp.bytes > 0),
+    category('winLogs', `Journaux système (${paths.winLogs ?? 'Windows\\Logs'})`, wLogs, 'Journaux de diagnostic Windows. Nettoyage facultatif.', false),
     { ...category('dxCache', 'Cache de shaders DirectX (D3DSCache)', dxCache, 'Cache régénéré par les applications. Le premier lancement peut être plus lent.', false), requiresConfirmation: true },
     {
       id: 'recycleBin', label: 'Corbeille Windows', bytes: rbBytes, fileCount: rbCount,
@@ -170,11 +191,7 @@ export async function executeStorageCleanup(
     throw new Error('Sélectionnez uniquement des catégories de nettoyage reconnues.');
   }
   const selected = [...new Set(selectedCategoryIds)];
-  const targets: Record<string, string> = {
-    userTemp: process.env.TEMP || path.join(process.env.USERPROFILE || 'C:\\', 'AppData', 'Local', 'Temp'),
-    winTemp: 'C:\\Windows\\Temp', winLogs: 'C:\\Windows\\Logs',
-    dxCache: path.join(process.env.LOCALAPPDATA || 'C:\\', 'D3DSCache'),
-  };
+  const targets = resolveCleanupTargets();
   isMaintenanceRunning = true;
   const startTime = Date.now();
   const categoriesCleaned: string[] = [];
@@ -182,9 +199,16 @@ export async function executeStorageCleanup(
   let totalDeletedBytes = 0;
   let totalDeletedCount = 0;
   let totalSkippedCount = 0;
+  // Free space is observed only on the volumes that hold the selected targets.
+  const volumes = [...new Set(selected.filter(id => id !== 'recycleBin')
+    .map(id => (targets as Record<string, string | null>)[id])
+    .filter((target): target is string => Boolean(target))
+    .map(target => path.parse(target).root))];
   const freeBytes = (): number | null => {
-    try { const stat = fs.statfsSync('C:\\'); return Number(stat.bfree) * Number(stat.bsize); }
-    catch { return null; }
+    if (volumes.length === 0) return null;
+    try {
+      return volumes.reduce((sum, volume) => { const stat = fs.statfsSync(volume); return sum + Number(stat.bfree) * Number(stat.bsize); }, 0);
+    } catch { return null; }
   };
   const sendProgress = (percent: number, category: string, message: string) => {
     try {
@@ -205,7 +229,10 @@ export async function executeStorageCleanup(
           else errors.push('Le vidage de la Corbeille n’a pas été confirmé.');
         } catch (error: any) { errors.push(`Corbeille : ${error?.message || 'échec du vidage'}`); }
       } else {
-        const result = cleanSafeDir(targets[id]);
+        const target = (targets as Record<string, string | null>)[id];
+        const result = target
+          ? cleanSafeDir(target)
+          : { deletedBytes: 0, deletedCount: 0, skippedCount: 0, errors: ['Emplacement introuvable sur cette machine.'] };
         totalDeletedBytes += result.deletedBytes;
         totalDeletedCount += result.deletedCount;
         totalSkippedCount += result.skippedCount;
@@ -242,6 +269,155 @@ export async function executeStorageCleanup(
       });
     } catch (error: any) { logger.warn('[Maintenance] Activité non enregistrée :', error?.message); }
     return report;
+  } finally { isMaintenanceRunning = false; }
+}
+
+// ── Per-drive cleanup ────────────────────────────────────────────────────────
+// A drive is only ever cleaned through an explicit letter. Known cache locations are cleaned on the
+// volume that holds them; every other volume offers its own Recycle Bin and nothing else. Game
+// libraries, download folders and arbitrary "Temp"/"tmp" folders are never touched.
+
+export interface DriveJunkCategory {
+  id: string; label: string; desc: string; sizeBytes: number; sizeMB: number; sizeDisplay: string;
+  safeToClean: boolean; unavailable?: boolean;
+}
+export interface DriveJunkScan {
+  success: boolean; driveLetter: string; totalBytes: number; totalMB: number; totalFormatted: string;
+  categories: DriveJunkCategory[]; summary: string; errorMessage?: string;
+}
+export interface DriveCleanupResult {
+  success: boolean; partial: boolean; driveLetter: string; categoriesCleaned: string[];
+  deletedFilesCount: number; deletedBytes: number; skippedFilesCount: number; errors: string[];
+  freedDisplay: string; message: string; error?: string;
+}
+
+/** Strict parser: exactly one letter, optionally followed by a colon. No default drive. */
+export function parseDriveLetter(input: unknown): string | null {
+  if (typeof input !== 'string') return null;
+  const match = /^([A-Za-z]):?$/.exec(input.trim());
+  return match ? match[1].toUpperCase() : null;
+}
+
+function driveOf(target: string): string {
+  return path.parse(target).root.slice(0, 1).toUpperCase();
+}
+
+interface DriveDirTarget { id: string; label: string; desc: string; dirs: string[] }
+
+function getDriveDirTargets(letter: string): DriveDirTarget[] {
+  const targets = resolveCleanupTargets();
+  const localAppData = absoluteEnv('LOCALAPPDATA');
+  const candidates: DriveDirTarget[] = [
+    { id: 'userTemp', label: 'Fichiers temporaires de session (%TEMP%)', desc: 'Fichiers de travail créés par les applications.', dirs: targets.userTemp ? [targets.userTemp] : [] },
+    {
+      id: 'dxCache', label: 'Caches de shaders DirectX / GPU', desc: 'Caches régénérés par les applications ; le premier lancement d’un jeu peut être plus lent.',
+      dirs: [targets.dxCache, localAppData ? path.join(localAppData, 'NVIDIA', 'DXCache') : null].filter((d): d is string => Boolean(d)),
+    },
+    { id: 'crashDumps', label: 'Rapports d’erreurs applicatives', desc: 'Vidages .dmp d’anciens plantages.', dirs: localAppData ? [path.join(localAppData, 'CrashDumps')] : [] },
+  ];
+  return candidates
+    .map(candidate => ({ ...candidate, dirs: candidate.dirs.filter(dir => driveOf(dir) === letter) }))
+    .filter(candidate => candidate.dirs.length > 0);
+}
+
+function isUsableDrive(letter: string): boolean {
+  try { return fs.statSync(`${letter}:\\`).isDirectory(); } catch { return false; }
+}
+
+async function measureRecycleBin(letter: string): Promise<{ bytes: number; count: number } | null> {
+  try {
+    const response = await runPowerShell<any>(`
+      $ErrorActionPreference = 'Stop'
+      $rb = (New-Object -ComObject Shell.Application).Namespace(10)
+      if ($null -eq $rb) { throw 'Corbeille inaccessible' }
+      $total = 0; $count = 0
+      foreach ($i in $rb.Items()) { if ($i.Path -like '${letter}:*') { $total += $i.Size; $count++ } }
+      [PSCustomObject]@{ count = $count; bytes = $total } | ConvertTo-Json -Compress
+    `, { asJson: true, timeout: 8000 });
+    if (!response.success || !response.data) return null;
+    const bytes = Number(response.data.bytes);
+    const count = Number(response.data.count);
+    return Number.isFinite(bytes) && bytes >= 0 && Number.isFinite(count) ? { bytes, count } : null;
+  } catch { return null; }
+}
+
+export async function scanDriveJunk(driveInput: unknown): Promise<DriveJunkScan> {
+  const letter = parseDriveLetter(driveInput);
+  const fail = (message: string): DriveJunkScan => ({
+    success: false, driveLetter: letter ? `${letter}:` : '', totalBytes: 0, totalMB: 0, totalFormatted: '—',
+    categories: [], summary: `Analyse indisponible : ${message}`, errorMessage: message,
+  });
+  if (!letter) return fail('lecteur non précisé ou invalide.');
+  if (!isUsableDrive(letter)) return fail(`le lecteur ${letter}: est introuvable.`);
+  const toCategory = (id: string, label: string, desc: string, bytes: number, unavailable = false): DriveJunkCategory => ({
+    id, label, desc, sizeBytes: bytes, sizeMB: Math.round(bytes / (1024 * 1024) * 10) / 10,
+    sizeDisplay: unavailable ? 'Analyse indisponible' : formatBytes(bytes), safeToClean: !unavailable, unavailable,
+  });
+  const categories: DriveJunkCategory[] = [];
+  for (const target of getDriveDirTargets(letter)) {
+    const sizes = target.dirs.map(getSafeDirSize);
+    const incomplete = sizes.some(size => size.inaccessible);
+    const bytes = sizes.reduce((sum, size) => sum + size.bytes, 0);
+    if (bytes > 0 || incomplete) categories.push(toCategory(target.id, target.label, target.desc, bytes, incomplete && bytes === 0));
+  }
+  const bin = await measureRecycleBin(letter);
+  categories.push(toCategory('recycleBin', `Corbeille du lecteur ${letter}:`,
+    'Suppression définitive des éléments de la Corbeille situés sur ce lecteur.', bin?.bytes ?? 0, bin === null));
+  const totalBytes = categories.filter(c => !c.unavailable).reduce((sum, c) => sum + c.sizeBytes, 0);
+  return {
+    success: true, driveLetter: `${letter}:`, totalBytes, totalMB: Math.round(totalBytes / (1024 * 1024) * 10) / 10,
+    totalFormatted: formatBytes(totalBytes), categories,
+    summary: totalBytes > 0
+      ? `${formatBytes(totalBytes)} de caches et fichiers temporaires identifiés sur ${letter}:.`
+      : `Aucun cache ni fichier temporaire connu à nettoyer sur ${letter}:.`,
+  };
+}
+
+export async function cleanDriveJunk(driveInput: unknown, options?: { emptyRecycleBin?: boolean }): Promise<DriveCleanupResult> {
+  // Emptying a Recycle Bin is irreversible and needs its own explicit consent; scanning or choosing a drive is not consent.
+  const emptyRecycleBin = options?.emptyRecycleBin === true;
+  const letter = parseDriveLetter(driveInput);
+  const empty = (error: string): DriveCleanupResult => ({
+    success: false, partial: false, driveLetter: letter ? `${letter}:` : '', categoriesCleaned: [],
+    deletedFilesCount: 0, deletedBytes: 0, skippedFilesCount: 0, errors: [error], freedDisplay: '0 Mo', message: error, error,
+  });
+  if (!letter) return empty('Lecteur non précisé ou invalide : aucun nettoyage effectué.');
+  if (!isUsableDrive(letter)) return empty(`Le lecteur ${letter}: est introuvable : aucun nettoyage effectué.`);
+  if (isMaintenanceRunning) return empty('Une opération de maintenance est déjà en cours.');
+  isMaintenanceRunning = true;
+  try {
+    const errors: string[] = [];
+    const categoriesCleaned: string[] = [];
+    let deletedBytes = 0; let deletedFilesCount = 0; let skippedFilesCount = 0;
+    for (const target of getDriveDirTargets(letter)) {
+      let clean = true;
+      for (const dir of target.dirs) {
+        const result = cleanSafeDir(dir);
+        deletedBytes += result.deletedBytes; deletedFilesCount += result.deletedCount; skippedFilesCount += result.skippedCount;
+        errors.push(...result.errors.map(error => `${target.label} : ${error}`));
+        if (result.errors.length > 0) clean = false;
+      }
+      if (clean) categoriesCleaned.push(target.id);
+    }
+    if (emptyRecycleBin) try {
+      const result = await runPowerShell(`Clear-RecycleBin -DriveLetter '${letter}' -Force -ErrorAction Stop`, { timeout: 20000 });
+      if (result.success) categoriesCleaned.push('recycleBin');
+      else errors.push(`Corbeille ${letter}: : le vidage n’a pas été confirmé.`);
+    } catch (error: any) { errors.push(`Corbeille ${letter}: : ${error?.message || 'échec du vidage'}`); }
+    const partial = errors.length > 0 || skippedFilesCount > 0;
+    const freedDisplay = formatBytes(deletedBytes);
+    const message = `${letter}: — ${deletedFilesCount} fichier(s) supprimé(s), ${freedDisplay} comptabilisés (hors Corbeille, ${emptyRecycleBin ? 'vidée' : 'non vidée'}), ${skippedFilesCount} ignoré(s), ${errors.length} erreur(s).`;
+    try {
+      notificationManager.emit({
+        category: 'maintenance', severity: partial ? 'warning' : 'info',
+        title: partial ? `Nettoyage du lecteur ${letter}: à vérifier` : `Nettoyage du lecteur ${letter}: terminé`,
+        message, actionTarget: { tab: 'performance' },
+      });
+    } catch (error: any) { logger.warn('[Maintenance] Activité non enregistrée :', error?.message); }
+    return {
+      success: errors.length === 0, partial, driveLetter: `${letter}:`, categoriesCleaned, deletedFilesCount, deletedBytes,
+      skippedFilesCount, errors, freedDisplay, message,
+    };
   } finally { isMaintenanceRunning = false; }
 }
 

@@ -9,6 +9,8 @@ import { getFullSystemTelemetry, CRITICAL_SYSTEM_PROCESSES } from './telemetry';
 import {
   analyzeStorageCategories,
   executeStorageCleanup,
+  scanDriveJunk,
+  cleanDriveJunk,
   calculateNextMaintenanceRun,
   formatBytes,
 } from './maintenanceManager';
@@ -324,7 +326,8 @@ export function setupPerformanceIPC(win: BrowserWindow, notifyFn?: (title: strin
 
   // ── Execute Real Disk Cleanup & Maintenance (Mesure réelle fs.statfs) ──────
   ipcMain.handle('perf:disk-cleanup', async (_, payload?: { items?: string[] }) => {
-    const selected = Array.isArray(payload?.items) ? payload.items : ['userTemp', 'winLogs'];
+    // Aucune sélection implicite : l'appelant doit désigner explicitement les catégories à nettoyer.
+    const selected = Array.isArray(payload?.items) ? payload.items : [];
     logger.info('[Performance] Lancement de la maintenance sur les catégories :', selected);
     try {
       const report = await executeStorageCleanup(selected, win, notifyFn);
@@ -379,200 +382,21 @@ export function setupPerformanceIPC(win: BrowserWindow, notifyFn?: (title: strin
     }
   });
 
-  // ── Per-Disk Storage Optimization (Scan Junk & Cache on a specific drive) ──
-  ipcMain.handle('perf:scan-disk-junk', async (_, driveLetterInput: string) => {
-    const driveLetter = (driveLetterInput || 'C').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 1) + ':';
-    logger.info(`[Performance] Analyse ciblée de l'espace récupérable sur le lecteur ${driveLetter}...`);
-
-    const isSystemDrive = driveLetter === 'C:';
-    const script = `
-      function Get-FolderSizeMB ($folderPath) {
-        if (Test-Path $folderPath) {
-          try {
-            $sum = (Get-ChildItem -Path $folderPath -Recurse -Force -File -ErrorAction SilentlyContinue |
-              Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
-            if ($sum) { return [Math]::Round(($sum / 1MB), 1) }
-          } catch {}
-        }
-        return 0
-      }
-
-      $drive = "${driveLetter}\\\\"
-      $uTemp = 0
-      $wTemp = 0
-      $recBin = 0
-      $dxc = 0
-      $pkgCache = 0
-      $dumps = 0
-
-      # Corbeille du lecteur cible
-      $rbPath = Join-Path $drive '$Recycle.Bin'
-      $recBin = Get-FolderSizeMB $rbPath
-
-      if ("${driveLetter}" -eq 'C:') {
-        $uTemp = Get-FolderSizeMB $env:TEMP
-        $wTemp = Get-FolderSizeMB "$env:windir\\\\Temp"
-        $dxc = (Get-FolderSizeMB "$env:LOCALAPPDATA\\\\D3DSCache") + (Get-FolderSizeMB "$env:LOCALAPPDATA\\\\NVIDIA\\\\DXCache")
-        $pkgCache = Get-FolderSizeMB "C:\\\\ProgramData\\\\Package Cache"
-        $dumps = Get-FolderSizeMB "$env:LOCALAPPDATA\\\\CrashDumps"
-      } else {
-        # Disques secondaires / jeux (ex: D:, F:)
-        $temp1 = Join-Path $drive 'Temp'
-        $temp2 = Join-Path $drive 'tmp'
-        $uTemp = (Get-FolderSizeMB $temp1) + (Get-FolderSizeMB $temp2)
-        $steamDown = Join-Path $drive 'SteamLibrary\\\\steamapps\\\\downloading'
-        $steamTemp = Join-Path $drive 'SteamLibrary\\\\steamapps\\\\temp'
-        $pkgCache = (Get-FolderSizeMB $steamDown) + (Get-FolderSizeMB $steamTemp)
-      }
-
-      [PSCustomObject]@{
-        drive = "${driveLetter}"
-        userTempMB = $uTemp
-        sysTempMB = $wTemp
-        recycleBinMB = $recBin
-        dxCacheMB = $dxc
-        packageCacheMB = $pkgCache
-        crashDumpsMB = $dumps
-        totalMB = [Math]::Round($uTemp + $wTemp + $recBin + $dxc + $pkgCache + $dumps, 1)
-      } | ConvertTo-Json -Compress
-    `;
-
-    try {
-      const res = await runPowerShell(script, { asJson: true, timeout: 15000 });
-      const d = res.data || {
-        drive: driveLetter,
-        userTempMB: 0,
-        sysTempMB: 0,
-        recycleBinMB: 0,
-        dxCacheMB: 0,
-        packageCacheMB: 0,
-        crashDumpsMB: 0,
-        totalMB: 0,
-        _analysisError: 'Analyse PowerShell indisponible'
-      };
-
-      const formatSize = (mb: number) => {
-        if (!mb || mb <= 0) return '0 Mo';
-        if (mb >= 1024) return `${(mb / 1024).toFixed(2)} Go`;
-        return `${mb.toFixed(1)} Mo`;
-      };
-
-      const categories = [
-        {
-          id: 'userTemp',
-          label: isSystemDrive ? 'Fichiers temporaires de session (%TEMP%)' : `Dossiers temporaires résiduels (${driveLetter}\\\\Temp)`,
-          sizeMB: d.userTempMB || 0,
-          sizeDisplay: formatSize(d.userTempMB || 0),
-          safeToClean: true,
-          desc: 'Fichiers de travail orphelins créés par les applications.',
-        },
-        {
-          id: 'recycleBin',
-          label: `Corbeille locale du volume ${driveLetter}`,
-          sizeMB: d.recycleBinMB || 0,
-          sizeDisplay: formatSize(d.recycleBinMB || 0),
-          safeToClean: true,
-          desc: 'Fichiers supprimés stockés dans la corbeille de ce volume.',
-        },
-        {
-          id: 'dxCache',
-          label: 'Shaders graphiques & Caches DirectX / GPU',
-          sizeMB: d.dxCacheMB || 0,
-          sizeDisplay: formatSize(d.dxCacheMB || 0),
-          safeToClean: true,
-          desc: 'Caches de compilation graphique obsolètes pouvant être régénérés.',
-        },
-        {
-          id: 'packageCache',
-          label: isSystemDrive ? 'Caches d\'installateurs & paquets résiduels' : 'Résidus de téléchargements de jeux (Steam/Epic)',
-          sizeMB: d.packageCacheMB || 0,
-          sizeDisplay: formatSize(d.packageCacheMB || 0),
-          safeToClean: true,
-          desc: 'Données d\'installation temporaires et paquets résiduels.',
-        },
-        {
-          id: 'crashDumps',
-          label: 'Rapports d\'erreurs et vidages mémoire résiduels',
-          sizeMB: d.crashDumpsMB || 0,
-          sizeDisplay: formatSize(d.crashDumpsMB || 0),
-          safeToClean: true,
-          desc: 'Traces et vidages .dmp d\'anciennes erreurs applicatives.',
-        },
-      ].filter(c => c.sizeMB > 0 || c.id === 'recycleBin');
-
-      const totalMB = d.totalMB || categories.reduce((sum, c) => sum + c.sizeMB, 0);
-
-      // If PowerShell failed, d came from the fallback object with _analysisError
-      const analysisError: string | undefined = (d as any)._analysisError || undefined;
-
-      return {
-        success: !analysisError, // false when PowerShell unavailable — not a complete analysis
-        driveLetter,
-        totalMB,
-        totalFormatted: analysisError ? '—' : formatSize(totalMB),
-        categories,
-        summary: analysisError
-          ? `Analyse indisponible : ${analysisError}`
-          : (totalMB > 1024
-            ? `Plus de ${formatSize(totalMB)} de données temporaires et caches orphelins identifiés sur ${driveLetter}.`
-            : `Le volume ${driveLetter} est bien entretenu. ${formatSize(totalMB)} peuvent être récupérés.`),
-        errorMessage: analysisError,
-        aiRecommendation: undefined, // deprecated
-      };
-    } catch (e: any) {
-      return {
-        success: false,
-        driveLetter,
-        totalMB: 0,
-        totalFormatted: '—',
-        categories: [],
-        summary: `Analyse indisponible : ${e?.message || 'erreur inattendue'}`,
-        errorMessage: e?.message || 'erreur inattendue lors de l\'analyse du disque.',
-      };
+  // ── Per-Disk cleanup : lettre explicite obligatoire, aucune cible implicite, Corbeille + caches connus uniquement ──
+  ipcMain.handle('perf:scan-disk-junk', async (_, driveLetter: unknown) => {
+    try { return await scanDriveJunk(driveLetter); }
+    catch (e: any) {
+      logger.error('[Performance] Analyse du lecteur impossible :', e);
+      return { success: false, driveLetter: '', totalBytes: 0, totalMB: 0, totalFormatted: '—', categories: [], summary: 'Analyse indisponible.', errorMessage: e?.message || 'erreur inattendue lors de l\'analyse du disque.' };
     }
   });
 
-  // ── Per-Disk Storage Optimization (Execute Safe Clean) ────────────────────
-  ipcMain.handle('perf:clean-disk-junk', async (_, driveLetterInput: string) => {
-    const driveLetter = (driveLetterInput || 'C').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 1) + ':';
-    logger.info(`[Performance] Nettoyage ciblé du volume ${driveLetter}...`);
-
-    const isSystemDrive = driveLetter === 'C:';
-    const script = `
-      $drive = "${driveLetter}\\\\"
-      $cleared = 0
-
-      # 1. Vider la corbeille du lecteur
-      try {
-        Clear-RecycleBin -DriveLetter "${driveLetter.replace(':', '')}" -Force -ErrorAction SilentlyContinue
-      } catch {}
-
-      # 2. Dossiers temporaires
-      if ("${driveLetter}" -eq 'C:') {
-        Remove-Item -Path "$env:TEMP\\\\*" -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path "$env:windir\\\\Temp\\\\*" -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path "$env:LOCALAPPDATA\\\\CrashDumps\\\\*" -Recurse -Force -ErrorAction SilentlyContinue
-      } else {
-        $temp1 = Join-Path $drive 'Temp'
-        $temp2 = Join-Path $drive 'tmp'
-        if (Test-Path $temp1) { Remove-Item -Path "$temp1\\\\*" -Recurse -Force -ErrorAction SilentlyContinue }
-        if (Test-Path $temp2) { Remove-Item -Path "$temp2\\\\*" -Recurse -Force -ErrorAction SilentlyContinue }
-        $steamDown = Join-Path $drive 'SteamLibrary\\\\steamapps\\\\downloading'
-        if (Test-Path $steamDown) { Remove-Item -Path "$steamDown\\\\*" -Recurse -Force -ErrorAction SilentlyContinue }
-      }
-
-      [PSCustomObject]@{ cleaned = $true; drive = "${driveLetter}" } | ConvertTo-Json -Compress
-    `;
-
-    try {
-      const res = await runPowerShell(script, { asJson: true, timeout: 25000 });
-      return {
-        success: res.success,
-        driveLetter,
-        message: `Optimisation terminée avec succès sur le lecteur ${driveLetter}.`,
-      };
-    } catch (e: any) {
-      return { success: false, driveLetter, error: e.message };
+  ipcMain.handle('perf:clean-disk-junk', async (_, driveLetter: unknown, options?: { emptyRecycleBin?: boolean }) => {
+    logger.info('[Performance] Nettoyage ciblé du lecteur demandé :', typeof driveLetter === 'string' ? driveLetter : '(invalide)');
+    try { return await cleanDriveJunk(driveLetter, { emptyRecycleBin: options?.emptyRecycleBin === true }); }
+    catch (e: any) {
+      logger.error('[Performance] Nettoyage du lecteur impossible :', e);
+      return { success: false, partial: false, driveLetter: '', categoriesCleaned: [], deletedFilesCount: 0, deletedBytes: 0, skippedFilesCount: 0, errors: [e?.message || 'erreur'], freedDisplay: '0 Mo', message: '', error: e?.message || 'erreur inattendue' };
     }
   });
 
