@@ -90,7 +90,7 @@ export interface VpnVerificationDetails {
   dnsVerified: boolean;
   ipv6Supported: boolean;
   ipv6Qualification: Ipv6Qualification;
-  restorationStatus?: 'restauration_verifiee' | 'restauration_non_confirmee';
+  restorationStatus?: 'aucune_restauration_requise' | 'restauration_verifiee' | 'restauration_non_confirmee';
 }
 
 export interface VpnSessionStatus {
@@ -134,7 +134,9 @@ class CommunityVpnEngine {
   private dnsVerified = false;
   private currentRoutingEval: RoutingEvaluation | null = null;
   private currentIpv6Qualification: Ipv6Qualification | null = null;
-  private lastRestorationStatus: 'restauration_verifiee' | 'restauration_non_confirmee' = 'restauration_verifiee';
+  private lastRestorationStatus: 'aucune_restauration_requise' | 'restauration_verifiee' | 'restauration_non_confirmee' = 'aucune_restauration_requise';
+  private hasHadVpnSession = false;
+  private pendingNetworkModifications = false;
   private bytesReceived: number | null = null;
   private bytesSent: number | null = null;
   private killSwitchActive = false;
@@ -704,6 +706,8 @@ class CommunityVpnEngine {
 
     // 1. Identité unique de la tentative (rejette tout événement obsolète d'une tentative passée)
     const attemptId = ++this.currentAttemptId;
+    this.hasHadVpnSession = true;
+    this.pendingNetworkModifications = true;
 
     const openVpnBin = this.findOpenVpnBinary();
     if (!openVpnBin) {
@@ -1138,13 +1142,27 @@ class CommunityVpnEngine {
    * 4. Nettoyage des sockets et fichiers temporaires
    * 5. Qualification de la restauration
    */
-  public async disconnect(): Promise<{ stoppedGracefully: boolean; restorationStatus: 'restauration_verifiee' | 'restauration_non_confirmee' }> {
+  public async disconnect(): Promise<{
+    stoppedGracefully: boolean;
+    restorationStatus: 'aucune_restauration_requise' | 'restauration_verifiee' | 'restauration_non_confirmee';
+    closurePermitted: boolean;
+  }> {
     // 0. Invalider immédiatement toute tentative en cours
     this.currentAttemptId++;
 
     if (this.connectionResolver) {
       this.connectionResolver({ success: false, message: 'Connexion interrompue par l\'utilisateur.' });
       this.connectionResolver = null;
+    }
+
+    // 0bis. Si aucun tunnel n'a été ouvert et qu'aucune modification réseau n'est en attente
+    const wasTunnelActive = Boolean(this.mgmtClient || this.activeProcess || this.activePid || this.connectionState === 'connected');
+    if (!this.hasHadVpnSession && !this.pendingNetworkModifications && !wasTunnelActive) {
+      logger.info('[VPN] Aucun tunnel ni session VPN préalable, aucune restauration nécessaire.');
+      this.connectionState = 'disconnected';
+      this.statusMessage = 'Déconnecté.';
+      this.lastRestorationStatus = 'aucune_restauration_requise';
+      return { stoppedGracefully: true, restorationStatus: 'aucune_restauration_requise', closurePermitted: true };
     }
 
     logger.info('[VPN] Déconnexion ordonnée du VPN et libération des ressources...');
@@ -1198,8 +1216,16 @@ class CommunityVpnEngine {
     // 5. Qualification de la restauration
     const restorationStatus = stoppedGracefully ? 'restauration_verifiee' : 'restauration_non_confirmee';
     this.lastRestorationStatus = restorationStatus;
+    if (stoppedGracefully) {
+      this.pendingNetworkModifications = false;
+    }
 
-    return { stoppedGracefully, restorationStatus };
+    return { stoppedGracefully, restorationStatus, closurePermitted: stoppedGracefully };
+  }
+
+  public setSessionActiveForTesting(hasHadSession: boolean, pendingModifications: boolean) {
+    this.hasHadVpnSession = hasHadSession;
+    this.pendingNetworkModifications = pendingModifications;
   }
 
   /**

@@ -8,11 +8,28 @@ import electronUpdaterPkg from 'electron-updater';
 import type { UpdateInfo } from 'electron-updater';
 
 const autoUpdater = (electronUpdaterPkg as any).autoUpdater || (electronUpdaterPkg as any).default?.autoUpdater || electronUpdaterPkg;
-import { BrowserWindow, ipcMain, app } from 'electron';
+import { BrowserWindow, ipcMain, app, shell } from 'electron';
+import path from 'path';
+import fs from 'fs';
 import { logger } from './logger.ts';
 import { loadPreferences, savePreferences } from './profile.ts';
 import { notificationManager } from './notificationManager.ts';
 import { checkFallbackReleases } from './updateFallback.ts';
+
+export type InstallStage = 'idle' | 'downloaded' | 'preparing' | 'closing' | 'launching' | 'failed';
+
+export function getDownloadedInstallerPath(): string | null {
+  const pendingDir = path.join(process.env.LOCALAPPDATA || '', 'vanguard-core-updater', 'pending');
+  try {
+    if (fs.existsSync(pendingDir)) {
+      const files = fs.readdirSync(pendingDir).filter((f) => f.endsWith('.exe'));
+      if (files.length > 0) {
+        return path.join(pendingDir, files[0]);
+      }
+    }
+  } catch {}
+  return null;
+}
 
 export interface UpdaterState {
   currentVersion: string;
@@ -25,10 +42,13 @@ export interface UpdaterState {
   error: string | null;
   autoInstallCountdown?: number | null;
   isDeferred?: boolean;
+  installStage?: InstallStage;
+  installError?: string | null;
+  downloadedInstallerPath?: string | null;
 }
 
 let updaterState: UpdaterState = {
-  currentVersion: app ? app.getVersion() : '0.1.6',
+  currentVersion: app ? app.getVersion() : '0.1.8',
   status: 'idle',
   updateInfo: null,
   progressPercent: 0,
@@ -38,6 +58,9 @@ let updaterState: UpdaterState = {
   error: null,
   autoInstallCountdown: null,
   isDeferred: false,
+  installStage: 'idle',
+  installError: null,
+  downloadedInstallerPath: null,
 };
 
 let mainWindow: BrowserWindow | null = null;
@@ -146,10 +169,17 @@ export async function executeSafeShutdownForUpdate(): Promise<{ success: boolean
 export async function quitAndInstallUpdate(isSilent = false, isForceRunAfter = true): Promise<boolean> {
   logger.info(`[AutoUpdater] Invoking coordinated quitAndInstall (isSilent=${isSilent}, isForceRunAfter=${isForceRunAfter})`);
 
+  updaterState.installStage = 'preparing';
+  updaterState.status = 'installing';
+  updaterState.installError = null;
+  broadcastState();
+
   const prep = await executeSafeShutdownForUpdate();
   if (!prep.success) {
     logger.warn(`[AutoUpdater] Arrêt annulé : préparation non confirmée (${prep.reason}). quitAndInstall() NE SERA PAS APPELÉ.`);
     updaterState.status = 'downloaded';
+    updaterState.installStage = 'failed';
+    updaterState.installError = prep.reason || 'Préparation de la fermeture non confirmée.';
     broadcastState();
     notificationManager.emit({
       category: 'updater',
@@ -162,39 +192,61 @@ export async function quitAndInstallUpdate(isSilent = false, isForceRunAfter = t
     return false;
   }
 
+  updaterState.installStage = 'closing';
+  broadcastState();
+
   // Ensure single instance mutex is immediately freed so the newly launched installer/app is never rejected
   try {
     app.releaseSingleInstanceLock();
     logger.info('[AutoUpdater] Single instance mutex released.');
   } catch {}
 
+  updaterState.installStage = 'launching';
+  broadcastState();
+
+  let launchSucceeded = false;
   try {
     const fn = (autoUpdater as any).quitAndInstall;
     if (typeof fn === 'function' && fn.length === 1) {
       logger.info('[AutoUpdater] Using electron-builder v27+ destructured object syntax');
       (autoUpdater as any).quitAndInstall({ isSilent, isForceRunAfter });
+      launchSucceeded = true;
     } else {
       logger.info('[AutoUpdater] Using electron-builder <= v26 positional argument syntax');
       (autoUpdater as any).quitAndInstall(isSilent, isForceRunAfter);
+      launchSucceeded = true;
     }
   } catch (err: any) {
     logger.warn('[AutoUpdater] Primary quitAndInstall invocation threw, attempting alternative syntax:', err);
     try {
       (autoUpdater as any).quitAndInstall(isSilent, isForceRunAfter);
-    } catch {
-      (autoUpdater as any).quitAndInstall({ isSilent, isForceRunAfter });
+      launchSucceeded = true;
+    } catch (fallbackErr: any) {
+      try {
+        (autoUpdater as any).quitAndInstall({ isSilent, isForceRunAfter });
+        launchSucceeded = true;
+      } catch (finalErr: any) {
+        logger.error('[AutoUpdater] All quitAndInstall invocations failed:', finalErr);
+        updaterState.status = 'downloaded';
+        updaterState.installStage = 'failed';
+        updaterState.installError = finalErr?.message || 'Échec de lancement de l\'installateur';
+        broadcastState();
+        return false;
+      }
     }
   }
 
-  // Fallback: exit after 1200ms so we do not hold file handles against the installer
-  const exitTimer = setTimeout(() => {
-    logger.info('[AutoUpdater] Exiting old process to allow clean installer execution');
-    if (app && typeof app.exit === 'function') {
-      app.exit(0);
+  if (launchSucceeded) {
+    // Graceful process exit fallback to avoid locking files against the launched installer
+    const exitTimer = setTimeout(() => {
+      logger.info('[AutoUpdater] Exiting process after successful installer handoff');
+      if (app && typeof app.exit === 'function') {
+        app.exit(0);
+      }
+    }, 1200);
+    if (exitTimer && typeof exitTimer.unref === 'function') {
+      exitTimer.unref();
     }
-  }, 1200);
-  if (exitTimer && typeof exitTimer.unref === 'function') {
-    exitTimer.unref();
   }
 
   return true;
@@ -208,6 +260,9 @@ export async function quitAndInstallUpdate(isSilent = false, isForceRunAfter = t
 export function handleUpdateDownloaded(info: UpdateInfo) {
   logger.info(`[AutoUpdater] Update v${info.version} downloaded and verified.`);
   updaterState.status = 'downloaded';
+  updaterState.installStage = 'downloaded';
+  updaterState.installError = null;
+  updaterState.downloadedInstallerPath = getDownloadedInstallerPath();
   updaterState.updateInfo = info;
   updaterState.progressPercent = 100;
   broadcastState();
@@ -270,7 +325,7 @@ export function setupAutoUpdater(win: BrowserWindow, onPrepareForQuit?: () => Pr
   if (onPrepareForQuit) {
     onPrepareForQuitCallback = onPrepareForQuit;
   }
-  updaterState.currentVersion = app ? app.getVersion() : '0.1.6';
+  updaterState.currentVersion = app ? app.getVersion() : '0.1.8';
 
   // Configure logger for autoUpdater
   autoUpdater.logger = {
@@ -421,10 +476,18 @@ export function setupAutoUpdater(win: BrowserWindow, onPrepareForQuit?: () => Pr
     }
     isAutoInstallPending = false;
 
+    updaterState.installStage = 'preparing';
+    updaterState.status = 'installing';
+    updaterState.installError = null;
+    updaterState.downloadedInstallerPath = getDownloadedInstallerPath();
+    broadcastState();
+
     const prep = await executeSafeShutdownForUpdate();
     if (!prep.success) {
       logger.warn('[AutoUpdater] Manuel : préparation non confirmée :', prep.reason);
       updaterState.status = 'downloaded';
+      updaterState.installStage = 'failed';
+      updaterState.installError = prep.reason || 'Préparation non confirmée';
       broadcastState();
       notificationManager.emit({
         category: 'updater',
@@ -436,13 +499,26 @@ export function setupAutoUpdater(win: BrowserWindow, onPrepareForQuit?: () => Pr
       return { success: false, error: prep.reason };
     }
 
-    updaterState.status = 'installing';
+    updaterState.installStage = 'closing';
     broadcastState();
 
     setTimeout(async () => {
       await quitAndInstallUpdate(false, true);
-    }, 600);
+    }, 400);
     return { success: true };
+  });
+
+  ipcMain.handle('updater:open-installer-folder', async () => {
+    const installerPath = getDownloadedInstallerPath();
+    if (installerPath && fs.existsSync(installerPath)) {
+      try {
+        shell.showItemInFolder(installerPath);
+        return { success: true, path: installerPath };
+      } catch (err: any) {
+        return { success: false, error: err?.message };
+      }
+    }
+    return { success: false, error: 'Fichier d\'installation introuvable dans le dossier temporaire.' };
   });
 
   ipcMain.handle('updater:set-auto-update', async (_, enabled: boolean) => {

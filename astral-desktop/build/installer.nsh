@@ -1,8 +1,31 @@
 !macro customInit
-  DetailPrint "Fermeture des instances de Vanguard Core en cours..."
-  nsExec::Exec 'taskkill /F /IM "Vanguard Core.exe" /T'
-  nsExec::Exec 'taskkill /F /IM "Astral Vanguard.exe" /T'
-  Sleep 600
+  ; Vérification ordonnée de la fermeture de Vanguard Core sans terminaison forcée
+  Push $0
+  Push $1
+  StrCpy $1 0
+
+  check_running_loop:
+    nsExec::Exec 'cmd.exe /c "tasklist /FI \"IMAGENAME eq Vanguard Core.exe\" /NH | findstr /I \"Vanguard Core.exe\""'
+    Pop $0
+    ${If} $0 == 0
+      ; Le processus Vanguard Core est toujours actif
+      ${If} ${Silent}
+        IntOp $1 $1 + 1
+        ${If} $1 < 10
+          Sleep 500
+          Goto check_running_loop
+        ${Else}
+          ; Dépassement de délai : refus d'installation partielle silencieuse
+          Abort
+        ${EndIf}
+      ${Else}
+        MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Vanguard Core est en cours d'exécution.$\r$\nVeuillez quitter complètement l'application (clic droit sur l'icône dans la zone de notification > Quitter Vanguard Core) pour appliquer la mise à jour sans risque d'interrompre vos données en cours d'écriture.$\r$\n$\r$\nCliquez sur Recommencer après avoir fermé l'application, ou sur Annuler." IDRETRY check_running_loop
+        Abort
+      ${EndIf}
+    ${EndIf}
+
+  Pop $1
+  Pop $0
 !macroend
 
 !macro customInstall
@@ -16,16 +39,28 @@
 !macroend
 
 !macro customUnInstall
-  DetailPrint "Arrêt forcé avant désinstallation..."
-  nsExec::Exec 'taskkill /F /IM "Vanguard Core.exe" /T'
-  nsExec::Exec 'taskkill /F /IM "Astral Vanguard.exe" /T'
+  Push $0
+  check_uninst_loop:
+    nsExec::Exec 'cmd.exe /c "tasklist /FI \"IMAGENAME eq Vanguard Core.exe\" /NH | findstr /I \"Vanguard Core.exe\""'
+    Pop $0
+    ${If} $0 == 0
+      ${If} ${Silent}
+        Abort
+      ${Else}
+        MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Vanguard Core est en cours d'exécution.$\r$\nVeuillez quitter l'application avant la désinstallation.$\r$\n$\r$\nCliquez sur Recommencer après fermeture, ou sur Annuler." IDRETRY check_uninst_loop
+        Abort
+      ${EndIf}
+    ${EndIf}
+  Pop $0
+
+  DetailPrint "Nettoyage des privilèges et configurations..."
   nsExec::Exec 'schtasks /delete /tn "VanguardCore_Elevated" /f'
   nsExec::Exec 'schtasks /delete /tn "AstralVanguard_Elevated" /f'
   DeleteRegValue HKLM "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$INSTDIR\Vanguard Core.exe"
   DeleteRegValue HKCU "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$INSTDIR\Vanguard Core.exe"
   DeleteRegValue HKLM "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$INSTDIR\Astral Vanguard.exe"
   DeleteRegValue HKCU "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$INSTDIR\Astral Vanguard.exe"
-  Sleep 800
+  Sleep 300
 
   ${ifNot} ${isUpdated}
     IfSilent preserve_userdata
@@ -38,10 +73,8 @@
       RMDir /r "$LOCALAPPDATA\astral-vanguard"
       RMDir /r "$LOCALAPPDATA\vanguard-core"
     preserve_userdata:
-  ${endIf}
+  ${EndIf}
 
   RMDir /r "$LOCALAPPDATA\astral-vanguard-updater"
   RMDir /r "$LOCALAPPDATA\vanguard-core-updater"
 !macroend
-
-

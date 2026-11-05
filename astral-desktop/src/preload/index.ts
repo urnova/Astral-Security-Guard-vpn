@@ -71,6 +71,7 @@ const api = {
   getPreviewChannel: () => ipcRenderer.invoke('updater:get-preview-channel'),
   setAutoUpdate: (enabled: boolean) => ipcRenderer.invoke('updater:set-auto-update', enabled),
   getAutoUpdate: () => ipcRenderer.invoke('updater:get-auto-update'),
+  openInstallerFolder: () => ipcRenderer.invoke('updater:open-installer-folder'),
 
   // Security (100% Offline & Autonomous)
   startScan: (scanType: 'quick' | 'full') => ipcRenderer.invoke('security:start-scan', scanType),

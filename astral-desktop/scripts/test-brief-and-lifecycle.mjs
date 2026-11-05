@@ -23,6 +23,7 @@ import assert from 'node:assert';
 import { dailyBriefEngine } from '../src/main/dailyBriefEngine.ts';
 import { userProfileManager } from '../src/main/profile.ts';
 import { lifecycleOrchestrator } from '../src/main/lifecycle.ts';
+import { communityVpnEngine } from '../src/main/communityVpnEngine.ts';
 
 let passed = 0;
 let failed = 0;
@@ -464,6 +465,26 @@ await runTest('15. Réponse tardive après changement de profil : rejet immédia
   assert.strictEqual(res.source, 'deterministic', 'La réponse tardive du premier profil ne doit pas s\'afficher pour le second');
   assert.strictEqual(res.profileId, 'prof-second');
   assert(!res.summary.includes('FirstUser'));
+});
+
+// ── TEST 16 : ARRÊT PROPRE AVEC VPN INACTIF ──────────────────────────────────
+await runTest('16. Déconnexion VPN quand inactif : statut restauration vérifiée & arrêt réussi', async () => {
+  lifecycleOrchestrator.resetForTesting();
+
+  // Vérifier le comportement direct de production de communityVpnEngine.disconnect() sans tunnel actif
+  const directDisconnect = await communityVpnEngine.disconnect();
+  assert.strictEqual(directDisconnect.stoppedGracefully, true, 'Sans tunnel, stoppedGracefully doit être vrai');
+  assert.strictEqual(directDisconnect.restorationStatus, 'aucune_restauration_requise', 'Sans tunnel, le statut doit être aucune_restauration_requise');
+  assert.strictEqual(directDisconnect.closurePermitted, true, 'La fermeture doit être autorisée');
+
+  // Enregistrer le vrai handler dans lifecycleOrchestrator
+  lifecycleOrchestrator.registerHandlers({
+    disconnectVpn: () => communityVpnEngine.disconnect(),
+  });
+
+  const res = await lifecycleOrchestrator.gracefulShutdown({ forceExitTimeoutMs: 2000, skipAppQuit: true });
+  assert.strictEqual(res.success, true, 'L\'arrêt complet doit réussir quand le VPN est inactif');
+  assert.strictEqual(res.vpnDisconnected, true, 'vpnDisconnected doit être vrai');
 });
 
 // Nettoyage final des hooks

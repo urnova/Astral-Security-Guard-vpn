@@ -34,13 +34,18 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
         setDownloadError('');
       } else if (st.status === 'downloaded') {
         setDownloading(false);
-        setDownloadError('');
+        if (st.installStage === 'failed') {
+          setInstalling(false);
+          setDownloadError(st.installError || 'La préparation de la fermeture a échoué.');
+        } else {
+          setDownloadError('');
+        }
       } else if (st.status === 'installing') {
         setInstalling(true);
       } else if (st.status === 'error') {
         setDownloading(false);
         setInstalling(false);
-        setDownloadError(st.error || 'Erreur lors du téléchargement de la mise à jour.');
+        setDownloadError(st.error || 'Erreur lors du traitement de la mise à jour.');
       }
     });
 
@@ -72,6 +77,12 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
     onClose();
   };
 
+  const handleOpenFolder = async () => {
+    if (api && typeof api.openInstallerFolder === 'function') {
+      await api.openInstallerFolder();
+    }
+  };
+
   const handleInstallNow = async () => {
     if (gamingActive) {
       alert('Une session de jeu est en cours. L\'installation s\'effectuera après la fermeture de votre partie.');
@@ -79,7 +90,17 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
     }
     if (!api) return;
     setInstalling(true);
-    await api.installUpdate?.();
+    setDownloadError('');
+    try {
+      const res = await api.installUpdate?.();
+      if (res && res.success === false) {
+        setInstalling(false);
+        setDownloadError(res.error || 'La préparation de la fermeture a échoué.');
+      }
+    } catch (err: any) {
+      setInstalling(false);
+      setDownloadError(err?.message || 'Erreur lors du déclenchement de la mise à jour.');
+    }
   };
 
   const progress     = updaterState?.progressPercent || 0;
@@ -87,6 +108,7 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
   const targetVer    = info?.version || '0.1.4';
   const isDownloaded = updaterState?.status === 'downloaded';
   const isInstalling = installing || updaterState?.status === 'installing';
+  const installStage = updaterState?.installStage || (isInstalling ? 'preparing' : 'idle');
 
   return (
     <div
@@ -223,22 +245,67 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
                 padding: '14px 16px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: 10,
+                gap: 12,
                 textAlign: 'left',
                 fontSize: 12,
               }}
             >
+              {/* Étape 1 : Téléchargement & signature */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--ok)' }}>
                 <CheckCircle2 size={15} style={{ flexShrink: 0 }} />
-                <span>Vérification de signature SHA-512 validée</span>
+                <span>Téléchargement terminé & empreinte SHA-512 certifiée</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--ok)' }}>
-                <CheckCircle2 size={15} style={{ flexShrink: 0 }} />
-                <span>Fermeture ordonnée des services & libération mutex</span>
+
+              {/* Étape 2 : Préparation de la fermeture */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                color: installStage === 'preparing' ? 'var(--a1)' : (installStage === 'closing' || installStage === 'launching' ? 'var(--ok)' : 'var(--muted)'),
+                fontWeight: installStage === 'preparing' ? 600 : 400,
+              }}>
+                {installStage === 'preparing' ? (
+                  <RefreshCw size={15} className="animate-spin" style={{ flexShrink: 0 }} />
+                ) : (installStage === 'closing' || installStage === 'launching') ? (
+                  <CheckCircle2 size={15} style={{ flexShrink: 0 }} />
+                ) : (
+                  <div style={{ width: 15, height: 15, borderRadius: '50%', border: '1px solid var(--line)', flexShrink: 0 }} />
+                )}
+                <span>Préparation de la fermeture & sauvegarde des états locaux</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--a1)', fontWeight: 600 }}>
-                <RefreshCw size={15} className="animate-spin" style={{ flexShrink: 0 }} />
-                <span>Exécution de l'installateur silencieux…</span>
+
+              {/* Étape 3 : Fermeture et libération des verrous */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                color: installStage === 'closing' ? 'var(--a1)' : (installStage === 'launching' ? 'var(--ok)' : 'var(--muted)'),
+                fontWeight: installStage === 'closing' ? 600 : 400,
+              }}>
+                {installStage === 'closing' ? (
+                  <RefreshCw size={15} className="animate-spin" style={{ flexShrink: 0 }} />
+                ) : installStage === 'launching' ? (
+                  <CheckCircle2 size={15} style={{ flexShrink: 0 }} />
+                ) : (
+                  <div style={{ width: 15, height: 15, borderRadius: '50%', border: '1px solid var(--line)', flexShrink: 0 }} />
+                )}
+                <span>Fermeture de l'application & libération des fichiers exécutables</span>
+              </div>
+
+              {/* Étape 4 : Lancement de l'installateur */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                color: installStage === 'launching' ? 'var(--a1)' : 'var(--muted)',
+                fontWeight: installStage === 'launching' ? 600 : 400,
+              }}>
+                {installStage === 'launching' ? (
+                  <RefreshCw size={15} className="animate-spin" style={{ flexShrink: 0 }} />
+                ) : (
+                  <div style={{ width: 15, height: 15, borderRadius: '50%', border: '1px solid var(--line)', flexShrink: 0 }} />
+                )}
+                <span>Lancement de l'installateur Vanguard Core…</span>
               </div>
             </div>
 
@@ -264,8 +331,8 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
               />
             </div>
 
-            <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>
-              Redémarrage automatique sous 2 à 4 secondes. Ne fermez pas votre ordinateur.
+            <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic', lineHeight: 1.4, maxWidth: 420 }}>
+              Fermeture ordonnée en cours. Si l'installateur ne démarre pas automatiquement, vous pourrez le lancer directement depuis son dossier.
             </div>
           </div>
         ) : (
@@ -376,18 +443,57 @@ export default function UpdateModal({ info, onClose, gamingActive = false }: Upd
                 <div
                   style={{
                     display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '10px 14px',
+                    flexDirection: 'column',
+                    gap: 10,
+                    padding: '12px 14px',
                     background: 'rgba(223, 133, 133, 0.08)',
-                    border: '1px solid rgba(223, 133, 133, 0.20)',
+                    border: '1px solid rgba(223, 133, 133, 0.25)',
                     borderRadius: 'var(--r-sm)',
                     fontSize: 12,
-                    color: 'var(--bad)',
+                    color: 'var(--text)',
                   }}
                 >
-                  <AlertTriangle size={15} />
-                  <span>{downloadError}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--bad)', fontWeight: 600 }}>
+                    <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+                    <span>{downloadError}</span>
+                  </div>
+
+                  {updaterState?.downloadedInstallerPath && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 11 }}>
+                      <span style={{ color: 'var(--muted)', lineHeight: 1.5 }}>
+                        L'installation automatique est suspendue pour préserver vos données sensibles. Pour appliquer la mise à jour sans risque :
+                      </span>
+                      <ol style={{ margin: '0 0 0 16px', padding: 0, color: 'var(--text)', lineHeight: 1.5 }}>
+                        <li>Fermez vos documents et verrouillez votre coffre-fort si ouvert.</li>
+                        <li>Quittez complètement Vanguard Core (clic droit sur l'icône dans la zone de notification &gt; <em>Quitter Vanguard Core</em>), et non en fermant simplement cette fenêtre.</li>
+                        <li>Exécutez l'installateur certifié ci-dessous :</li>
+                      </ol>
+                      <div
+                        className="mono"
+                        style={{
+                          background: '#070a10',
+                          padding: '6px 8px',
+                          borderRadius: 4,
+                          border: '1px solid var(--line)',
+                          wordBreak: 'break-all',
+                          color: 'var(--text)',
+                          userSelect: 'all',
+                        }}
+                      >
+                        {updaterState.downloadedInstallerPath}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                        <button
+                          type="button"
+                          className="btn s"
+                          onClick={handleOpenFolder}
+                          style={{ fontSize: 11, padding: '5px 12px' }}
+                        >
+                          Ouvrir le dossier de l'installateur
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -143,8 +143,13 @@ export class LifecycleOrchestrator {
             logger.warn('[Lifecycle] Délai dépassé (3000ms) pour la déconnexion VPN. Statut de restauration non confirmé.');
             vpnDisconnected = false;
           } else {
-            // Si le résultat signale une restauration non confirmée, ne pas prétendre à un succès complet
-            vpnDisconnected = disconnectResult?.restorationStatus === 'restauration_verifiee';
+            // Distinguer aucune restauration requise et restauration vérifiée vs restauration non confirmée
+            const status = disconnectResult?.restorationStatus;
+            if (status === 'restauration_non_confirmee') {
+              vpnDisconnected = false;
+            } else {
+              vpnDisconnected = disconnectResult?.closurePermitted === true || status === 'aucune_restauration_requise' || status === 'restauration_verifiee';
+            }
           }
         } else {
           vpnDisconnected = true;
