@@ -205,7 +205,7 @@ export function evaluateStability(
   const grade = RANK_TO_GRADE[rank];
   let description = '';
   switch (grade) {
-    case 'A++': description = `Stabilité parfaite sous charge (+${maxDelta} ms max, 0% échec).`; break;
+    case 'A++': description = `Latence très stable sur ce test (+${maxDelta} ms max, aucune sonde échouée). Une seule mesure ne prouve pas la stabilité dans la durée.`; break;
     case 'A+':  description = `Excellente régularité sous charge (+${maxDelta} ms max).`; break;
     case 'A':   description = `Élévation de latence contenue sous transfert (+${maxDelta} ms).`; break;
     case 'B':   description = `Hausse de latence sensible en charge (+${maxDelta} ms).`; break;
@@ -277,7 +277,7 @@ export function computeNetworkReport(
   let summary = '';
   switch (overallGrade) {
     case 'A++':
-      statusLabel = 'Capacité Multi-Gigabit & Réactivité Optimale';
+      statusLabel = 'Très bons résultats sur ce test';
       summary = `${transfer.description} ${reactivity.description}`;
       break;
     case 'A+':

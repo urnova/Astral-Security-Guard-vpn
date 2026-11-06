@@ -1,4 +1,4 @@
-# HANDOFF — Vanguard Core (v0.1.9 candidat)
+# HANDOFF — Vanguard Core (v0.1.10 candidat, base v0.1.9 publiée)
 
 Lire d'abord : `STATE.md`, `DECISIONS.md`, `EXIGENCES_SUIVI.md`, `COMMANDS.md` (PATH Node/Git).
 
@@ -16,3 +16,7 @@ Tests : `astral-desktop/scripts/test-maintenance-regressions.mjs` (14), tests Va
 
 ## Essais réels à faire
 Installer la pré-release, créer un coffre, ajouter/extraire un fichier, exporter .vgv sur clé USB ; maintenance (annuler, confirmer, partiel) ; catalogue VPN et import .ovpn.
+
+## v0.1.10 — ajouts
+Notifications de bureau uniques, Paramètres défilables et refaits (section Notifications), Vault et VPN vérifiés dans Electron (bac à sable : création, ouverture, import, verrouillage, export .vgv/chiffré, extraction ; catalogue VPN Gate 80 relais, validateur de scripts toujours actif). Tests : `test-notification-pipeline.mjs` (10), `test-maintenance-regressions.mjs` (15).
+À essayer en réel : notifications réduites dans la barre système, multi-écrans/DPI, Vault sur USB, maintenance, VPN.

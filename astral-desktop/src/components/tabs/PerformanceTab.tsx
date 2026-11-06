@@ -350,14 +350,8 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
     api.getDiskHealth?.().then((res: any) => {
       setLoadingDisks(false);
       if (res?.success && Array.isArray(res.disks)) {
-        const sorted = [...res.disks].sort((a: any, b: any) => {
-          // Disque système (C:) en premier
-          const aIsSys = Boolean(a.isSystemDisk || (a.driveLetters && a.driveLetters.includes('C')));
-          const bIsSys = Boolean(b.isSystemDisk || (b.driveLetters && b.driveLetters.includes('C')));
-          if (aIsSys && !bIsSys) return -1;
-          if (!aIsSys && bIsSys) return 1;
-          return (a.diskNumber ?? 0) - (b.diskNumber ?? 0);
-        });
+        // L'ordre (Windows, puis lettres croissantes) est fixé côté processus principal.
+        const sorted = [...res.disks];
         setPhysicalDisks(sorted);
       }
     }).catch(() => setLoadingDisks(false));
@@ -1280,26 +1274,22 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
               label: 'Processeur (CPU)',
               val: cpu / 100,
               display: `${cpu}%`,
-              sub: `${hardware?.cpuCores || metrics?.cpuCores || 6} cœurs · ${(hardware?.cpuName || 'Processeur hôte').split('@')[0].trim()}`,
+              sub: `${hardware?.cpuCores || metrics?.cpuCores || '—'} cœurs · ${(hardware?.cpuName || 'Processeur hôte').split('@')[0].trim()}`,
             },
             {
               label: 'Mémoire vive (RAM)',
               val: ram / 100,
               display: `${ram}%`,
               sub: (() => {
-                const usedMB = metrics?.ramUsed ?? 0;
-                const totalGB = hardware?.ramGB ?? (metrics?.ramTotal ? metrics.ramTotal / 1024 : 0);
-                if (usedMB > 0 && totalGB > 0) {
-                  return `${(usedMB / 1024).toFixed(1)} / ${totalGB.toFixed(0)} Go`;
-                }
-                if (totalGB > 0 && ram > 0) {
-                  return `${((ram / 100) * totalGB).toFixed(1)} / ${totalGB.toFixed(0)} Go`;
-                }
-                return totalGB > 0 ? `— / ${totalGB.toFixed(0)} Go` : 'Non disponible';
+                // La télémétrie fournit déjà des Go : même unité pour l'utilisé et le total.
+                const usedGB = metrics?.ramUsed ?? 0;
+                const totalGB = metrics?.ramTotal || hardware?.ramGB || 0;
+                if (totalGB <= 0) return 'Non disponible';
+                return usedGB > 0 ? `${usedGB.toFixed(1)} / ${totalGB.toFixed(1)} Go` : `— / ${totalGB.toFixed(1)} Go`;
               })(),
             },
             {
-              label: 'Stockage Système (C:)',
+              label: 'Stockage système',
               val: (primaryDisk?.usedPct || 0) / 100,
               display: `${Math.round(primaryDisk?.usedPct || 0)}%`,
               sub: primaryDisk ? `${(primaryDisk.free / 1e9).toFixed(0)} Go libres` : 'Lecture en cours…',
@@ -1372,7 +1362,7 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                         <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>
-                          {gpu.isPrimary ? 'Carte Graphique Dédiée (GPU)' : isVirtual ? 'Écran Virtuel / Déporté' : 'Processeur Graphique Secondaire'}
+                          {gpu.isPrimary ? 'Carte graphique principale' : isVirtual ? 'Adaptateur virtuel (affichage déporté)' : 'Carte graphique secondaire'}
                         </span>
                         {gpu.isPrimary && (
                           <span style={{ fontSize: 9.5, padding: '1px 6px', borderRadius: 4, background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', fontWeight: 700 }}>
@@ -1676,7 +1666,7 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                 const sizeLabel = d.sizeGB >= 900 ? `${(d.sizeGB / 1000).toFixed(0)} To` : `${d.sizeGB} Go`;
                 const isHealthy = d.health?.includes('Sain') || d.status === 'OK' || d.HealthStatus?.includes('Sain') || d.healthStatusText?.includes('Sain');
                 const statusText = d.healthStatusText || d.HealthStatus || (isHealthy ? 'Sain (Contrôleur OK)' : 'Attention requise');
-                const isBootDrive = Boolean(d.isSystemDisk || (d.driveLetters && d.driveLetters.includes('C')));
+                const isBootDrive = Boolean(d.isSystemDisk);
 
                 return (
                   <div
@@ -1725,9 +1715,9 @@ export default function PerformanceTab({ gamingActive }: { gamingActive?: boolea
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                             <span style={{ fontSize: 11, fontWeight: 700, color: '#38bdf8' }}>
                               {isBootDrive && d.driveLetters
-                                ? `Windows (${d.driveLetters}:)`
+                                ? `Windows (${d.driveLetters})`
                                 : d.driveLetters
-                                ? `${d.driveLetters}:`
+                                ? `${d.driveLetters}`
                                 : `Disque ${diskNum}`}
                             </span>
                             <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)' }}>

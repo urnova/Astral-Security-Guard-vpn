@@ -89,7 +89,6 @@ let isQuitting = false;
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 
 
-import { showAvastStyleToast } from './notificationWindow';
 
 // ── Avast-Style & Native Windows Notification Dispatcher (Centralized) ────────
 export function notifyUser(

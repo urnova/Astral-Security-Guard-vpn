@@ -135,416 +135,6 @@ export function createOrGetNotificationWindow(): BrowserWindow | null {
   return popupWin;
 }
 
-// Anti-flood notification limiter
-let recentNotifTimestamps: number[] = [];
-
-export function showAvastStyleToast({
-  title,
-  message,
-  type = 'info',
-  soundEnabled = true,
-  volume = 0.8,
-  onClickFocus,
-}: {
-  title: string;
-  message: string;
-  type?:
-    | 'info'
-    | 'threat'
-    | 'security_threat'
-    | 'download_threat'
-    | 'security_clean'
-    | 'download_safe'
-    | 'download_clean'
-    | 'vpn_connected'
-    | 'vpn_disconnected'
-    | 'gaming'
-    | 'success'
-    | 'network'
-    | 'ping'
-    | 'stability'
-    | 'vpn'
-    | 'performance'
-    | 'maintenance'
-    | 'security'
-    | string;
-  soundEnabled?: boolean;
-  volume?: number;
-  onClickFocus?: () => void;
-}) {
-  const now = Date.now();
-  recentNotifTimestamps = recentNotifTimestamps.filter(t => now - t < 2500);
-  const isCriticalType = type === 'threat' || type === 'security_threat' || type === 'download_threat';
-  if (recentNotifTimestamps.length >= 3 && !isCriticalType) {
-    // Coalesce / throttle non-critical notifications to avoid avalanche
-    return;
-  }
-  recentNotifTimestamps.push(now);
-
-  currentClickFocusCallback = onClickFocus || null;
-
-  const win = createOrGetNotificationWindow();
-  if (!win) return;
-  const { x, y } = getPopupPosition(400, 150);
-  win.setBounds({ x, y, width: 400, height: 150 });
-
-  const isThreat = type === 'threat' || type === 'security_threat' || type === 'download_threat';
-  const isSecurityClean = type === 'security_clean' || type === 'success' || (type === 'security' && !isThreat);
-  const isDownloadSafe = type === 'download_safe' || type === 'download_clean';
-  const isVpnConnected = type === 'vpn_connected' || (type === 'vpn' && !title.toLowerCase().includes('déconnecté'));
-  const isVpnDisconnected = type === 'vpn_disconnected' || (type === 'vpn' && title.toLowerCase().includes('déconnecté'));
-  const isPerformance = type === 'performance' || type === 'maintenance';
-  const isNetwork = type === 'network' || type === 'ping' || type === 'stability';
-  const isGaming = type === 'gaming';
-
-  const borderColor =
-    isThreat ? 'rgba(239, 68, 68, 0.45)' :
-    isSecurityClean ? 'rgba(34, 197, 94, 0.45)' :
-    isDownloadSafe ? 'rgba(6, 182, 212, 0.45)' :
-    isVpnConnected ? 'rgba(59, 130, 246, 0.45)' :
-    isVpnDisconnected ? 'rgba(245, 158, 11, 0.45)' :
-    isPerformance ? 'rgba(168, 85, 247, 0.45)' :
-    isNetwork ? 'rgba(56, 189, 248, 0.45)' :
-    isGaming ? 'rgba(16, 185, 129, 0.45)' :
-    'rgba(255, 255, 255, 0.15)';
-
-  const accentColor =
-    isThreat ? '#ef4444' :
-    isSecurityClean ? '#22c55e' :
-    isDownloadSafe ? '#06b6d4' :
-    isVpnConnected ? '#3b82f6' :
-    isVpnDisconnected ? '#f59e0b' :
-    isPerformance ? '#a855f7' :
-    isNetwork ? '#38bdf8' :
-    isGaming ? '#10b981' :
-    '#38bdf8';
-
-  const badgeText =
-    isThreat ? 'ALERTE SÉCURITÉ' :
-    isSecurityClean ? 'SYSTÈME SAIN & PROTÉGÉ' :
-    isDownloadSafe ? 'TÉLÉCHARGEMENT SÉCURISÉ' :
-    isVpnConnected ? 'VPN SÉCURISÉ · CONNECTÉ' :
-    isVpnDisconnected ? 'VPN DÉCONNECTÉ' :
-    isPerformance ? 'MAINTENANCE & SYSTÈME' :
-    isNetwork ? 'RÉSEAU & LATENCE' :
-    isGaming ? 'MODE GAMING' :
-    'VANGUARD CORE';
-
-  // SVG Icons according to notification type
-  const iconSvg =
-    isThreat
-      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`
-      : isSecurityClean
-      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>`
-      : isDownloadSafe
-      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`
-      : isGaming
-      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>`
-      : isVpnConnected || isVpnDisconnected
-      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`
-      : isPerformance
-      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`
-      : isNetwork
-      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>`
-      : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`;
-
-  const logoUrl = getLogoDataUrl();
-  const safeVol = Math.max(0.01, Math.min(1.0, volume));
-
-  const html = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <style>
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          html, body { width: 100%; height: 100%; }
-          body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: transparent;
-            overflow: hidden;
-            display: flex;
-            align-items: stretch;
-            justify-content: stretch;
-            height: 100vh;
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            user-select: none;
-          }
-          .card {
-            width: 100%;
-            height: 100%;
-            background: #0d111a;
-            border: 1px solid ${borderColor};
-            border-radius: 10px;
-            box-shadow: none;
-            padding: 13px 16px 12px;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            color: #f1f5f9;
-            cursor: pointer;
-            position: relative;
-            box-sizing: border-box;
-            animation: slideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-            transition: border-color 0.2s ease;
-          }
-          .card:hover { border-color: ${accentColor}; }
-          @keyframes slideIn {
-            from { transform: translateY(16px); opacity: 0; }
-            to   { transform: translateY(0);    opacity: 1; }
-          }
-          .header-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 6px;
-            padding-right: 24px;
-          }
-          .brand {
-            font-size: 10.5px;
-            font-weight: 700;
-            letter-spacing: 0.06em;
-            color: ${accentColor};
-            text-transform: uppercase;
-            display: flex;
-            align-items: center;
-            gap: 7px;
-          }
-          .icon-box { display: flex; align-items: center; justify-content: center; }
-          .logo-img { width: 15px; height: 15px; object-fit: contain; }
-          .close-btn {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.12);
-            color: #94a3b8;
-            border-radius: 6px;
-            width: 22px;
-            height: 22px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            font-size: 11px;
-            line-height: 1;
-            transition: all 0.15s ease;
-          }
-          .close-btn:hover {
-            background: rgba(239, 68, 68, 0.25);
-            border-color: #ef4444;
-            color: #ffffff;
-          }
-          .title {
-            font-size: 13.5px;
-            font-weight: 700;
-            color: #ffffff;
-            line-height: 1.3;
-            margin-bottom: 4px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-          .message {
-            font-size: 12px;
-            color: #94a3b8;
-            line-height: 1.45;
-            max-height: 44px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-          .footer {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            font-size: 10px;
-            color: #64748b;
-            border-top: 1px solid rgba(255,255,255,0.06);
-            padding-top: 6px;
-            margin-top: 4px;
-          }
-          .action-hint { color: ${accentColor}; font-weight: 600; }
-        </style>
-      </head>
-      <body>
-        <div class="card" id="card" onclick="window.location.href='vanguard://focus'">
-          <button class="close-btn" title="Fermer" onclick="event.stopPropagation(); window.location.href='vanguard://close'">✕</button>
-          <div>
-            <div class="header-row">
-              <div class="brand">
-                <span class="icon-box">${iconSvg}</span>
-                ${logoUrl ? `<img src="${logoUrl}" class="logo-img" alt="" />` : ''}
-                <span>${badgeText}</span>
-              </div>
-            </div>
-            <div class="title">${escapeHtml(title)}</div>
-            <div class="message">${escapeHtml(message)}</div>
-          </div>
-          <div class="footer">
-            <span>Vanguard Core v${app.getVersion() || "0.1.4"}</span>
-            <span class="action-hint">Ouvrir l'application ➔</span>
-          </div>
-        </div>
-
-        <script>
-          ${soundEnabled ? `
-          try {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            if (ctx.state === 'suspended') ctx.resume();
-            const now = ctx.currentTime;
-            const isThreat = ${isThreat};
-            const isSecurityClean = ${isSecurityClean};
-            const isDownloadSafe = ${isDownloadSafe};
-            const isVpnConnected = ${isVpnConnected};
-            const isVpnDisconnected = ${isVpnDisconnected};
-            const isPerformance = ${isPerformance};
-            const isGaming = ${isGaming};
-            const isNetwork = ${isNetwork};
-            const baseVol = ${safeVol};
-
-            if (isThreat) {
-              // Descending warning alarm (880Hz -> 440Hz)
-              const osc = ctx.createOscillator();
-              const gain = ctx.createGain();
-              osc.type = 'sawtooth';
-              osc.frequency.setValueAtTime(880, now);
-              osc.frequency.exponentialRampToValueAtTime(440, now + 0.22);
-              gain.gain.setValueAtTime(0.08 * baseVol, now);
-              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
-              osc.connect(gain); gain.connect(ctx.destination);
-              osc.start(now); osc.stop(now + 0.26);
-            } else if (isSecurityClean) {
-              // Gentle 2-tone clean confirmation chime (D5 -> A5)
-              const osc1 = ctx.createOscillator();
-              const gain1 = ctx.createGain();
-              osc1.type = 'sine';
-              osc1.frequency.setValueAtTime(587.33, now);
-              gain1.gain.setValueAtTime(0.06 * baseVol, now);
-              gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-              osc1.connect(gain1); gain1.connect(ctx.destination);
-              osc1.start(now); osc1.stop(now + 0.2);
-
-              const osc2 = ctx.createOscillator();
-              const gain2 = ctx.createGain();
-              osc2.type = 'sine';
-              osc2.frequency.setValueAtTime(880, now + 0.1);
-              gain2.gain.setValueAtTime(0.07 * baseVol, now + 0.1);
-              gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-              osc2.connect(gain2); gain2.connect(ctx.destination);
-              osc2.start(now + 0.1); osc2.stop(now + 0.38);
-            } else if (isDownloadSafe) {
-              // Subtle clean radar ping (659Hz -> 880Hz)
-              const osc = ctx.createOscillator();
-              const gain = ctx.createGain();
-              osc.type = 'sine';
-              osc.frequency.setValueAtTime(659.25, now);
-              osc.frequency.exponentialRampToValueAtTime(880, now + 0.09);
-              gain.gain.setValueAtTime(0.05 * baseVol, now);
-              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-              osc.connect(gain); gain.connect(ctx.destination);
-              osc.start(now); osc.stop(now + 0.14);
-            } else if (isVpnConnected) {
-              // Double pleasant chime (C5 -> E5)
-              const osc1 = ctx.createOscillator();
-              const gain1 = ctx.createGain();
-              osc1.type = 'sine';
-              osc1.frequency.setValueAtTime(523.25, now);
-              gain1.gain.setValueAtTime(0.06 * baseVol, now);
-              gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-              osc1.connect(gain1); gain1.connect(ctx.destination);
-              osc1.start(now); osc1.stop(now + 0.11);
-
-              const osc2 = ctx.createOscillator();
-              const gain2 = ctx.createGain();
-              osc2.type = 'sine';
-              osc2.frequency.setValueAtTime(659.25, now + 0.09);
-              gain2.gain.setValueAtTime(0.06 * baseVol, now + 0.09);
-              gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
-              osc2.connect(gain2); gain2.connect(ctx.destination);
-              osc2.start(now + 0.09); osc2.stop(now + 0.23);
-            } else if (isVpnDisconnected) {
-              // Soft descending disengagement tone (D5 -> A4)
-              const osc = ctx.createOscillator();
-              const gain = ctx.createGain();
-              osc.type = 'sine';
-              osc.frequency.setValueAtTime(587.33, now);
-              osc.frequency.exponentialRampToValueAtTime(440, now + 0.15);
-              gain.gain.setValueAtTime(0.05 * baseVol, now);
-              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-              osc.connect(gain); gain.connect(ctx.destination);
-              osc.start(now); osc.stop(now + 0.2);
-            } else if (isPerformance) {
-              // Ascending crystal glissando (A4 -> C#5 -> E5)
-              [440, 554.37, 659.25].forEach((freq, idx) => {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(freq, now + idx * 0.07);
-                gain.gain.setValueAtTime(0.05 * baseVol, now + idx * 0.07);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.07 + 0.18);
-                osc.connect(gain); gain.connect(ctx.destination);
-                osc.start(now + idx * 0.07); osc.stop(now + idx * 0.07 + 0.2);
-              });
-            } else if (isGaming) {
-              // Quick upbeat 2-note blip
-              const osc1 = ctx.createOscillator();
-              const gain1 = ctx.createGain();
-              osc1.type = 'triangle';
-              osc1.frequency.setValueAtTime(587.33, now);
-              gain1.gain.setValueAtTime(0.06 * baseVol, now);
-              gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
-              osc1.connect(gain1); gain1.connect(ctx.destination);
-              osc1.start(now); osc1.stop(now + 0.09);
-
-              const osc2 = ctx.createOscillator();
-              const gain2 = ctx.createGain();
-              osc2.type = 'triangle';
-              osc2.frequency.setValueAtTime(880, now + 0.08);
-              gain2.gain.setValueAtTime(0.06 * baseVol, now + 0.08);
-              gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-              osc2.connect(gain2); gain2.connect(ctx.destination);
-              osc2.start(now + 0.08); osc2.stop(now + 0.19);
-            } else if (isNetwork) {
-              const osc = ctx.createOscillator();
-              const gain = ctx.createGain();
-              osc.type = 'sine';
-              osc.frequency.setValueAtTime(880, now);
-              osc.frequency.exponentialRampToValueAtTime(1174, now + 0.12);
-              gain.gain.setValueAtTime(0.05 * baseVol, now);
-              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
-              osc.connect(gain); gain.connect(ctx.destination);
-              osc.start(now); osc.stop(now + 0.14);
-            } else {
-              const osc = ctx.createOscillator();
-              const gain = ctx.createGain();
-              osc.type = 'sine';
-              osc.frequency.setValueAtTime(587.33, now);
-              osc.frequency.exponentialRampToValueAtTime(880, now + 0.14);
-              gain.gain.setValueAtTime(0.05 * baseVol, now);
-              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
-              osc.connect(gain); gain.connect(ctx.destination);
-              osc.start(now); osc.stop(now + 0.18);
-            }
-          } catch(e) {}
-          ` : ''}
-        </script>
-      </body>
-    </html>
-  `;
-
-  win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-  win.showInactive();
-
-  if (hideTimer) clearTimeout(hideTimer);
-  hideTimer = setTimeout(() => {
-    if (popupWin && !popupWin.isDestroyed()) {
-      popupWin.hide();
-    }
-  }, 4500);
-}
-
 export function showAvastStyleDownloadScan({
   fileName,
   filePath,
@@ -554,6 +144,7 @@ export function showAvastStyleDownloadScan({
   isUnsigned = false,
   discreteMode = 'window',
   soundEnabled = true,
+  volume = 0.7,
 }: {
   fileName: string;
   filePath: string;
@@ -563,6 +154,7 @@ export function showAvastStyleDownloadScan({
   isUnsigned?: boolean;
   discreteMode?: 'window' | 'mini' | 'notification';
   soundEnabled?: boolean;
+  volume?: number;
 }) {
   const isScanning = status === 'scanning';
   const isThreat = status === 'threat';
@@ -823,6 +415,7 @@ export function showAvastStyleDownloadScan({
           ${soundEnabled ? `
           try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const dest = ctx.createGain(); dest.gain.value = ${Math.max(0, Math.min(1, volume)) / 0.7}; dest.connect(ctx.destination);
             if (ctx.state === 'suspended') ctx.resume();
             const now = ctx.currentTime;
             const isScanning = ${isScanning};
@@ -838,7 +431,7 @@ export function showAvastStyleDownloadScan({
               osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
               gain.gain.setValueAtTime(0.045, now);
               gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
-              osc.connect(gain); gain.connect(ctx.destination);
+              osc.connect(gain); gain.connect(dest);
               osc.start(now); osc.stop(now + 0.1);
             } else if (isThreat) {
               // Threat warning alarm
@@ -849,7 +442,7 @@ export function showAvastStyleDownloadScan({
               osc.frequency.exponentialRampToValueAtTime(440, now + 0.22);
               gain.gain.setValueAtTime(0.08, now);
               gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
-              osc.connect(gain); gain.connect(ctx.destination);
+              osc.connect(gain); gain.connect(dest);
               osc.start(now); osc.stop(now + 0.26);
             } else if (isSuspect) {
               // Caution tone
@@ -860,7 +453,7 @@ export function showAvastStyleDownloadScan({
               osc.frequency.exponentialRampToValueAtTime(554.37, now + 0.16);
               gain.gain.setValueAtTime(0.06, now);
               gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-              osc.connect(gain); gain.connect(ctx.destination);
+              osc.connect(gain); gain.connect(dest);
               osc.start(now); osc.stop(now + 0.2);
             } else {
               // Clean file positive chime
@@ -871,7 +464,7 @@ export function showAvastStyleDownloadScan({
               osc.frequency.exponentialRampToValueAtTime(880, now + 0.14);
               gain.gain.setValueAtTime(0.05, now);
               gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
-              osc.connect(gain); gain.connect(ctx.destination);
+              osc.connect(gain); gain.connect(dest);
               osc.start(now); osc.stop(now + 0.18);
             }
           } catch(e) {}

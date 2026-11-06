@@ -13,10 +13,8 @@ import AppTitlebar from './components/AppTitlebar';
 import OnboardingWizard, { OnboardingData } from './components/OnboardingWizard';
 import UpdateModal from './components/UpdateModal';
 import DownloadScanModal from './components/DownloadScanModal';
-import { NotificationSystem } from './components/NotificationSystem';
 import { ShieldAlert } from 'lucide-react';
 import { SystemProvider } from './context/SystemContext';
-import { playSound, unlockAudio, setMuted } from './lib/audioSynth';
 
 const api = (window as any).vanguard;
 
@@ -48,9 +46,6 @@ export default function App() {
         if (typeof p.reduceAnimations === 'boolean') {
           document.documentElement.classList.toggle('reduce-motion', p.reduceAnimations);
         }
-        if (typeof p.soundEnabled === 'boolean') {
-          setMuted(!p.soundEnabled);
-        }
         if (typeof p.onboardingCompleted === 'boolean') {
           setShowOnboarding(!p.onboardingCompleted);
         }
@@ -59,15 +54,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Unlock Web Audio API on first user interaction
-    const unlockHandler = () => {
-      unlockAudio();
-      window.removeEventListener('pointerdown', unlockHandler);
-      window.removeEventListener('keydown', unlockHandler);
-    };
-    window.addEventListener('pointerdown', unlockHandler, { once: true });
-    window.addEventListener('keydown', unlockHandler, { once: true });
-
     if (!api) return;
 
     // Initial profile load
@@ -107,44 +93,7 @@ export default function App() {
       });
     });
 
-    // Sound effects for all system notifications & download events
-    const cleanupNotif = api.on('notification:trigger', (d: any) => {
-      if (!d) return;
-      // If desktop toast popup already synthesized category audio, don't double play
-      if (d.desktopToastShown) return;
-
-      const t = d.type || 'info';
-      if (t === 'threat' || t === 'security_threat' || t === 'download_threat') {
-        playSound('threat_blocked');
-      } else if (t === 'security_clean' || t === 'download_safe' || t === 'download_clean') {
-        playSound('scan_complete');
-      } else if (t === 'gaming') {
-        playSound('game_detected');
-      } else if (t === 'network' || t === 'ping' || t === 'lag') {
-        playSound('lag_alert');
-      } else if (t === 'vpn_connected' || t === 'vpn' || t === 'success') {
-        playSound('sos_resolved');
-      } else if (t === 'performance' || t === 'maintenance') {
-        playSound('update_ready');
-      } else {
-        playSound('notification');
-      }
-    });
-
-    const cleanupScanStart = api.on('download-scanner:scan-start', () => {
-      playSound('scan_start');
-    });
-
-    const cleanupScanComplete = api.on('download-scanner:scan-complete', (d: any) => {
-      if (!d) return;
-      if (d.status === 'threat') playSound('threat_blocked');
-      else if (d.status === 'suspect') playSound('lag_alert');
-      else if (d.status === 'safe' && d.shouldDisplayModal) playSound('scan_complete');
-    });
-
     return () => {
-      window.removeEventListener('pointerdown', unlockHandler);
-      window.removeEventListener('keydown', unlockHandler);
       cleanupAdmin?.();
       cleanupStart?.();
       cleanupStop?.();
@@ -153,9 +102,6 @@ export default function App() {
       cleanupNav?.();
       cleanupScanTrigger?.();
       cleanupGamingToggle?.();
-      cleanupNotif?.();
-      cleanupScanStart?.();
-      cleanupScanComplete?.();
     };
   }, [refreshProfile]);
 
@@ -259,10 +205,13 @@ export default function App() {
               </div>
 
               <div className="tab-pane" style={{ height: '100%', display: activeTab === 'vault' ? 'block' : 'none' }}>
-                <VaultTab />
+                <div className="pane-scroll">
+                  <VaultTab />
+                </div>
               </div>
 
               <div className="tab-pane" style={{ height: '100%', display: activeTab === 'settings' ? 'block' : 'none' }}>
+                <div className="pane-scroll">
                 <SettingsTab
                   dndEnabled={dndEnabled}
                   onDndChange={handleDndChange}
@@ -271,13 +220,13 @@ export default function App() {
                   currentTheme={theme}
                   onThemeChange={handleThemeChange}
                 />
+                </div>
               </div>
             </main>
           </div>
         </div>
 
         <DownloadScanModal />
-        <NotificationSystem dndEnabled={dndEnabled} onNavigateTab={setActiveTab} />
         {updateInfo && <UpdateModal info={updateInfo} onClose={() => setUpdateInfo(null)} />}
       </div>
     </SystemProvider>

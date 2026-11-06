@@ -115,6 +115,26 @@ export interface GamingTabProps {
 /* ═══════════════════════════════════════
    GamingTab
 ═══════════════════════════════════════ */
+/** Jaquette d'un jeu : le monogramme sert de repli propre si l'image est absente ou ne charge pas. */
+function GameArt({ name, initial, bannerUrl }: { name: string; initial: string; bannerUrl?: string }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 48, fontWeight: 800, color: 'rgba(255,255,255,0.18)' }}>
+        {initial}
+      </div>
+      {bannerUrl && !failed && (
+        <img
+          src={bannerUrl}
+          alt={name}
+          loading="lazy"
+          onError={() => setFailed(true)}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
+      )}
+    </>
+  );
+}
 export default function GamingTab({
   gamingActive: propGamingActive,
   currentGame:  propCurrentGame,
@@ -841,35 +861,9 @@ export default function GamingTab({
                     width: '100%',
                     height: 135,
                     overflow: 'hidden',
-                    background: game.bannerUrl ? '#070a10' : `linear-gradient(135deg, ${game.color1}, ${game.color2})`,
+                    background: `linear-gradient(135deg, ${game.color1}, ${game.color2})`,
                   }}>
-                    {game.bannerUrl ? (
-                      <img
-                        src={game.bannerUrl}
-                        alt={game.name}
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'cover',
-                          display: 'block',
-                        }}
-                      
-                                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                            />
-                    ) : (
-                      <div style={{
-                        width: '100%',
-                        height: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 48,
-                        fontWeight: 900,
-                        color: 'rgba(255,255,255,0.12)',
-                      }}>
-                        {game.initial}
-                      </div>
-                    )}
+                    <GameArt name={game.name} initial={game.initial} bannerUrl={game.bannerUrl} />
 
                     {/* Gradient */}
                     <div style={{

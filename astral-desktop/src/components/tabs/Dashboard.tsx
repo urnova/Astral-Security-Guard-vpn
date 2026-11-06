@@ -263,7 +263,7 @@ export default function Dashboard({ gamingActive, currentGame, onTabChange, firs
 
   const METRICS = [
     { icon: <Cpu size={14} />,      label: 'Processeur',    val: cpu,     unit: '%',  foot: `${metrics?.cpuCores || 8} cœurs logiques`,   hist: cpuHist },
-    { icon: <Zap size={14} />,      label: 'Mémoire vive',  val: ram,     unit: '%',  foot: `${metrics?.ramTotal || 16} Go installés`,     hist: ramHist },
+    { icon: <Zap size={14} />,      label: 'Mémoire vive',  val: ram,     unit: '%',  foot: metrics?.ramTotal ? `${metrics.ramTotal.toFixed(1)} Go au total` : 'Capacité indisponible',     hist: ramHist },
     { icon: <HardDrive size={14} />,label: 'Disque C:',     val: diskPct, unit: '%',  foot: diskFoot,                                      hist: [], isDisk: true },
     { icon: <Wifi size={14} />,     label: 'Latence réseau',val: pingVal, unit: ' ms',foot: 'Connexion active (1.1.1.1)',                 hist: pingHist },
   ];

@@ -18,7 +18,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { logger } from './logger.ts';
 import { loadPreferences, savePreferences } from './profile.ts';
-import { showAvastStyleToast } from './notificationWindow.ts';
+import { showDesktopNotification } from './desktopNotifier.ts';
 
 export type NotificationCategory =
   | 'security'
@@ -42,6 +42,8 @@ export interface VanguardNotification {
   id: string;
   category: NotificationCategory;
   severity: NotificationSeverity;
+  /** Présentation « succès » d'un événement d'information (icône et son de réussite). */
+  tone?: 'success';
   title: string;
   message: string;
   timestamp: number;
@@ -58,6 +60,29 @@ export interface NotificationPreferences {
   soundVolume: number; // 0 à 100
   categories: Record<NotificationCategory, boolean>;
 }
+
+export interface EmitPayload {
+  category: NotificationCategory;
+  severity?: NotificationSeverity;
+  tone?: 'success';
+  title: string;
+  message: string;
+  dedupKey?: string;
+  actionTarget?: NotificationActionTarget;
+  /** false : historique seulement, l'événement est déjà présenté par un autre écran (ex. fenêtre d'analyse de téléchargement). */
+  visual?: boolean;
+}
+
+const CATEGORY_LABELS: Record<NotificationCategory, string> = {
+  security: 'Sécurité',
+  scanner: 'Téléchargements',
+  maintenance: 'Maintenance',
+  network: 'Réseau',
+  vpn: 'VPN',
+  vault: 'Vault',
+  updater: 'Mises à jour',
+  system: 'Vanguard Core',
+};
 
 const DEFAULT_CATEGORIES: Record<NotificationCategory, boolean> = {
   security: true,
@@ -155,16 +180,19 @@ class NotificationManager {
   }
 
   /**
-   * Point d'entrée unique pour émettre une notification
+   * Point d'entrée unique pour émettre une notification.
+   * L'historique est toujours écrit ; l'affichage (fenêtre de bureau) et le son suivent les préférences.
    */
-  public emit(payload: {
-    category: NotificationCategory;
-    severity?: NotificationSeverity;
-    title: string;
-    message: string;
-    dedupKey?: string;
-    actionTarget?: NotificationActionTarget;
-  }): VanguardNotification | null {
+  public emit(payload: EmitPayload): VanguardNotification | null {
+    return this.emitDetailed(payload).notification;
+  }
+
+  /** Comme emit(), avec l'état de remise : permet d'expliquer pourquoi rien ne s'est affiché. */
+  public emitDetailed(payload: EmitPayload): {
+    notification: VanguardNotification | null;
+    delivery: 'shown' | 'history_only' | 'deduplicated';
+    reason?: 'notifications_disabled' | 'category_disabled' | 'do_not_disturb';
+  } {
     const severity = payload.severity || 'info';
     const now = Date.now();
 
@@ -173,7 +201,7 @@ class NotificationManager {
       const last = this.recentDedupKeys.get(payload.dedupKey);
       if (last && now - last < DEDUP_WINDOW_MS) {
         logger.debug(`[NotificationManager] Notification coalescée/ignorée (dedupKey: ${payload.dedupKey})`);
-        return null;
+        return { notification: null, delivery: 'deduplicated' };
       }
       this.recentDedupKeys.set(payload.dedupKey, now);
       // Nettoyage des anciennes clés
@@ -200,6 +228,7 @@ class NotificationManager {
       id: crypto.randomUUID(),
       category: payload.category,
       severity,
+      tone: payload.tone,
       title: sanitizedTitle,
       message: sanitizedMessage,
       timestamp: now,
@@ -219,80 +248,38 @@ class NotificationManager {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) this.mainWindow.webContents.send('notifications:updated', { id: notification.id });
     } catch { /* the persisted history stays authoritative */ }
 
-    // 5. Décision de distribution visuelle et sonore
-    if (!isGlobalEnabled && !isCritical) {
-      return notification; // Désactivé par l'utilisateur
-    }
-    if (!isCategoryEnabled && !isCritical) {
-      return notification; // Catégorie désactivée
-    }
-    if (isDndActive && !isCritical) {
-      return notification; // Masqué par le mode Ne Pas Déranger
-    }
+    // 5. Décision de distribution visuelle et sonore (les critiques passent toujours)
+    if (payload.visual === false) return { notification, delivery: 'history_only' };
+    if (!isGlobalEnabled && !isCritical) return { notification, delivery: 'history_only', reason: 'notifications_disabled' };
+    if (!isCategoryEnabled && !isCritical) return { notification, delivery: 'history_only', reason: 'category_disabled' };
+    if (isDndActive && !isCritical) return { notification, delivery: 'history_only', reason: 'do_not_disturb' };
 
-    this.dispatchVisualAndSound(notification, prefs);
-    return notification;
+    this.display(notification, prefs);
+    return { notification, delivery: 'shown' };
   }
 
-  private dispatchVisualAndSound(notification: VanguardNotification, prefs: NotificationPreferences): void {
-    const isWindowActive =
-      this.mainWindow &&
-      !this.mainWindow.isDestroyed() &&
-      this.mainWindow.isVisible() &&
-      this.mainWindow.isFocused();
-
-    const volume = (prefs.soundVolume || 70) / 100;
-    const soundEnabled = prefs.soundEnabled && !prefs.dndEnabled;
-
-    if (isWindowActive) {
-      // La fenêtre est active : diffuser un toast in-app propre sans popup intrusive
-      this.mainWindow!.webContents.send('notification:toast', {
-        id: notification.id,
-        category: notification.category,
-        severity: notification.severity,
+  /** Canal unique : fenêtre de bureau Vanguard. Elle joue aussi le son (une seule fois). */
+  private display(notification: VanguardNotification, prefs: NotificationPreferences): void {
+    try {
+      showDesktopNotification({
         title: notification.title,
         message: notification.message,
-        actionTarget: notification.actionTarget,
-        soundEnabled,
-        volume,
+        severity: notification.severity,
+        tone: notification.tone,
+        label: CATEGORY_LABELS[notification.category] || 'Vanguard Core',
+        soundEnabled: prefs.soundEnabled && !prefs.dndEnabled,
+        volume: Math.max(0, Math.min(100, prefs.soundVolume)) / 100,
+        onClick: () => {
+          const win = this.mainWindow;
+          if (!win || win.isDestroyed()) return;
+          if (win.isMinimized()) win.restore();
+          win.show();
+          win.focus();
+          if (notification.actionTarget?.tab) win.webContents.send('navigation:go-to', notification.actionTarget.tab);
+        },
       });
-    } else {
-      // La fenêtre est masquée, minimisée ou en arrière-plan : afficher la popup Avast-style
-      try {
-        showAvastStyleToast({
-          title: notification.title,
-          message: notification.message,
-          type: this.mapCategoryToToastType(notification.category, notification.severity),
-          soundEnabled,
-          volume,
-          onClickFocus: () => {
-            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-              if (this.mainWindow.isMinimized()) this.mainWindow.restore();
-              this.mainWindow.show();
-              this.mainWindow.focus();
-              if (notification.actionTarget?.tab) {
-                this.mainWindow.webContents.send('navigation:go-to', notification.actionTarget.tab);
-              }
-            }
-          },
-        });
-      } catch (err: any) {
-        logger.warn('[NotificationManager] Échec affichage popup :', err?.message);
-      }
-    }
-  }
-
-  private mapCategoryToToastType(cat: NotificationCategory, sev: NotificationSeverity): string {
-    if (sev === 'critical') return 'threat';
-    switch (cat) {
-      case 'security': return sev === 'alert' ? 'threat' : 'security_clean';
-      case 'scanner':  return sev === 'alert' ? 'download_threat' : 'download_safe';
-      case 'vpn':      return sev === 'warning' ? 'vpn_disconnected' : 'vpn_connected';
-      case 'maintenance': return 'maintenance';
-      case 'network':  return 'network';
-      case 'vault':    return sev === 'alert' || sev === 'warning' ? 'threat' : 'info';
-      case 'updater':  return 'performance';
-      default:         return 'info';
+    } catch (err: any) {
+      logger.warn('[NotificationManager] Échec affichage notification de bureau :', err?.message);
     }
   }
 
@@ -302,6 +289,8 @@ class NotificationManager {
     return String(text)
       .replace(/masterKey=[a-zA-Z0-9+/=]+/gi, '[SECRET REDACTED]')
       .replace(/password=[^\s&]+/gi, '[SECRET REDACTED]')
+      .replace(/recovery\s*key\s*[=:]\s*\S+/gi, '[SECRET REDACTED]')
+      .replace(/\b(?:[0-9A-Z]{4}-){6,}[0-9A-Z]{4}\b/g, '[SECRET REDACTED]')
       .slice(0, 300);
   }
 
@@ -353,6 +342,18 @@ export function setupNotificationIPC(win: BrowserWindow): void {
   ipcMain.handle('notifications:save-prefs', (_, prefs: Partial<NotificationPreferences>) => {
     const updated = notificationManager.savePreferences(prefs);
     return { success: true, prefs: updated };
+  });
+
+  // Événement de test : passe par le vrai pipeline (préférences, catégories, ne pas déranger, fenêtre de bureau, son).
+  ipcMain.handle('notifications:test', (_, kind: 'success' | 'warning' | 'error') => {
+    const spec = {
+      success: { severity: 'info' as const, tone: 'success' as const, title: 'Test réussi', message: 'Les notifications de bureau Vanguard fonctionnent.' },
+      warning: { severity: 'warning' as const, tone: undefined, title: 'Test d\'avertissement', message: 'Exemple d\'avertissement affiché près de la zone de notification.' },
+      error: { severity: 'alert' as const, tone: undefined, title: 'Test d\'erreur', message: 'Exemple d\'erreur : la fenêtre reste affichée plus longtemps.' },
+    }[kind] || null;
+    if (!spec) return { delivered: false, delivery: 'invalid', reason: undefined };
+    const result = notificationManager.emitDetailed({ category: 'system', ...spec, actionTarget: { tab: 'settings' } });
+    return { delivered: result.delivery === 'shown', delivery: result.delivery, reason: result.reason };
   });
 
   ipcMain.handle('notifications:emit', (_, payload: any) => {

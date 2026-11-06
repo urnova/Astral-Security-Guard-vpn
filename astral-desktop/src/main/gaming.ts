@@ -1,4 +1,4 @@
-﻿import { BrowserWindow, ipcMain, shell, app } from 'electron';
+import { BrowserWindow, ipcMain, shell, app } from 'electron';
 import child_process from 'child_process';
 import https from 'https';
 import fs from 'fs';
@@ -6,6 +6,7 @@ import path from 'path';
 import { runPowerShell } from './psHelper';
 import { logger } from './logger';
 import { gamingManager } from './gamingManager';
+import { notificationManager } from './notificationManager';
 import { presentMonEngine, PresentMonMetrics } from './presentmonEngine';
 import { resolveNvidiaFamily, normaliseNvidiaDriverVersion, type NvidiaFamily } from './nvidiaResolver';
 
@@ -146,11 +147,7 @@ export function setupGamingIPC(
         }
       }
 
-      win.webContents.send('notification:trigger', {
-        type: 'gaming',
-        title: 'Mode Gaming Activé',
-        message: 'Optimisation de priorité processus (AboveNormal) et plan d\'alimentation réversible activés.',
-      });
+      notificationManager.emit({ category: 'system', severity: 'info', title: 'Mode Gaming Activé', message: 'Optimisation de priorité processus (AboveNormal) et plan d\'alimentation réversible activés.', actionTarget: { tab: 'gaming' } });
     } else {
       await gamingManager.restorePreviousState();
       sendSessionSummary(win);
@@ -290,7 +287,10 @@ export function setupGamingIPC(
           let mfg: 'nvidia' | 'amd' | 'intel' | 'virtual' | 'unknown' = 'unknown';
           let driverUrl = 'https://www.google.com/search?q=' + encodeURIComponent(`${name} driver officiel`);
 
-          if (lower.includes('nvidia') || lower.includes('geforce') || lower.includes('rtx') || lower.includes('gtx') || lower.includes('quadro')) {
+          const VIRTUAL_ADAPTER = /virtual|basic display|basic render|remote ?(display|fx)|meta quest|oculus|parsec|citrix|vmware|hyper-v|svga|indirect display|displaylink|spacedesk|usb mobile monitor/i;
+          if (VIRTUAL_ADAPTER.test(name)) {
+            mfg = 'virtual';
+          } else if (lower.includes('nvidia') || lower.includes('geforce') || lower.includes('rtx') || lower.includes('gtx') || lower.includes('quadro')) {
             mfg = 'nvidia';
             driverUrl = 'https://www.nvidia.com/fr-fr/geforce/drivers/';
             const digits = rawDriver.replace(/\D/g, '');
@@ -308,8 +308,6 @@ export function setupGamingIPC(
           } else if (lower.includes('intel') || lower.includes('uhd') || lower.includes('iris') || lower.includes('arc')) {
             mfg = 'intel';
             driverUrl = 'https://www.intel.fr/content/www/fr/fr/download-center/home.html';
-          } else if (lower.includes('virtual') || lower.includes('basic') || lower.includes('meta')) {
-            mfg = 'virtual';
           }
 
           let dateStr = '';
@@ -330,12 +328,19 @@ export function setupGamingIPC(
             driverDate: dateStr,
             manufacturer: mfg,
             isVirtual: mfg === 'virtual',
-            isPrimary: index === 0 || mfg === 'nvidia' || mfg === 'amd',
+            isPrimary: false, // défini après classement : une seule carte physique principale
             driverUrl,
             status: 'check_manual' as const,
           };
         });
 
+        // Carte principale = première carte physique, discrète (NVIDIA/AMD) avant intégrée ; les adaptateurs virtuels passent en dernier.
+        gpus.sort((x: any, y: any) => {
+          const rank = (g: any) => g.isVirtual ? 2 : (g.manufacturer === 'nvidia' || g.manufacturer === 'amd') ? 0 : 1;
+          return rank(x) - rank(y);
+        });
+        const firstPhysical = gpus.find((g: any) => !g.isVirtual);
+        if (firstPhysical) firstPhysical.isPrimary = true;
         // Filter out purely virtual adapters for the primary display if physical ones exist
         const physicalGpus = gpus.filter((g: any) => !g.isVirtual);
         const activeGpu = physicalGpus[0] || gpus[0] || {
@@ -844,20 +849,12 @@ export function setupGamingIPC(
       if (currentGamePID && currentGameName) {
         try {
           await gamingManager.enableGamingOptimizations(currentGamePID, currentGameName);
-          win.webContents.send('notification:trigger', {
-            type: 'gaming',
-            title: 'Optimisation de session active',
-            message: `Priorité AboveNormal appliquée sur ${currentGameName}. Plan Haute Performance engagé.`,
-          });
+          notificationManager.emit({ category: 'system', severity: 'info', title: 'Optimisation de session active', message: `Priorité AboveNormal appliquée sur ${currentGameName}. Plan Haute Performance engagé.`, actionTarget: { tab: 'gaming' } });
         } catch (e: any) {
           logger.warn('[Gaming] Optimisations non appliquées:', e.message);
         }
       } else {
-        win.webContents.send('notification:trigger', {
-          type: 'gaming',
-          title: 'Mode d\'optimisation armé',
-          message: 'Mode actif en attente de jeu. Les réglages s\'appliqueront dès qu\'une application sera identifiée.',
-        });
+        notificationManager.emit({ category: 'system', severity: 'info', title: 'Mode d\'optimisation armé', message: 'Mode actif en attente de jeu. Les réglages s\'appliqueront dès qu\'une application sera identifiée.', actionTarget: { tab: 'gaming' } });
       }
     } else {
       const restoreRes = await gamingManager.restorePreviousState();
@@ -1370,12 +1367,8 @@ function sendSessionSummary(win: BrowserWindow) {
     const durationMin = Math.max(1, Math.round((Date.now() - sessionStartTime) / 60000));
     const avgPing = sessionPings.length > 0 ? Math.round(sessionPings.reduce((a, b) => a + b, 0) / sessionPings.length) : null;
 
-    win.webContents.send('notification:trigger', {
-      type: 'report',
-      title: 'Récapitulatif de Session Gaming',
-      message: avgPing !== null
+    notificationManager.emit({ category: 'system', severity: 'info', title: 'Récapitulatif de Session Gaming', message: avgPing !== null
         ? `Temps de jeu : ${durationMin} min • Latence moyenne : ${avgPing}ms.`
-        : `Temps de jeu : ${durationMin} min • Mesure de latence moyenne non disponible.`,
-    });
+        : `Temps de jeu : ${durationMin} min • Mesure de latence moyenne non disponible.`, actionTarget: { tab: 'gaming' } });
   }
 }

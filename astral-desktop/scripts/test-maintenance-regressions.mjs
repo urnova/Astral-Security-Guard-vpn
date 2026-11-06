@@ -186,6 +186,18 @@ try {
       for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
     }
   });
+  await check('links and junctions are never followed or emptied', () => {
+    const outside = path.join(temp, 'outside-target'); fs.mkdirSync(outside);
+    fs.writeFileSync(path.join(outside, 'precious.txt'), 'keep');
+    const dir = path.join(temp, 'with-junction'); fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, 'junk.tmp'), Buffer.alloc(10));
+    fs.symlinkSync(outside, path.join(dir, 'link'), 'junction');
+    const scan = engine.getSafeDirSize(dir);
+    assert.equal(scan.fileCount, 1, 'size scan does not traverse the junction');
+    const result = engine.cleanSafeDir(dir);
+    assert.equal(result.deletedCount, 1);
+    assert.equal(fs.readFileSync(path.join(outside, 'precious.txt'), 'utf8'), 'keep');
+  });
   console.log(`${passed} maintenance regression checks passed`);
 } finally {
   if (oldTemp === undefined) delete process.env.TEMP; else process.env.TEMP = oldTemp;

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { playNotificationTone } from '../../shared/notificationSound';
 import {
   User, Palette, Sliders, Shield, Gamepad2,
   Bell, RefreshCw, Cpu, Info, Check, CheckCircle2,
@@ -155,24 +156,35 @@ export default function SettingsTab({
   const [currentVersion, setCurrentVersion] = useState('0.1.4');
   const [updateInfo, setUpdateInfo]         = useState<{ version?: string; hasUpdate?: boolean } | null>(null);
 
-  const playTestNotificationSound = () => {
+  const [notifHistory, setNotifHistory] = useState<any[]>([]);
+  const [testingNotif, setTestingNotif] = useState(false);
+  const [notifTestResult, setNotifTestResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const loadNotifHistory = () => {
+    api?.notifications?.getHistory?.().then((h: any) => setNotifHistory(Array.isArray(h) ? h : [])).catch(() => {});
+  };
+
+  const REASONS: Record<string, string> = {
+    notifications_disabled: 'Les notifications sont désactivées : l\'événement est dans l\'historique, sans fenêtre ni son.',
+    category_disabled: 'La catégorie « Système et jeux » est désactivée : l\'événement est dans l\'historique, sans fenêtre ni son.',
+    do_not_disturb: 'Le mode Ne pas déranger est actif : l\'événement est dans l\'historique, sans fenêtre ni son.',
+  };
+  const runNotificationTest = async (kind: 'success' | 'warning' | 'error') => {
+    setTestingNotif(true);
+    setNotifTestResult(null);
     try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      const vol = (soundVolume / 100) * 0.15;
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12);
-      gain.gain.setValueAtTime(vol, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.28);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.3);
-    } catch {}
+      const res = await api?.notifications?.test?.(kind);
+      if (res?.delivered) {
+        setNotifTestResult({ ok: true, text: soundEnabled && soundVolume > 0 ? 'Notification envoyée près de la zone de notification, avec son.' : 'Notification envoyée près de la zone de notification (sans son : sons désactivés ou volume à 0).' });
+      } else {
+        setNotifTestResult({ ok: false, text: REASONS[res?.reason] || 'La notification n\'a pas pu être envoyée.' });
+      }
+      loadNotifHistory();
+    } catch (err: any) {
+      setNotifTestResult({ ok: false, text: `Erreur : ${err?.message || 'envoi impossible'}` });
+    } finally {
+      setTestingNotif(false);
+    }
   };
 
   // Admin status
@@ -186,6 +198,13 @@ export default function SettingsTab({
   // Error / notice
   const [notice, setNotice] = useState('');
   const [error, setError]   = useState('');
+
+  useEffect(() => {
+    if (activeSection !== 'notifications') return;
+    loadNotifHistory();
+    const off = api?.on?.('notifications:updated', () => loadNotifHistory());
+    return () => { off?.(); };
+  }, [activeSection]);
 
   const showToast = (msg: string) => {
     setNotice(msg);
@@ -373,7 +392,7 @@ export default function SettingsTab({
   const handleDiscreteModeChange = async (mode: 'window' | 'mini' | 'notification') => {
     setDiscreteMode(mode);
     await api?.saveScannerConfig?.({ discreteMode: mode });
-    showToast(`Mode sentinelle : ${mode === 'window' ? 'Fenêtre modale' : (mode === 'mini' ? 'Miniature' : 'Discret toast')}`);
+    showToast(`Mode sentinelle : ${mode === 'window' ? 'Fenêtre modale' : (mode === 'mini' ? 'Miniature' : 'Notification de bureau')}`);
   };
 
   const handleToggleOverlay = async () => {
@@ -543,15 +562,20 @@ export default function SettingsTab({
   };
 
   return (
-    <div className="tab-container animate-fade-in" style={{ padding: '24px 32px' }}>
-      {/* Toast Notification */}
+    <div
+      className="tab-container animate-fade-in"
+      style={{ padding: '24px 32px' }}
+      onKeyDown={e => {
+        const el = e.target as HTMLElement;
+        if (el?.getAttribute?.('role') === 'switch' && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); el.click(); }
+      }}
+    >
+      {/* Confirmation affichée dans la page (pas de bulle flottante) */}
       {notice && (
         <div
+          role="status"
           style={{
-            position: 'fixed',
-            bottom: 24,
-            right: 24,
-            zIndex: 999,
+            marginBottom: 14,
             display: 'flex',
             alignItems: 'center',
             gap: 10,
@@ -562,7 +586,6 @@ export default function SettingsTab({
             boxShadow: 'var(--shadow-md)',
             fontSize: 12,
             color: 'var(--text)',
-            animation: 'toastIn .2s var(--ease) both',
           }}
         >
           <CheckCircle2 size={15} style={{ color: 'var(--ok)' }} />
@@ -571,15 +594,17 @@ export default function SettingsTab({
       )}
 
       {/* Header */}
-      <div className="tab-header" style={{ marginBottom: 24 }}>
-        <h1 className="tab-title">Paramètres</h1>
-        <p className="tab-subtitle">Configuration globale du système, sécurité, apparence et matériel</p>
+      <div className="page-header" style={{ marginBottom: 24 }}>
+        <h1>Paramètres</h1>
+        <p className="sub">Apparence, système, sécurité, notifications et mises à jour</p>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 24, alignItems: 'start' }}>
         {/* Navigation Sidebar */}
         <div
           style={{
+            position: 'sticky',
+            top: 0,
             background: 'var(--surface)',
             border: '1px solid var(--line)',
             borderRadius: 'var(--r-md)',
@@ -1074,7 +1099,7 @@ export default function SettingsTab({
                       [
                         { id: 'window', label: 'Fenêtre modale', desc: 'Complète au centre' },
                         { id: 'mini', label: 'Miniature', desc: 'Bannière coin inférieur' },
-                        { id: 'notification', label: 'Discret Toast', desc: 'Notification discrète' },
+                        { id: 'notification', label: 'Notification de bureau', desc: 'Petite fenêtre près de la zone de notification' },
                       ] as const
                     ).map(item => (
                       <button
@@ -1361,36 +1386,17 @@ export default function SettingsTab({
           {activeSection === 'notifications' && (
             <div className="stack" style={{ gap: 20 }}>
               <div>
-                <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Notifications & Alertes</h2>
+                <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>Notifications</h2>
                 <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-                  Gestion des bannières visuelles et des alertes de sécurité prioritaires.
+                  Les notifications s'affichent dans une petite fenêtre Vanguard près de la zone de notification Windows, y compris quand l'application est réduite dans la barre système. Ce ne sont pas des notifications natives du centre de notifications Windows. Aucune n'apparaît si Vanguard est fermé.
                 </p>
               </div>
 
               <div className="list">
                 <div className="setting-row">
                   <div className="setting-info">
-                    <div className="setting-title">Mode Ne Pas Déranger (DND)</div>
-                    <div className="setting-desc">Masque toutes les notifications non critiques pendant que vous travaillez ou jouez</div>
-                  </div>
-                  <div
-                    className={`sw ${dndEnabled ? 'on' : ''}`}
-                    onClick={async () => {
-                      const next = !dndEnabled;
-                      onDndChange?.(next);
-                      await api?.notifications?.savePrefs?.({ dndEnabled: next });
-                      showToast(next ? 'Mode Ne Pas Déranger activé' : 'Mode Ne Pas Déranger désactivé');
-                    }}
-                    role="switch"
-                    aria-checked={dndEnabled}
-                    tabIndex={0}
-                  />
-                </div>
-
-                <div className="setting-row">
-                  <div className="setting-info">
-                    <div className="setting-title">Notifications système</div>
-                    <div className="setting-desc">Affichage des alertes lors de la détection de menaces ou blocages</div>
+                    <div className="setting-title">Afficher les notifications</div>
+                    <div className="setting-desc">Désactivé : les événements restent dans l'historique ci-dessous, sans fenêtre ni son. Les alertes critiques s'affichent toujours.</div>
                   </div>
                   <div
                     className={`sw ${notifEnabled ? 'on' : ''}`}
@@ -1399,18 +1405,37 @@ export default function SettingsTab({
                       setNotifEnabled(next);
                       await api?.saveUserProfile?.({ notificationsEnabled: next });
                       await api?.notifications?.savePrefs?.({ notificationsEnabled: next });
-                      showToast(next ? 'Notifications système activées' : 'Notifications système désactivées');
                     }}
                     role="switch"
                     aria-checked={notifEnabled}
+                    aria-label="Afficher les notifications"
                     tabIndex={0}
                   />
                 </div>
 
                 <div className="setting-row">
                   <div className="setting-info">
-                    <div className="setting-title">Effets sonores discrets</div>
-                    <div className="setting-desc">Retour audio léger lors des actions réussies ou alertes</div>
+                    <div className="setting-title">Ne pas déranger</div>
+                    <div className="setting-desc">Masque les notifications non critiques et coupe leur son</div>
+                  </div>
+                  <div
+                    className={`sw ${dndEnabled ? 'on' : ''}`}
+                    onClick={async () => {
+                      const next = !dndEnabled;
+                      onDndChange?.(next);
+                      await api?.notifications?.savePrefs?.({ dndEnabled: next });
+                    }}
+                    role="switch"
+                    aria-checked={dndEnabled}
+                    aria-label="Ne pas déranger"
+                    tabIndex={0}
+                  />
+                </div>
+
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title">Sons</div>
+                    <div className="setting-desc">Un son bref par notification affichée, selon sa gravité</div>
                   </div>
                   <div
                     className={`sw ${soundEnabled ? 'on' : ''}`}
@@ -1419,65 +1444,66 @@ export default function SettingsTab({
                       setSoundEnabled(next);
                       await api?.saveUserProfile?.({ soundEnabled: next });
                       await api?.notifications?.savePrefs?.({ soundEnabled: next });
-                      showToast(next ? 'Effets sonores activés' : 'Effets sonores désactivés');
                     }}
                     role="switch"
                     aria-checked={soundEnabled}
+                    aria-label="Sons des notifications"
                     tabIndex={0}
                   />
                 </div>
 
-                {soundEnabled && (
-                  <div className="setting-row">
-                    <div className="setting-info">
-                      <div className="setting-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <Volume2 size={15} style={{ color: 'var(--a1)' }} />
-                        Volume des notifications ({soundVolume}%)
-                      </div>
-                      <div className="setting-desc">Niveau sonore des alertes procédurales Web Audio (sécurité, gaming, vpn)</div>
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div className="setting-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Volume2 size={15} style={{ color: 'var(--a1)' }} />
+                      Volume ({soundVolume}%)
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 220 }}>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={soundVolume}
-                        onChange={e => handleVolumeChange(Number(e.target.value))}
-                        style={{ flex: 1, accentColor: 'var(--a1)', cursor: 'pointer' }}
-                      />
+                    <div className="setting-desc">{soundEnabled ? 'Écoutez un son pour régler le volume' : 'Les sons sont désactivés'}</div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={soundVolume}
+                      disabled={!soundEnabled}
+                      aria-label="Volume des notifications"
+                      onChange={e => handleVolumeChange(Number(e.target.value))}
+                      style={{ width: 140, accentColor: 'var(--a1)' }}
+                    />
+                    {(['success', 'warning', 'error'] as const).map(kind => (
                       <button
+                        key={kind}
                         type="button"
                         className="btn-ghost"
-                        onClick={playTestNotificationSound}
-                        style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
+                        disabled={!soundEnabled || soundVolume === 0}
+                        onClick={() => playNotificationTone(kind === 'success' ? 'success' : kind === 'warning' ? 'warning' : 'alert', soundVolume / 100)}
+                        style={{ fontSize: 11, padding: '5px 10px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                        title="Écouter ce son"
                       >
-                        <Volume2 size={13} />
-                        <span>Tester le son</span>
+                        <Volume2 size={12} />
+                        {kind === 'success' ? 'Succès' : kind === 'warning' ? 'Avertissement' : 'Erreur'}
                       </button>
-                    </div>
+                    ))}
                   </div>
-                )}
+                </div>
               </div>
 
-              {/* Filtrage par catégorie de notifications */}
-              <div style={{ borderTop: '1px solid var(--line)', paddingTop: 18 }}>
-                <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>
-                  Catégories de notifications autorisées
-                </h3>
-                <p style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 14 }}>
-                  Activez ou désactivez individuellement les bannières selon leur provenance. Les alertes critiques contournent le filtrage.
+              <div style={{ borderTop: '1px solid var(--line)', paddingTop: 16 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Catégories</h3>
+                <p style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 12 }}>
+                  Les alertes critiques ignorent ce filtre.
                 </p>
-
                 <div className="list">
                   {[
-                    { key: 'security', title: 'Sécurité & Détection de Menaces', desc: 'Alertes Defender, détections virales et neutralisations' },
-                    { key: 'scanner', title: 'Sentinelle Téléchargements & Clés USB', desc: 'Interception de fichiers suspects et contrôle amovible' },
-                    { key: 'maintenance', title: 'Maintenance & Nettoyage Disque', desc: 'Rapports d\'optimisation périodique et libération d\'espace' },
-                    { key: 'network', title: 'Réseau & Diagnostic Latence', desc: 'Alertes de déconnexion, instabilité WAN et calibrage TCP/IP' },
-                    { key: 'vpn', title: 'Vanguard VPN', desc: 'État du tunnel sécurisé, connexion et déconnexion' },
-                    { key: 'vault', title: 'Vanguard Vault', desc: 'Verrouillage automatique, sessions et sauvegardes chiffrées' },
-                    { key: 'updater', title: 'Mises à jour logicielles', desc: 'Nouvelles versions et correctifs de sécurité prêts à l\'installation' },
-                    { key: 'system', title: 'Événements système généraux', desc: 'Alertes matérielles, élévation et notifications de profil' },
+                    { key: 'security', title: 'Sécurité', desc: 'Détections et neutralisations' },
+                    { key: 'scanner', title: 'Téléchargements et clés USB', desc: 'Fichiers analysés par la Sentinelle' },
+                    { key: 'maintenance', title: 'Maintenance', desc: 'Nettoyages et résultats' },
+                    { key: 'network', title: 'Réseau', desc: 'Déconnexions et instabilité' },
+                    { key: 'vpn', title: 'VPN', desc: 'Connexion et déconnexion du tunnel' },
+                    { key: 'vault', title: 'Vault', desc: 'Verrouillage et sauvegardes' },
+                    { key: 'updater', title: 'Mises à jour', desc: 'Nouvelles versions' },
+                    { key: 'system', title: 'Système et jeux', desc: 'Mode jeu, profils et divers' },
                   ].map(cat => {
                     const isChecked = categories[cat.key] !== false;
                     return (
@@ -1491,6 +1517,7 @@ export default function SettingsTab({
                           onClick={() => handleToggleCategory(cat.key, !isChecked)}
                           role="switch"
                           aria-checked={isChecked}
+                          aria-label={cat.title}
                           tabIndex={0}
                         />
                       </div>
@@ -1499,152 +1526,58 @@ export default function SettingsTab({
                 </div>
               </div>
 
-              {/* Centre d'essai et de test des notifications */}
-              <div style={{ borderTop: '1px solid var(--line)', paddingTop: 18 }}>
-                <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>
-                  Centre d'essai & Validation des Notifications
-                </h3>
-                <p style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 14 }}>
-                  Testez instantanément la distribution centrale (in-app ou système), la déduplication et l'habillage sonore.
+              <div style={{ borderTop: '1px solid var(--line)', paddingTop: 16 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Tester</h3>
+                <p style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 12 }}>
+                  Envoie une vraie notification par le même circuit que les événements de l'application, avec vos réglages actuels. Aucun réglage n'est modifié.
                 </p>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {([['success', 'Succès'], ['warning', 'Avertissement'], ['error', 'Erreur']] as const).map(([kind, label]) => (
+                    <button key={kind} type="button" className="btn btn-ghost" disabled={testingNotif} onClick={() => runNotificationTest(kind)}>
+                      Tester : {label}
+                    </button>
+                  ))}
+                </div>
+                {notifTestResult && (
+                  <p role="status" style={{ fontSize: 12, marginTop: 10, color: notifTestResult.ok ? 'var(--ok)' : 'var(--warn)' }}>
+                    {notifTestResult.text}
+                  </p>
+                )}
+              </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 10 }}>
+              <div style={{ borderTop: '1px solid var(--line)', paddingTop: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Historique</h3>
                   <button
                     type="button"
-                    className="btn btn-ghost"
-                    style={{ justifyContent: 'flex-start', padding: '10px 14px', textAlign: 'left', borderColor: 'rgba(239,68,68,0.3)' }}
-                    onClick={() => {
-                      api?.notifications?.emit?.({
-                        category: 'security',
-                        severity: 'critical',
-                        title: 'Alerte Menace Critique',
-                        message: 'Fichier suspect bloqué : Trojan:Win32/TestThreat neutralisé.',
-                        actionTarget: { tab: 'security' },
-                      });
-                      playTestNotificationSound();
-                    }}
+                    className="btn-ghost"
+                    disabled={notifHistory.length === 0}
+                    onClick={async () => { await api?.notifications?.clearHistory?.(); setNotifHistory([]); }}
+                    style={{ fontSize: 11, padding: '4px 10px' }}
                   >
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--bad)', marginRight: 6, flexShrink: 0 }} />
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Alerte Menace Critique</div>
-                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Sécurité · Priorité maximale</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    style={{ justifyContent: 'flex-start', padding: '10px 14px', textAlign: 'left', borderColor: 'rgba(var(--a1r),0.3)' }}
-                    onClick={() => {
-                      api?.notifications?.emit?.({
-                        category: 'scanner',
-                        severity: 'warning',
-                        title: 'Sentinelle Téléchargements',
-                        message: 'Archive suspecte détectée dans Téléchargements.',
-                        actionTarget: { tab: 'dashboard' },
-                      });
-                      playTestNotificationSound();
-                    }}
-                  >
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--a1)', marginRight: 6, flexShrink: 0 }} />
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Alerte Sentinelle Fichier</div>
-                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Scanner · Analyse entrante</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    style={{ justifyContent: 'flex-start', padding: '10px 14px', textAlign: 'left', borderColor: 'rgba(214,173,104,0.3)' }}
-                    onClick={() => {
-                      api?.notifications?.emit?.({
-                        category: 'network',
-                        severity: 'warning',
-                        title: 'Alerte Réseau & Diagnostic',
-                        message: 'Latence anormale observée vers les résolveurs publics.',
-                        actionTarget: { tab: 'network' },
-                      });
-                      playTestNotificationSound();
-                    }}
-                  >
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--warn)', marginRight: 6, flexShrink: 0 }} />
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Alerte Diagnostic Réseau</div>
-                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Réseau · Signal latence</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    style={{ justifyContent: 'flex-start', padding: '10px 14px', textAlign: 'left', borderColor: 'rgba(104,184,148,0.3)' }}
-                    onClick={() => {
-                      api?.notifications?.emit?.({
-                        category: 'maintenance',
-                        severity: 'info',
-                        title: 'Maintenance Système Terminée',
-                        message: 'Nettoyage des fichiers temporaires complété avec succès.',
-                        actionTarget: { tab: 'performance' },
-                      });
-                      playTestNotificationSound();
-                    }}
-                  >
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--ok)', marginRight: 6, flexShrink: 0 }} />
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Rapport Maintenance</div>
-                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Maintenance · Succès</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    style={{ justifyContent: 'flex-start', padding: '10px 14px', textAlign: 'left', borderColor: 'rgba(59,130,246,0.3)' }}
-                    onClick={() => {
-                      api?.notifications?.emit?.({
-                        category: 'vpn',
-                        severity: 'info',
-                        title: 'Vanguard VPN',
-                        message: 'Tunnel sécurisé OpenVPN établi avec succès.',
-                        actionTarget: { tab: 'vpn' },
-                      });
-                      playTestNotificationSound();
-                    }}
-                  >
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', marginRight: 6, flexShrink: 0 }} />
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Notification Vanguard VPN</div>
-                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>VPN · Connectivité</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    style={{ justifyContent: 'flex-start', padding: '10px 14px', textAlign: 'left', borderColor: 'rgba(168,85,247,0.3)' }}
-                    onClick={() => {
-                      api?.notifications?.emit?.({
-                        category: 'vault',
-                        severity: 'info',
-                        title: 'Vanguard Vault',
-                        message: 'Coffre local verrouillé sur inactivité prolongée.',
-                        actionTarget: { tab: 'vault' },
-                      });
-                      playTestNotificationSound();
-                    }}
-                  >
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#a855f7', marginRight: 6, flexShrink: 0 }} />
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>Notification Vanguard Vault</div>
-                      <div style={{ fontSize: 10, color: 'var(--dim)' }}>Vault · Sécurité des données</div>
-                    </div>
+                    Effacer l'historique
                   </button>
                 </div>
+                {notifHistory.length === 0 ? (
+                  <p style={{ fontSize: 12, color: 'var(--muted)' }}>Aucun événement enregistré.</p>
+                ) : (
+                  <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {notifHistory.slice(0, 20).map((n: any) => (
+                      <li key={n.id} style={{ display: 'flex', gap: 10, fontSize: 12, padding: '6px 0', borderBottom: '1px solid var(--line)' }}>
+                        <span style={{ color: 'var(--dim)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                          {new Date(n.timestamp).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <span style={{ minWidth: 0 }}>
+                          <b style={{ color: 'var(--text)', fontWeight: 600 }}>{n.title}</b>
+                          <span style={{ color: 'var(--muted)' }}> — {n.message}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
           )}
-
           {/* ── Mises à jour ── */}
           {activeSection === 'updates' && (
             <div className="stack" style={{ gap: 20 }}>

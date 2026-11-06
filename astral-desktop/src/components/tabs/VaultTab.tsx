@@ -940,6 +940,9 @@ export default function VaultTab() {
 
         {/* Boutons de verrouillage / fermeture */}
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => setViewMode('CHANGE_PASSWORD')} title="Changer le mot de passe d'accès">
+            <Key size={13} style={{ marginRight: 6 }} /> Mot de passe
+          </button>
           <button className="btn btn-ghost btn-sm" onClick={handleLockVault} title="Verrouille et efface les clés de la mémoire vive">
             <Lock size={13} style={{ marginRight: 6 }} /> Verrouiller
           </button>
@@ -1108,12 +1111,6 @@ export default function VaultTab() {
             title="Écrit les fichiers lisibles en clair sur le disque : aucune protection cryptographique"
           >
             <Download size={13} style={{ marginRight: 6 }} /> Extraire en clair…
-          </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => setViewMode('CHANGE_PASSWORD')}
-          >
-            <Key size={13} style={{ marginRight: 6 }} /> Mot de passe
           </button>
           <button
             className="btn btn-success btn-sm"

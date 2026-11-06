@@ -291,6 +291,7 @@ const api = {
     getPrefs: () => ipcRenderer.invoke('notifications:get-prefs'),
     savePrefs: (prefs: any) => ipcRenderer.invoke('notifications:save-prefs', prefs),
     emit: (payload: any) => ipcRenderer.invoke('notifications:emit', payload),
+    test: (kind: 'success' | 'warning' | 'error') => ipcRenderer.invoke('notifications:test', kind),
   },
   testNotification: (payload?: any) =>
     ipcRenderer.invoke('notification:test', typeof payload === 'string' ? { title: payload } : payload),

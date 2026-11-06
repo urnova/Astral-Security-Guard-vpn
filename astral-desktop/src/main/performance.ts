@@ -553,7 +553,7 @@ export function setupPerformanceIPC(win: BrowserWindow, notifyFn?: (title: strin
         }
 
         $letters = ($parts | Where-Object { $_.DriveLetter } | ForEach-Object { "$($_.DriveLetter):" }) -join ', '
-        $isBoot = [bool]($parts | Where-Object { $_.IsBoot -or $_.IsSystem -or $_.DriveLetter -eq 'C' })
+        $isBoot = [bool]($parts | Where-Object { $_.IsBoot })
 
         $media = if ($p -and $p.MediaType -and $p.MediaType -ne 'Unspecified') {
           $p.MediaType
@@ -656,7 +656,12 @@ export function setupPerformanceIPC(win: BrowserWindow, notifyFn?: (title: strin
         };
       });
 
-      disks.sort((a: any, b: any) => (a.diskNumber ?? 0) - (b.diskNumber ?? 0));
+      // Ordre stable : disque Windows en premier, puis lettre de lecteur croissante, puis disques sans lettre par numéro.
+      const firstLetter = (d: any) => (String(d.driveLetters || '').match(/[A-Z]/i)?.[0] || '~').toUpperCase();
+      disks.sort((a: any, b: any) =>
+        Number(b.isSystemDisk) - Number(a.isSystemDisk) ||
+        firstLetter(a).localeCompare(firstLetter(b)) ||
+        (a.diskNumber ?? 0) - (b.diskNumber ?? 0));
 
       return { success: true, disks };
     } catch {

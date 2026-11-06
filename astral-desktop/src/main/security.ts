@@ -231,7 +231,7 @@ export function setupSecurityIPC(win: BrowserWindow, notifyFn?: (title: string, 
         scanType: mode,
         percent: 92,
         progress: 92,
-        phase: 'Phase 3/3 · Sentinel IA & Rapport d\'Intégrité',
+        phase: 'Phase 3/3 · Rapport d\'intégrité',
         currentFile: 'Agrégation multi-moteurs et diagnostic heuristique IA…',
         filesScanned: 4850,
       });
@@ -260,7 +260,7 @@ export function setupSecurityIPC(win: BrowserWindow, notifyFn?: (title: string, 
           : `${threatCount} menace(s) détectée(s) nécessitant votre attention.`,
         aiReport: diagnosis.summary,
         aiRecommendations: diagnosis.safeRecommendations,
-        engines: ['Astral Core Engine', 'Microsoft Defender', 'Sentinel IA Heuristique'],
+        engines: ['Astral Core Engine', 'Microsoft Defender', 'Rapport d\'intégrité local'],
       };
 
       // Notification de fin d'analyse

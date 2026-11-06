@@ -546,6 +546,11 @@ button.win-btn.close:hover,
   overflow: hidden;
 }
 
+/* Scrollable pane for tabs that manage their own padding (Settings, Vault) */
+.pane-scroll { height: 100%; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth; }
+.pane-scroll::-webkit-scrollbar { width: 8px; }
+.pane-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: var(--r-sm); }
+
 /* Main scroll area */
 .page-scroll {
   height: 100%;

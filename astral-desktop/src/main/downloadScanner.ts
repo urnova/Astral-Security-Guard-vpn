@@ -13,7 +13,7 @@ import crypto from 'crypto';
 import cp from 'child_process';
 import { logger } from './logger.ts';
 import { runPowerShell } from './psHelper.ts';
-import { showAvastStyleDownloadScan, showAvastStyleToast } from './notificationWindow.ts';
+import { showAvastStyleDownloadScan } from './notificationWindow.ts';
 import {
   createScanSession,
   quarantineSessionFile,
@@ -746,7 +746,9 @@ async function processScanItem(item: ScannerQueueItem) {
           filePath,
           status: 'scanning',
           discreteMode: currentConfig.discreteMode || 'window',
-          soundEnabled: currentConfig.soundEnabled,
+          // Le son suit aussi les réglages globaux : sons activés, ne pas déranger, volume.
+          soundEnabled: currentConfig.soundEnabled && notificationManager.getPreferences().soundEnabled && !notificationManager.getPreferences().dndEnabled,
+          volume: notificationManager.getPreferences().soundVolume / 100,
         });
       } catch (err: any) {
         logger.warn('[DownloadScanner] Error showing scanning popup:', err.message);
@@ -769,6 +771,8 @@ async function processScanItem(item: ScannerQueueItem) {
     }
 
     // 6. Central Notification Dispatcher integration
+    // En mode fenêtre/miniature, la fenêtre d'analyse présente déjà l'événement : l'historique seul est alimenté.
+    const scanPopupShown = currentConfig.discreteMode !== 'notification' && result.status !== 'threat_remediated_by_defender';
     if (result.status === 'threat') {
       notificationManager.emit({
         category: 'scanner',
@@ -776,6 +780,7 @@ async function processScanItem(item: ScannerQueueItem) {
         title: 'Menace téléchargement bloquée',
         message: `Fichier malveillant détecté : ${result.threatName || filename}`,
         dedupKey: `threat-${normPath}`,
+        visual: !scanPopupShown,
         actionTarget: { tab: 'security' },
       });
     } else if (result.status === 'threat_remediated_by_defender') {
@@ -794,6 +799,7 @@ async function processScanItem(item: ScannerQueueItem) {
         title: 'Téléchargement suspect',
         message: `Fichier suspect non signé : ${filename} (${result.threatName || 'Anomalie'})`,
         dedupKey: `suspect-${normPath}`,
+        visual: !scanPopupShown,
         actionTarget: { tab: 'security' },
       });
     } else if (result.status === 'safe' && currentConfig.showModalEvenIfSafe) {
@@ -803,20 +809,12 @@ async function processScanItem(item: ScannerQueueItem) {
         title: 'Téléchargement vérifié',
         message: `Aucune menace détectée : ${filename}`,
         dedupKey: `safe-${normPath}`,
+        visual: !scanPopupShown,
       });
     }
 
     // 7. Show Avast-style desktop popup window with final status
-    if (currentConfig.discreteMode === 'notification') {
-      if (result.status === 'threat' || result.status === 'suspect') {
-        showAvastStyleToast({
-          title: 'Menace téléchargement bloquée',
-          message: `Fichier malveillant neutralisé : ${result.threatName || filename}`,
-          type: 'threat',
-          soundEnabled: currentConfig.soundEnabled,
-        });
-      }
-    } else {
+    if (currentConfig.discreteMode !== 'notification') {
       try {
         showAvastStyleDownloadScan({
           fileName: filename,
@@ -826,7 +824,9 @@ async function processScanItem(item: ScannerQueueItem) {
           threatName: result.threatName,
           isUnsigned: result.isUnsigned,
           discreteMode: currentConfig.discreteMode || 'window',
-          soundEnabled: currentConfig.soundEnabled,
+          // Le son suit aussi les réglages globaux : sons activés, ne pas déranger, volume.
+          soundEnabled: currentConfig.soundEnabled && notificationManager.getPreferences().soundEnabled && !notificationManager.getPreferences().dndEnabled,
+          volume: notificationManager.getPreferences().soundVolume / 100,
         });
       } catch (err: any) {
         logger.warn('[DownloadScanner] Error showing Avast-style download popup:', err.message);

@@ -1,7 +1,7 @@
 # STATE — Vanguard Core
 
 ## État Actuel
-- **Version publiée :** `v0.1.8` ; candidate `v0.1.9` (pré-release) préparée, non publiée tant que non confirmée.
+- **Version publiée :** `v0.1.8` ; `v0.1.9` publiée (pré-release) ; candidate `v0.1.10` (pré-release) préparée, voir bloc en bas.
 - **Git Branch :** `refactor/v3-baseline`. **Dernier commit :** `858ecf5f14d5ab45259eef3ccc079d0f465a2f69`.
 - **Tags distants :** `v0.1.7` (sur `f52fd48`, inchangé) et `v0.1.8` (sur `858ecf5`, publié).
 - **Statut courant :** Pré-release v0.1.8 publiée avec succès sur GitHub. Vérification des 4 assets et du tag validée.
@@ -47,3 +47,11 @@ Détail et limites : voir `.ai-memory/HANDOFF.md`.
 - **VPN :** le catalogue VPN Gate était toujours vide : le parseur rejetait les lignes vides dans `<ca>` (97/97 profils rejetés avant, 97/97 valides après correctif sur le flux réel). Import .ovpn manuel avec sélecteur de fichier et bouton de connexion.
 - **Notifications :** historique atomique, événement `notifications:updated`, pas de doublon constaté sur le parcours maintenance.
 - **Packaging :** `winCodeSign-2.6.0` recopié dans le cache utilisateur depuis une extraction complète (échec symlink darwin sans mode développeur).
+---
+
+## Candidat v0.1.10 (branche `release/v0.1.10-prerelease`, base v0.1.9)
+Détail : `.ai-memory/HANDOFF.md`.
+- **Notifications :** canal unique = fenêtre Vanguard près de la zone de notification (`main/desktopNotifier.ts`, ce n'est PAS un toast natif Windows). Son joué une seule fois dans cette fenêtre (`shared/notificationSound.ts`). Plus de bulles dans l'application (`NotificationSystem` et `audioSynth` supprimés). Producteurs gaming passés par `notificationManager`. Fenêtre d'analyse de téléchargement conservée, sans doublon (`visual:false`), son soumis aux réglages globaux.
+- **Paramètres :** cause du défilement cassé = `.tab-container` sans CSS dans un `overflow:hidden` (Paramètres et Vault inatteignables en bas) → `.pane-scroll`. Interrupteurs actionnables au clavier. Notifications refaites : tests succès/avertissement/erreur par le vrai circuit, explication si un réglage bloque, historique consultable.
+- **Divers :** RAM en Go cohérente (utilisé/total), cartes graphiques physiques/virtuelles, volumes triés (Windows puis lettre), repli visuel des jeux, libellés « IA »/« stabilité parfaite » retirés.
+- **Limites :** aucune connexion VPN réelle ; Corbeille par lecteur jamais vidée en réel ; le son n'a pas été écouté (vérifié : même fonction, contexte audio actif) ; idée consignée : détection d'USB pour proposer l'export du coffre.
